@@ -1,5 +1,5 @@
 networking-nsxv3
-=============
+================
 
 Openstack L2 network components for VMware NSX-T (NSXv3)
 
@@ -7,13 +7,13 @@ This project allowes an OpenStack region to implement complex L2 network topolog
 
 
 NSX-T ML2 Mechanism Dirver
+--------------------------
 
--------------------
 NSX-T ML2 Mechanism Dirver is an extension to the Modular Layer 2 (ml2) plugin framework. This driver allowing OpenStack networking to simultaneously utilize NSX-T network technology in combination with other technologies to reach the goal of Hierarchical Port Binding.
 
 
 NSX-T L2 Agent
--------------------
+--------------
 
 NSX-T L2 Agent implements OpenStack network related events into VMware NSX-T constructions.
 - OpenStack network segments are mapped to NSX-T Logical Switches (VLAN backed)
@@ -27,39 +27,43 @@ NSX-T L2 Agent implements OpenStack network related events into VMware NSX-T con
 
 
 Installation
--------------------
+------------
 
 Install NSX-T 2.3 SDK (download SDK from VMware web site)
-
 ::
+
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_runtime-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common_client-2.9.0-py2.py3-none-any.whl
     sudo pip install nsx_python_sdk-2.3.0.0.0.10085514-py2.py3-none-any.whl
 
+
 Install on devstack
 
 clone repo into /opt/stack
 ::
-  cd ./networking-nsx-t
-  python setup.py install
+
+    cd ./networking-nsx-t
+    python setup.py install
 
 
-Modify:
-/etc/neutron/neutron.conf as described in /opt/stack/networking-nsx-t/etc/neutron/neutron.conf
-/etc/neutron/plugins/ml2/ml2_conf.ini as described in /opt/stack/networking-nsx-t/etc/neutron/plugins/ml2/ml2_conf.ini
+Modify::
 
-For Full list of the agent configuration options check:
-/opt/stack/networking-nsx-t/networking_nsxv3/common/config.py
+    /etc/neutron/neutron.conf as described in /opt/stack/networking-nsx-t/etc/neutron/neutron.conf
+    /etc/neutron/plugins/ml2/ml2_conf.ini as described in /opt/stack/networking-nsx-t/etc/neutron/plugins/ml2/ml2_conf.ini
 
-restart neutron server with NSX-T ml2 config
-::
+For Full list of the agent configuration options check::
+
+    /opt/stack/networking-nsx-t/networking_nsxv3/common/config.py
+
+restart neutron server with NSX-T ml2 config::
+
   /usr/local/bin/neutron-server --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini
 
 
-Start DVS agent
-::
+Start DVS agent::
+ 
   /usr/local/bin/neutron-nsxv3-agent --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini
 
 
@@ -70,6 +74,7 @@ Playground
 QoS Policy
 ^^^^^^^^^^^^^^^^^^^
 ::
+
     openstack network qos policy create <qos_name>
     openstack network qos rule create --type bandwidth-limit --max-kbps 64000 --max-burst-kbits 0 --ingress <qos_name>
     openstack network qos rule set --max-kbps 64000 --max-burst-kbits 0 --ingress <qos_name> <id>
@@ -81,6 +86,7 @@ QoS Policy
 Security Groups
 ^^^^^^^^^^^^^^^^^^^
 ::
+
     openstack security group create <sg_name>
     openstack security group rule create --ingress --protocol tcp --remote-ip 192.168.253.253 --dst-port 8281 <sg_name>
     openstack security group rule create --ingress --protocol tcp --remote-group <remote_sg_name> --dst-port 443 <sg_name>
@@ -91,8 +97,9 @@ Security Groups
     openstack security group delete <sg_name>
 
 Port Binding (Standard)
-^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^
 ::
+
     openstack port create --network <network_name> \
         --allowed-address "ip-address=192.168.253.10,mac-address=fa:16:3e:5f:7d:0b" \
         --allowed-address "ip-address=192.168.253.10,mac-address=ff:16:3e:5f:7d:0b" \
@@ -102,8 +109,9 @@ Port Binding (Standard)
     openstack server create --image <image_name> --flavor "1" --nic "port-id=<port_id>" <server-name>
 
 Port Binding (Trunk)
-^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^
 ::
+
     openstack port create --network <network_native> <trunk_parent_port_name>
     openstack port create --network <network_sub_1> \
         --allowed-address "ip-address=192.168.253.10,mac-address=fa:16:3e:5f:7d:0b" \
@@ -115,6 +123,7 @@ Port Binding (Trunk)
         <trunk_subport_name_2>
 
 ::
+
     openstack network trunk create \
     --parent-port <trunk_parent_port_id> \
     --subport port=<trunk_subport_id_1>,segmentation-type=vlan,segmentation-id=100  \
