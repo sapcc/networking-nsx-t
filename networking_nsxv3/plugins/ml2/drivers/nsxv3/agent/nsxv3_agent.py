@@ -65,15 +65,97 @@ LOG = logging.getLogger(__name__)
 
 class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
+    def security_group_member_updated(self, security_group_id):
+        sg_id = str(security_group_id)
+        LOG.debug('Updating members for Security Group ID={}'.format(sg_id))
+
+        sg_ips_spec = IPSet(display_name=sg_id)
+        with LockManager.get_lock(sg_id):
+            ipset = self.nsxv3.get(sdk_service=IpSets, sdk_model=sg_ips_spec)
+            if not ipset:
+                self.nsxv3.create_security_group(sg_id)
+
+            ip1 = self.db._get_security_group_members_ips(sg_id)
+            ip2 = self.db._get_security_group_members_address_bindings_ips(
+                sg_id)
+
+            members = [str(ip[0]) for ip in ip1 + ip2]
+            self.nsxv3.update_security_group_members(sg_id, members)
+
+    def security_group_rule_updated(self, security_group_id):
+        sg_id = str(security_group_id)
+        LOG.debug('Updating rules for Security Group ID={}'
+                  .format(str(sg_id)))
+
+        rul_spec = FirewallRule()
+        ips_spec = IPSet()
+
+        sg_ips_spec = IPSet(display_name=sg_id)
+        sg_nsg_spec = NSGroup(display_name=sg_id)
+        sg_sec_spec = FirewallSection(display_name=sg_id)
+
+        with LockManager.get_lock(sg_id):
+            ipset = self.nsxv3.get(sdk_service=IpSets, sdk_model=sg_ips_spec)
+            if not ipset:
+                self.nsxv3.create_security_group(sg_id)
+            nsg = self.nsxv3.get(sdk_service=NsGroups, sdk_model=sg_nsg_spec)
+            sec = self.nsxv3.get(sdk_service=Sections, sdk_model=sg_sec_spec)
+
+            (_, ips_name_id) = self.nsxv3.get_name_revision_dict(ips_spec)
+            (_, rul_name_id) = self.nsxv3.get_name_revision_dict(rul_spec, 
+                attr_key="section_id", attr_val=sec.id)
+
+            nsx_rules = rul_name_id
+            db_rules = self.db._get_rules_for_security_groups_id(sg_id)
+
+            attrs = ["id", "port_range_min", "port_range_max", "protocol", 
+                "ethertype", "direction", "remote_group_id", 
+                "remote_ip_prefix", "security_group_id" ]
+
+            add_rules = []
+            for rule in db_rules:
+                name = rule["id"]
+                remote_group_id = rule["remote_group_id"]
+
+                fwr = dict()
+                for key in attrs:
+                    fwr[key] = rule[key]
+
+                fwr["local_group_id"] = ipset.id
+                fwr["apply_to"] = nsg.id
+                if remote_group_id:
+                    fwr["remote_group_id"] = ips_name_id[remote_group_id]
+
+                if name in nsx_rules:
+                    del nsx_rules[name]
+                    continue
+                
+                fwr = self.nsxv3.get_security_group_rule_spec(fwr)
+                if fwr:
+                    add_rules.append(fwr)
+            del_rules = nsx_rules.values()
+
+            (sg_id, revision) =self.db.get_security_group_revision(sg_id)
+
+            self.nsxv3.update_security_group_rules(
+                sg_id,
+                revision_number=revision,
+                add_rules=add_rules,
+                del_rules=del_rules)
+
     # RPC method
     def security_groups_member_updated(self, context, **kwargs):
-        # TODO to be provided by Alex
-        pass
+        o = kwargs["security_groups"]
+        o = o if type(o) == list else [o]
+        for id in o:
+            self.security_group_member_updated(id)
 
     # RPC method
     def security_groups_rule_updated(self, context, **kwargs):
-        # TODO to be provided by Alex
-        pass
+        o = kwargs["security_groups"]
+        o = o if type(o) == list else [o]
+        for id in o:
+            self.security_group_rule_updated(id)
 
 
 class NSXv3AgentManagerRpcCallBackBase(
