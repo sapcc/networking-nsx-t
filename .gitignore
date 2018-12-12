@@ -1,0 +1,12 @@
+.tox
+.eggs
+.vscode
+.testrepository
+.stestr
+.idea
+**/*.pyc
+**/__pycache__
+build/
+dist/
+developer/
+networking_nsx_t.egg-info
