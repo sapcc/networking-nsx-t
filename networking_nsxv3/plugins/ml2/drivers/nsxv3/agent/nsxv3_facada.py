@@ -356,79 +356,57 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             self.base_url, "api/v1/switching-profiles", qos_spec["id"])
         return self._put(url=url, data=json.dumps(qos_spec))
 
+    def get_or_create_security_group(self, security_group_id):
+        ips_spec = IPSet(
+            display_name=security_group_id,
+            ip_addresses=[],
+            resource_type='IPSet'
+        )
+        nsg_spec = NSGroup(
+            display_name=security_group_id,
+            resource_type='NSGroup',
+            tags=[Tag(
+                scope=nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE,
+                tag=security_group_id)],
+            membership_criteria=[NSGroupTagExpression(
+                scope=nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE,
+                scope_op=NSGroupTagExpression.SCOPE_OP_EQUALS,
+                tag=security_group_id,
+                tag_op=NSGroupTagExpression.TAG_OP_EQUALS,
+                target_type=NSGroupTagExpression.TARGET_TYPE_LOGICALPORT)
+            ]
+        )
+        sec_spec = FirewallSection(
+            display_name=security_group_id,
+            is_default=False,
+            resource_type='FirewallSection',
+            section_type='LAYER3',
+            stateful=True
+        )
 
-    def is_created_security_group(self, security_group_id):
-        # Security group consists of three elements created in transaction
-        # Checking only one element is sufficient criteria
-        ips_spec = IPSet(display_name=security_group_id)
-        ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
-        return True if ips else False
+        ipset = self.get(sdk_service=IpSets, sdk_model=ips_spec)
+        if not ipset:
+            ipset = self.create(sdk_service=IpSets, sdk_model=ips_spec)
 
-    def create_security_group(self, security_group_id):
-        req = [
-            BatchRequestItem(
-                uri="/v1/firewall/sections",
-                method=BatchRequestItem.METHOD_POST,
-                body=FirewallSection(
-                    display_name=security_group_id,
-                    is_default=False,
-                    resource_type='FirewallSection',
-                    section_type='LAYER3',
-                    stateful=True
-                )),
-            BatchRequestItem(
-                uri="/v1/ip-sets",
-                method=BatchRequestItem.METHOD_POST,
-                body=IPSet(
-                    display_name=security_group_id,
-                    ip_addresses=[],
-                    resource_type='IPSet'
-                )),
-            BatchRequestItem(
-                uri="/v1/ns-groups",
-                method=BatchRequestItem.METHOD_POST,
-                body=NSGroup(
-                    display_name=security_group_id,
-                    resource_type='NSGroup',
-                    tags=[Tag(
-                        scope=nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE,
-                        tag=security_group_id)],
-                    membership_criteria=[NSGroupTagExpression(
-                        scope=nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE,
-                        scope_op=NSGroupTagExpression.SCOPE_OP_EQUALS,
-                        tag=security_group_id,
-                        tag_op=NSGroupTagExpression.TAG_OP_EQUALS,
-                        target_type=NSGroupTagExpression.TARGET_TYPE_LOGICALPORT)
-                    ]
-                ))
-        ]
+        nsg = self.get(sdk_service=NsGroups, sdk_model=nsg_spec)
+        if not nsg:
+            nsg = self.create(sdk_service=NsGroups, sdk_model=nsg_spec)
 
-        s = self.batch(request_items=req, continue_on_error=False, atomic=True)
-        return self.is_batch_successful(s)
+        sec = self.get(sdk_service=Sections, sdk_model=sec_spec)
+        if not sec:
+            sec = self.create(sdk_service=Sections, sdk_model=sec_spec)
+
+        return (ipset, nsg, sec)
 
     def delete_security_group(self, security_group_id):
         sec_spec = FirewallSection(display_name=security_group_id)
         ips_spec = IPSet(display_name=security_group_id)
         nsg_spec = NSGroup(display_name=security_group_id)
 
-        sec = self.get(sdk_service=Sections, sdk_model=sec_spec)
-        ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
-        nsg = self.get(sdk_service=NsGroups, sdk_model=nsg_spec)
-
-        req = BatchRequest(continue_on_error=False, requests=[
-            BatchRequestItem(
-                uri="/v1/firewall/sections/{}".format(sec.id),
-                method=BatchRequestItem.METHOD_DELETE),
-            BatchRequestItem(
-                uri="/v1/ip-sets/{}".format(ips.id),
-                method=BatchRequestItem.METHOD_DELETE),
-            BatchRequestItem(
-                uri="/v1/ns-groups/{}".format(nsg.id),
-                method=BatchRequestItem.METHOD_DELETE)
-        ])
-
-        s = self.batch(request_items=req, continue_on_error=True, atomic=True)
-        return self.is_batch_successful(s)
+        self.delete(sdk_service=Sections, sdk_model=sec_spec)
+        self.delete(sdk_service=IpSets, sdk_model=ips_spec)
+        self.delete(sdk_service=NsGroups, sdk_model=nsg_spec)
+        return True
 
     def update_security_group_members(self, security_group_id, member_cidrs):
         ips_spec = IPSet(display_name=security_group_id)
@@ -594,3 +572,4 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 break
             cursor = cycle * limit
         return (name_rev, name_id)
+

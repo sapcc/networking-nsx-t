@@ -9,7 +9,7 @@ This project allowes an OpenStack region to implement complex L2 network topolog
 NSX-T ML2 Mechanism Dirver
 --------------------------
 
-NSX-T ML2 Mechanism Dirver is an extension to the Modular Layer 2 (ml2) plugin framework. This driver allowing OpenStack networking to simultaneously utilize NSX-T network technology in combination with other technologies to reach the goal of Hierarchical Port Binding.
+NSX-T ML2 Mechanism Dirver is an extension to the Modular Layer 2 (ml2) plugin framework. This driver enables OpenStack Neutron to simultaneously utilize NSX-T network technology in combination with other technologies to reach the goal of Hierarchical Port Binding.
 
 
 NSX-T L2 Agent

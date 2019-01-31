@@ -15,6 +15,11 @@ from vmware.vapi.stdlib.client.factories import StubConfigurationFactory
 
 from com.vmware.nsx_client import Batch
 from com.vmware.nsx.model_client import BatchRequest, BatchRequestItem
+
+from com.vmware.nsx.model_client import QosSwitchingProfile
+from com.vmware.nsx.model_client import IpDiscoverySwitchingProfile
+from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
+
 from com.vmware.vapi.std.errors_client import Unauthorized
 from com.vmware.vapi.std.errors_client import NotFound
 from com.vmware.vapi.std.errors_client import ConcurrentChange
@@ -23,6 +28,12 @@ from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
 
 LOG = logging.getLogger(__name__)
+
+POLYMORPHIC_TYPES=(
+    QosSwitchingProfile, 
+    IpDiscoverySwitchingProfile, 
+    SpoofGuardSwitchingProfile
+)
 
 # Decorator
 class connection_retry_policy(object):
@@ -77,12 +88,13 @@ class connection_retry_policy(object):
 class NSXv3Client(object):
     
     def retry_until_result(self, operation, kwargs, retry_max, retry_sleep):
+        resp = None
         for _ in range(1, retry_max + 1):
             resp = operation(**kwargs)
             if resp:
                 return resp
             time.sleep(retry_sleep)
-        return None
+        return resp
 
     def get(self, sdk_service, sdk_model):
         pass
@@ -208,25 +220,30 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Getting '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
         LOG.info(msg)
 
-        if sdk_id != 'None':
-            return svc.get(sdk_id)
+        def get(id):
+            res = svc.get(id)
+            if isinstance(sdk_model, POLYMORPHIC_TYPES):
+                res = res.convert_to(sdk_model)
+            return res
 
-        # SDK does not support search object by display_name
-        res = self._query(resource_type=sdk_type, key=sdk_key, ands=[sdk_name])
+        if sdk_id != 'None':
+            params = {"id": sdk_id}
+            # NSX-T object createation is an asynchronous opperation. 
+            # If we immediately "get" the object the result could not be found.
+            return self.retry_until_result(get, params, retry_max=3, retry_sleep=5)
+
+        # SDK does not support get object by display_name
+        params = {
+            "resource_type": sdk_type,
+            "key": sdk_key,
+            "ands": [sdk_name]
+        }
+        res = self.retry_until_result(self._query, params, 
+            retry_max=3, retry_sleep=5)
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))  
         if len(res) == 1:
-            obj = res.pop()
-
-            # SDK BUG Getting SwitchingProfile by ID returns empty result
-            if "SwitchingProfile" in sdk_type:
-                sdk_model.id = obj["id"]
-                sdk_model.display_name = obj["display_name"]
-                sdk_model.resource_type = sdk_type
-                sdk_model.revision = obj["_revision"]
-                return sdk_model
-            else:
-                return svc.get(obj["id"])
+            return get(res.pop()["id"])
         else:
             return None
     
@@ -277,13 +294,7 @@ class NSXv3ClientImpl(NSXv3Client):
 
         LOG.info(msg)
         if not sdk_id:
-            get_kwargs = {
-                "sdk_service" : sdk_service,
-                "sdk_model": sdk_model
-            }
-            res = self.retry_until_result(operation=self.get, 
-                kwargs=get_kwargs, retry_max=3,retry_sleep=5)
-            sdk_id = res.id
+            sdk_id = self.get(sdk_service=sdk_service, sdk_model=sdk_model).id
 
         if not sdk_id:
             raise Exception("{} has failed. Object not found ".format(msg))
@@ -293,20 +304,13 @@ class NSXv3ClientImpl(NSXv3Client):
     def delete(self, sdk_service, sdk_model):
         svc = sdk_service(self.stub_config)
         sdk_type = str(sdk_model.__class__.__name__)
-        sdk_id = str(sdk_model.id)
+        sdk_id = sdk_model.id
         sdk_name = str(sdk_model.display_name)
         msg = "Deleting '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
         
         LOG.info(msg)
         if not sdk_id:
-            get_kwargs = {
-                "sdk_service" : sdk_service,
-                "sdk_model": sdk_model
-            }
-            res = self.retry_until_result(operation=self.get, 
-                kwargs=get_kwargs, retry_max=3,retry_sleep=5)
-            sdk_id = res.id
-
+            sdk_id = self.get(sdk_service=sdk_service, sdk_model=sdk_model).id
         if not sdk_id:
             raise Exception("{} has failed. Object not found ".format(msg))
         return svc.delete(sdk_id)

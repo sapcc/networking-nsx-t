@@ -69,11 +69,8 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
         sg_id = str(security_group_id)
         LOG.debug('Updating members for Security Group ID={}'.format(sg_id))
 
-        sg_ips_spec = IPSet(display_name=sg_id)
         with LockManager.get_lock(sg_id):
-            ipset = self.nsxv3.get(sdk_service=IpSets, sdk_model=sg_ips_spec)
-            if not ipset:
-                self.nsxv3.create_security_group(sg_id)
+            (ipset, _, _) = self.nsxv3.get_or_create_security_group(sg_id)
 
             ip1 = self.db._get_security_group_members_ips(sg_id)
             ip2 = self.db._get_security_group_members_address_bindings_ips(
@@ -87,22 +84,11 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
         LOG.debug('Updating rules for Security Group ID={}'
                   .format(str(sg_id)))
 
-        rul_spec = FirewallRule()
-        ips_spec = IPSet()
-
-        sg_ips_spec = IPSet(display_name=sg_id)
-        sg_nsg_spec = NSGroup(display_name=sg_id)
-        sg_sec_spec = FirewallSection(display_name=sg_id)
-
         with LockManager.get_lock(sg_id):
-            ipset = self.nsxv3.get(sdk_service=IpSets, sdk_model=sg_ips_spec)
-            if not ipset:
-                self.nsxv3.create_security_group(sg_id)
-            nsg = self.nsxv3.get(sdk_service=NsGroups, sdk_model=sg_nsg_spec)
-            sec = self.nsxv3.get(sdk_service=Sections, sdk_model=sg_sec_spec)
+            (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
 
-            (_, ips_name_id) = self.nsxv3.get_name_revision_dict(ips_spec)
-            (_, rul_name_id) = self.nsxv3.get_name_revision_dict(rul_spec, 
+            (_, ips_name_id) = self.nsxv3.get_name_revision_dict(IPSet())
+            (_, rul_name_id) = self.nsxv3.get_name_revision_dict(FirewallRule(), 
                 attr_key="section_id", attr_val=sec.id)
 
             nsx_rules = rul_name_id
@@ -168,13 +154,12 @@ class NSXv3AgentManagerRpcCallBackBase(
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, config, agent, sg_agent, nsxv3, db):
+    def __init__(self, context, agent, sg_agent, nsxv3, db):
         super(NSXv3AgentManagerRpcCallBackBase,self).__init__(
             context,agent,sg_agent)
-        self.config = config
         self.nsxv3 = nsxv3
         self.db = db
-        self.pool = eventlet.greenpool.GreenPool(config.AGENT.sync_pool_size)
+        self.pool = eventlet.greenpool.GreenPool(cfg.CONF.AGENT.sync_pool_size)
     
     def get_active_workers(self):
         return self.pool.running()
@@ -201,6 +186,8 @@ class NSXv3AgentManagerRpcCallBackBase(
             self.pool.spawn(self.sync_security_group, id)
         for id in added:
             self.pool.spawn(self.sync_security_group, id)
+        for id in orphaned:
+            self.pool.spawn(self.sync_security_group_orphaned, id)
 
         self.pool.waitall()
 
@@ -299,9 +286,14 @@ class NSXv3AgentManagerRpcCallBackBase(
         LOG.debug("Synching security group '{}'.".format(security_group_id))
         self.security_group_member_updated(security_group_id)
         self.security_group_rule_updated(security_group_id)
+    
+    def sync_security_group_orphaned(self, security_group_id):
+        LOG.debug("Synching security group '{}'.".format(security_group_id))
+        self.nsxv3.delete_security_group(security_group_id)
+    
 
     def get_name_revision_dict(self, query):
-        limit = self.config.AGENT.db_max_records_per_query
+        limit = cfg.CONF.AGENT.db_max_records_per_query
         id_rev = {}
         created_after = datetime.datetime(1970, 1, 1)
         while True:
@@ -355,8 +347,9 @@ class NSXv3AgentManagerRpcCallBackBase(
 
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))
-        with LockManager.get_lock(kwargs["port_id"]):
-            self.nsxv3.port_delete(kwargs["port_id"])
+        # Port is deleted by Nova when destroying the instance
+        # with LockManager.get_lock(kwargs["port_id"]):
+        #     self.nsxv3.port_delete(kwargs["port_id"])
 
     def create_policy(self, context, policy):
         LOG.debug("Creating policy={}.".format(policy["name"]))
@@ -382,13 +375,13 @@ class NSXv3AgentManagerRpcCallBackBase(
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
 
-    def __init__(self, config=None, nsxv3=None):
+    def __init__(self, nsxv3=None):
         super(NSXv3Manager, self).__init__()
-        self.config = config
+        context = neutron_context.get_admin_context()
+
         self.nsxv3 = nsxv3
         self.rpc = None
-        self.db = db_queries.DB(config=config,
-                                context=neutron_context.get_admin_context())
+        self.db = db_queries.DB(config=cfg.CONF, context=context)
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -446,7 +439,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         :return: map -- the map containing the configuration values
         :rtype: dict
         """
-        config = self.config.NSXV3
+        config = cfg.CONF.NSXV3
         return {
             'nsxv3_connection_retry_count': config.nsxv3_connection_retry_count,
             'nsxv3_connection_retry_sleep': config.nsxv3_connection_retry_sleep,
@@ -461,7 +454,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """Calculate the agent id that should be used on this host
         :return: str -- agent identifier
         """
-        return self.config.AGENT.agent_id
+        return cfg.CONF.AGENT.agent_id
 
     def get_extension_driver_type(self):
         """Get the agent extension driver type.
@@ -477,7 +470,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         if not self.rpc:
             self.rpc = NSXv3AgentManagerRpcCallBackBase(
                 context=context,
-                config=self.config,
                 agent=agent,
                 sg_agent=sg_agent,
                 nsxv3=self.nsxv3,
@@ -550,7 +542,7 @@ def main():
     nsxv3.setup()
 
     agent = ca.CommonAgentLoop(
-        NSXv3Manager(config=cfg.CONF, nsxv3=nsxv3),
+        NSXv3Manager(nsxv3=nsxv3),
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,

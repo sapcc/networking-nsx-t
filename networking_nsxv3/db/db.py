@@ -24,6 +24,13 @@ class DB(object):
         self.context = context
         self.config = config
 
+    def _validate_one(self, result, error):
+        msg = "{} not found in Neutron."
+        if result:
+            return result
+        else:
+            raise Exception(msg.format(error))
+
     def get_port_revision_tuples(
             self,
             limit=100,
@@ -64,14 +71,16 @@ class DB(object):
         ).all()
 
     def get_security_group_revision(self, security_group_id):
-        return self.context.session.query(
+        result = self.context.session.query(
             sg_db.SecurityGroup.id,
             StandardAttribute.revision_number
         ).join(
             StandardAttribute
         ).filter(
             sg_db.SecurityGroup.id == security_group_id
-        ).one()
+        ).one_or_none()
+        return self._validate_one(result, 
+            "Security Group ID='{}'".format(security_group_id))
 
     def get_security_group_revision_tuples(
             self,
@@ -92,14 +101,16 @@ class DB(object):
         ).all()
 
     def get_qos(self, qos_id):
-        return self.context.session.query(
+        result = self.context.session.query(
             QosPolicy.name,
             StandardAttribute.revision_number
         ).filter(
             QosPolicy.id == qos_id
         ).join(
             StandardAttribute
-        ).one()
+        ).one_or_none()
+        return self._validate_one(result, 
+            "QoS Policy ID='{}'".format(qos_id))
 
     def get_qos_bwl_rules(self, qos_id):
         return self.context.session.query(
@@ -119,7 +130,7 @@ class DB(object):
         ).all()
 
     def get_port(self, port_id):
-        return self.context.session.query(
+        result = self.context.session.query(
             Port.id,
             Port.mac_address,
             Port.admin_state_up,
@@ -133,7 +144,9 @@ class DB(object):
         ).outerjoin(
             QosPortPolicyBinding,
             QosPolicy
-        ).one()
+        ).one_or_none()
+        return self._validate_one(result, 
+            "Port ID='{}'".format(port_id))
 
     def get_port_security_groups(self, port_id):
         return self.context.session.query(

@@ -44,6 +44,18 @@ agent_opts = [
     )
 ]
 
+agent_cli_opts = [
+    cfg.MultiStrOpt('neutron_security_group_id',
+        default=[],
+        help="Neutron Security Group IDs synchronization targets. Multi-value string."),
+    cfg.MultiStrOpt('neutron_port_id',
+        default=[],
+        help="Neutron Port IDs synchronization targets. Multi-value string."),
+    cfg.MultiStrOpt('neutron_qos_policy_id',
+        default=[],
+        help="Neutron QoS Policy IDs synchronization targets. Multi-value string.")
+]
+
 nsxv3_opts = [
     cfg.IntOpt(
         'nsxv3_connection_retry_count',
@@ -99,5 +111,6 @@ nsxv3_opts = [
 
 
 cfg.CONF.register_opts(agent_opts, "AGENT")
+cfg.CONF.register_opts(agent_cli_opts, "AGENT_CLI")
 cfg.CONF.register_opts(nsxv3_opts, "NSXV3")
 config.register_agent_state_opts_helper(cfg.CONF)
