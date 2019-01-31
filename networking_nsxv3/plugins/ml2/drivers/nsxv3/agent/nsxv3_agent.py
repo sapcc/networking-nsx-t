@@ -523,6 +523,52 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
         pass
 
+def cli_sync():
+    """
+    CLI SYNC command force synchronization between Neutron and NSX-T objects
+    cfg.CONF.AGENT_CLI for options
+    """
+    LOG.info("VMware NSXv3 Agent CLI")
+    common_config.init(sys.argv[1:])
+    common_config.setup_logging()
+    profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
+
+    sg_ids = cfg.CONF.AGENT_CLI.neutron_security_group_id
+    pt_ids = cfg.CONF.AGENT_CLI.neutron_port_id
+    qs_ids = cfg.CONF.AGENT_CLI.neutron_qos_policy_id
+
+    nsxv3 = nsxv3_facada.NSXv3Facada()
+    # Force login as NSXv3Manager will not be started as daemon (like in the agent).
+    nsxv3._login()
+    manager = NSXv3Manager(nsxv3=nsxv3)
+    rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
+
+    def execute(callback, ids):
+        status = {}
+        error = False
+        for id in ids:
+            try:
+                callback(id)
+                status[id] = "Success"
+            except Exception as e:
+                error = True
+                status[id] = "Error: {}".format(str(e))
+                LOG.exception(e)
+        return (status, error)
+
+    (pt_status, pt_error) = execute(rpc.sync_port, pt_ids)
+    (sg_status, sg_error) = execute(rpc.sync_security_group, sg_ids)
+    (qs_status, qs_error) = execute(rpc.sync_qos, qs_ids)
+
+    result = {
+        "security_groups" : sg_status,
+        "ports": pt_status,
+        "qos_policies": qs_status
+    }
+
+    LOG.info(json.dumps(result))
+
+    return 1 if pt_error or sg_error or qs_error else 0
 
 def main():
     LOG.info("VMware NSXv3 Agent initializing ...")
