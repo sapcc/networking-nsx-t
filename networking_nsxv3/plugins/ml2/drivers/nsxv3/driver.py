@@ -1,12 +1,10 @@
 from oslo_log import log
 
-from neutron._i18n import _
 from neutron.plugins.ml2.drivers import mech_agent
 from neutron.agent import securitygroups_rpc
 
 from neutron_lib import context
 from neutron_lib.api.definitions import portbindings
-from neutron_lib import constants as neutron_constants
 from neutron_lib.plugins.ml2 import api
 
 from networking_nsxv3.common import constants as nsxv3_constants
@@ -118,7 +116,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         if not vif_details['nsx-logical-switch-id']:
             LOG.error("Agent={} did not provide nsx-logical-switch-id."
-                .format(agent_type))
+                      .format(agent_type))
             return False
         else:
             context.set_binding(segment[api.ID], self.vif_type, vif_details)

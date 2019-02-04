@@ -1,6 +1,5 @@
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_utils import excutils
 
 from neutron.services.trunk import constants as trunk_consts
 from neutron.services.trunk.drivers import base
@@ -18,7 +17,7 @@ class NSXv3TrunkDriver(base.DriverBase):
     NSXv3 dummy trunk driver to register neutron's trunk extension.
 
     Driver is dummy as ML2 NSXv3 is supposed to work in a multy NSXv3 Manager
-    environment and a port will not be created until divice nic binded is called.
+    environment and a port will not be created until port-bind is called.
     """
 
     @property

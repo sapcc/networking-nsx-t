@@ -1,4 +1,3 @@
-import attr
 from neutron_lib import constants as neutron_constants
 
 # Driver
@@ -24,4 +23,3 @@ NSXV3_REVISION_SCOPE = "revision_number"
 #   1.4 Added support for network_update
 #   1.5 Added binding_activate and binding_deactivate
 RPC_VERSION = '1.5'
-
