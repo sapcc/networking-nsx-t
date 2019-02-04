@@ -408,23 +408,25 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                                     .format(section_id, rule_id),
                                     method=BatchRequestItem.METHOD_DELETE)
 
+        def update_rules(rules):
+            return self.batch(request_items=sub_rules,
+                           continue_on_error=True, atomic=False)
+
         rules_step = nsxv3_constants.NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE
         result = True
 
         add_rules_req = [get_create_rule_req(sec.id, r) for r in add_rules]
-        add_rules_cicles = len(add_rules_req) / float(rules_step)
-        for i in range(0, int(math.ceil(add_rules_cicles))):
+        add_rules_cycles = len(add_rules_req) / float(rules_step)
+        for i in range(0, int(math.ceil(add_rules_cycles))):
             sub_rules = add_rules_req[i * rules_step:(i + 1) * rules_step]
-            s = self.batch(request_items=sub_rules,
-                           continue_on_error=True, atomic=False)
+            s = update_rules(sub_rules)
             result = result and self.is_batch_successful(s)
 
         del_rules_req = [get_delete_rule_req(sec.id, r) for r in del_rules]
         del_rules_cicles = len(del_rules_req) / float(rules_step)
         for i in range(0, int(math.ceil(del_rules_cicles))):
             sub_rules = del_rules_req[i * rules_step:(i + 1) * rules_step]
-            s = self.batch(request_items=sub_rules,
-                           continue_on_error=True, atomic=False)
+            s = update_rules(sub_rules)
             result = result and self.is_batch_successful(s)
 
         # Update Security Group (IP Set) revision_number
@@ -461,6 +463,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         }
 
         target = None
+        # For future use. Any type maps to None as value
         # ANY_TARGET = None
         port = ANY_PORT = '0-65535'
         service = None

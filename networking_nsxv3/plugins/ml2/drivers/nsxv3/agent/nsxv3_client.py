@@ -21,6 +21,8 @@ from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
 from com.vmware.vapi.std.errors_client import Unauthorized
 
+DEFAULT_RETRY_MAX = 3
+DEFAULT_RETRY_SLEEP = 5
 
 LOG = logging.getLogger(__name__)
 
@@ -31,8 +33,6 @@ POLYMORPHIC_TYPES = (
 )
 
 # Decorator
-
-
 class connection_retry_policy(object):
 
     def __init__(self, driver="sdk"):
@@ -226,10 +226,11 @@ class NSXv3ClientImpl(NSXv3Client):
 
         if sdk_id != 'None':
             params = {"id": sdk_id}
-            # NSX-T object createation is an asynchronous opperation.
+            # NSX-T object creation is an asynchronous operation.
             # If we immediately "get" the object the result could not be found.
             return self.retry_until_result(get, params,
-                                           retry_max=3, retry_sleep=5)
+                                           retry_max=DEFAULT_RETRY_MAX,
+                                           retry_sleep=DEFAULT_RETRY_SLEEP)
 
         # SDK does not support get object by display_name
         params = {
@@ -238,7 +239,8 @@ class NSXv3ClientImpl(NSXv3Client):
             "ands": [sdk_name]
         }
         res = self.retry_until_result(self._query, params,
-                                      retry_max=3, retry_sleep=5)
+                                      retry_max=DEFAULT_RETRY_MAX,
+                                      retry_sleep=DEFAULT_RETRY_SLEEP)
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
@@ -278,7 +280,8 @@ class NSXv3ClientImpl(NSXv3Client):
             "sdk_model": sdk_model
         }
         res = self.retry_until_result(operation=self.get, kwargs=get_kwargs,
-                                      retry_max=3, retry_sleep=5)
+                                      retry_max=DEFAULT_RETRY_MAX,
+                                      retry_sleep=DEFAULT_RETRY_SLEEP)
 
         if res:
             raise Exception("{} has failed. Object exists ".format(msg))

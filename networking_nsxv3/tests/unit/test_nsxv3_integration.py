@@ -32,7 +32,6 @@ class NetworkTest(testtools.TestCase):
 
     def test_create_logical_switch(self):
         sw_name = self.uuid
-        NetworkTest.TRANSPORT_ZONE_ID
         segmentation_id = "3200"
         ls_spec = LogicalSwitch(
             display_name=sw_name,
@@ -62,7 +61,6 @@ class NetworkTest(testtools.TestCase):
 
     def test_get_logical_switch(self):
         sw_name = self.uuid
-        NetworkTest.TRANSPORT_ZONE_ID
         ls_spec = LogicalSwitch(display_name=sw_name)
 
         ls = self.nsxv3.get(sdk_service=LogicalSwitches, sdk_model=ls_spec)
