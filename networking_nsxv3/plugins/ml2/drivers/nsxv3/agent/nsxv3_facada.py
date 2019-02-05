@@ -167,8 +167,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             "attr_val": attr_val
         }
 
-        return self.retry_until_result(self.get_by_attr, kwargs=kwargs,
-                                       retry_max=3, retry_sleep=5)
+        return self.retry_until_result(self.get_by_attr, kwargs=kwargs)
 
     def port_update(self, attachment_id, revision, security_groups_ids,
                     address_bindings, qos_name=None):
@@ -316,8 +315,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             "sdk_service": SwitchingProfiles,
             "sdk_model": QosSwitchingProfile(display_name=policy_name)
         }
-        qos = self.retry_until_result(operation=self.get, kwargs=get_kwargs,
-                                      retry_max=3, retry_sleep=5)
+        qos = self.retry_until_result(operation=self.get, kwargs=get_kwargs)
 
         if not qos:
             raise Exception("Not found. Unable to update policy '{}'".format(
@@ -409,8 +407,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                                     method=BatchRequestItem.METHOD_DELETE)
 
         def update_rules(rules):
-            return self.batch(request_items=sub_rules,
-                           continue_on_error=True, atomic=False)
+            return self.batch(request_items=sub_rules, atomic=False)
 
         rules_step = nsxv3_constants.NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE
         result = True
@@ -423,8 +420,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             result = result and self.is_batch_successful(s)
 
         del_rules_req = [get_delete_rule_req(sec.id, r) for r in del_rules]
-        del_rules_cicles = len(del_rules_req) / float(rules_step)
-        for i in range(0, int(math.ceil(del_rules_cicles))):
+        del_rules_cycles = len(del_rules_req) / float(rules_step)
+        for i in range(0, int(math.ceil(del_rules_cycles))):
             sub_rules = del_rules_req[i * rules_step:(i + 1) * rules_step]
             s = update_rules(sub_rules)
             result = result and self.is_batch_successful(s)

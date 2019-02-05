@@ -1,10 +1,10 @@
+import time
+import json
+import requests
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
-import time
-
-import json
-import requests
 from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
@@ -21,8 +21,8 @@ from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
 from com.vmware.vapi.std.errors_client import Unauthorized
 
-DEFAULT_RETRY_MAX = 3
-DEFAULT_RETRY_SLEEP = 5
+DEFAULT_RETRY_MAX = cfg.CONF.NSXV3.nsxv3_operation_retry_count
+DEFAULT_RETRY_SLEEP = cfg.CONF.NSXV3.nsxv3_operation_retry_sleep
 
 LOG = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ POLYMORPHIC_TYPES = (
     IpDiscoverySwitchingProfile,
     SpoofGuardSwitchingProfile
 )
+
 
 # Decorator
 class connection_retry_policy(object):
@@ -85,7 +86,13 @@ class connection_retry_policy(object):
 
 class NSXv3Client(object):
 
-    def retry_until_result(self, operation, kwargs, retry_max, retry_sleep):
+    def retry_until_result(self, operation, kwargs,
+                           retry_max=None, retry_sleep=None):
+        if retry_max is None:
+            retry_max = DEFAULT_RETRY_MAX
+        if retry_sleep is None:
+            retry_sleep = DEFAULT_RETRY_SLEEP
+
         resp = None
         for _ in range(1, retry_max + 1):
             resp = operation(**kwargs)
@@ -228,9 +235,7 @@ class NSXv3ClientImpl(NSXv3Client):
             params = {"id": sdk_id}
             # NSX-T object creation is an asynchronous operation.
             # If we immediately "get" the object the result could not be found.
-            return self.retry_until_result(get, params,
-                                           retry_max=DEFAULT_RETRY_MAX,
-                                           retry_sleep=DEFAULT_RETRY_SLEEP)
+            return self.retry_until_result(get, params)
 
         # SDK does not support get object by display_name
         params = {
@@ -238,9 +243,7 @@ class NSXv3ClientImpl(NSXv3Client):
             "key": sdk_key,
             "ands": [sdk_name]
         }
-        res = self.retry_until_result(self._query, params,
-                                      retry_max=DEFAULT_RETRY_MAX,
-                                      retry_sleep=DEFAULT_RETRY_SLEEP)
+        res = self.retry_until_result(self._query, params)
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
@@ -279,9 +282,7 @@ class NSXv3ClientImpl(NSXv3Client):
             "sdk_service": sdk_service,
             "sdk_model": sdk_model
         }
-        res = self.retry_until_result(operation=self.get, kwargs=get_kwargs,
-                                      retry_max=DEFAULT_RETRY_MAX,
-                                      retry_sleep=DEFAULT_RETRY_SLEEP)
+        res = self.retry_until_result(operation=self.get, kwargs=get_kwargs)
 
         if res:
             raise Exception("{} has failed. Object exists ".format(msg))

@@ -69,6 +69,16 @@ nsxv3_opts = [
         default=5,
         help='NSXv3 Manager client connection retry-sleep in seconds.'
     ),
+    cfg.IntOpt(
+        'nsxv3_operation_retry_count',
+        default=3,
+        help='NSXv3 Manager failed operation retry-count.'
+    ),
+    cfg.IntOpt(
+        'nsxv3_operation_retry_sleep',
+        default=5,
+        help='NSXv3 Manager failed operation retry-sleep in seconds.'
+    ),
     cfg.StrOpt(
         'nsxv3_login_user',
         default='admin',
