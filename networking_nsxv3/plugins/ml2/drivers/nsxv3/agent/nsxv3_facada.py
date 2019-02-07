@@ -1,15 +1,8 @@
-from oslo_utils import timeutils
 from oslo_log import log as logging
 from oslo_config import cfg
-import time
-import re
 import copy
 import json
 import math
-
-
-from vmware.vapi.bindings.struct import PrettyPrinter
-from vmware.vapi.stdlib.client.factories import StubConfigurationFactory
 
 from com.vmware.nsx_client import LogicalSwitches
 from com.vmware.nsx_client import TransportZones
@@ -18,12 +11,9 @@ from com.vmware.nsx_client import NsGroups
 from com.vmware.nsx_client import SwitchingProfiles
 from com.vmware.nsx_client import IpSets
 
-from com.vmware.nsx_client import Batch
 from com.vmware.nsx.model_client import TransportZone
 from com.vmware.nsx.model_client import LogicalSwitch
-from com.vmware.nsx.model_client import BatchRequest
 from com.vmware.nsx.model_client import BatchRequestItem
-from com.vmware.nsx.model_client import BatchResponse
 from com.vmware.nsx.model_client import Tag
 from com.vmware.nsx.model_client import LogicalPort
 from com.vmware.nsx.model_client import PacketAddressClassifier
@@ -32,32 +22,18 @@ from com.vmware.nsx.model_client import QosSwitchingProfile
 from com.vmware.nsx.model_client import IpDiscoverySwitchingProfile
 from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
-from com.vmware.vapi.std.errors_client import Unauthorized
-from com.vmware.vapi.std.errors_client import NotFound
-from com.vmware.vapi.std.errors_client import ConcurrentChange
-
-
-from neutron_lib.services.qos import constants as qos_consts
-from neutron_lib import constants as neutron_consts
-from com.vmware.nsx.model_client import Dscp
-
 from com.vmware.nsx.firewall_client import Sections
 from com.vmware.nsx.model_client import ICMPTypeNSService
 from com.vmware.nsx.model_client import FirewallRule
 from com.vmware.nsx.model_client import FirewallService
 from com.vmware.nsx.model_client import FirewallSection
-from com.vmware.nsx.model_client import FirewallSectionRuleList
 from com.vmware.nsx.model_client import ResourceReference
 from com.vmware.nsx.model_client import L4PortSetNSService
-from com.vmware.nsx.model_client import Tag
-from com.vmware.nsx.model_client import VapiStruct
 from com.vmware.nsx.model_client import IPSet
 from com.vmware.nsx.model_client import NSGroup
 from com.vmware.nsx.model_client import NSGroupTagExpression
 
 from networking_nsxv3.common import constants as nsxv3_constants
-from networking_nsxv3.common import locking as nsxv3_locking
-from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_client
 
 
@@ -106,8 +82,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
     def setup(self):
         self._login()
-        self.tz_id = self.get(sdk_service=TransportZones, 
-            sdk_model=TransportZone(display_name=self.tz_name)).id
+        self.tz_id = self.get(sdk_service=TransportZones,
+                              sdk_model=TransportZone(display_name=self.tz_name
+                                                      )).id
 
         ipd_sp_spec = IpDiscoverySwitchingProfile(
             arp_bindings_limit=1,
@@ -136,10 +113,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 sdk_service=SwitchingProfiles, sdk_model=sg_sp_spec)
 
         self.default_switching_profile_ids = [
-            SwitchingProfileTypeIdEntry(key=self.IPK,value=ipd_sp.id),
-            SwitchingProfileTypeIdEntry(key=self.SGK,value=sg_sp.id)
+            SwitchingProfileTypeIdEntry(key=self.IPK, value=ipd_sp.id),
+            SwitchingProfileTypeIdEntry(key=self.SGK, value=sg_sp.id)
         ]
-
 
     def get_switch_id_for_segmentation_id(self, segmentation_id):
         sw_name = "{}-{}".format(self.tz_name, segmentation_id)
@@ -177,7 +153,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             return ls.id
 
     def get_port(self, sdk_service, sdk_model):
-        svc = sdk_service(self.stub_config)
+        sdk_service(self.stub_config)
         sdk_type = str(sdk_model.__class__.__name__)
         attr_key = "attachment.id"
         attr_val = str(sdk_model.attachment["id"])
@@ -185,25 +161,25 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         LOG.info(msg)
 
         kwargs = {
-            "sdk_service": sdk_service, 
-            "sdk_model": sdk_model, 
-            "attr_key": "attachment_id", 
+            "sdk_service": sdk_service,
+            "sdk_model": sdk_model,
+            "attr_key": "attachment_id",
             "attr_val": attr_val
         }
 
-        return self.retry_until_result(self.get_by_attr, kwargs=kwargs, 
-            retry_max=3, retry_sleep=5)
+        return self.retry_until_result(self.get_by_attr, kwargs=kwargs)
 
     def port_update(self, attachment_id, revision, security_groups_ids,
-            address_bindings, qos_name=None):
+                    address_bindings, qos_name=None):
         # TODO - Port trunking branch will be hooked here
-        lp = self.get_port(sdk_service=LogicalPorts, 
-            sdk_model=LogicalPort(attachment={ "id": attachment_id}))
-        
+        attachment = {"id": attachment_id}
+        lp = self.get_port(sdk_service=LogicalPorts,
+                           sdk_model=LogicalPort(attachment=attachment))
+
         if not lp:
             raise Exception("Not found. Unable to update port '{}'"
-                .format(attachment_id))
-        
+                            .format(attachment_id))
+
         sg_scope = nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
 
@@ -214,22 +190,23 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         if qos_name:
             qos = self.get(
-                sdk_service=SwitchingProfiles, 
+                sdk_service=SwitchingProfiles,
                 sdk_model=QosSwitchingProfile(display_name=qos_name))
             if qos:
                 lp.switching_profile_ids.append(
-                    SwitchingProfileTypeIdEntry(key=self.QSK,value=qos.id))
-        
+                    SwitchingProfileTypeIdEntry(key=self.QSK, value=qos.id))
+
         lp.address_bindings = []
         for ip, mac in address_bindings:
-            pc = PacketAddressClassifier(ip_address=ip,mac_address=mac)
+            pc = PacketAddressClassifier(ip_address=ip, mac_address=mac)
             lp.address_bindings.append(pc)
 
         return self.update(sdk_service=LogicalPorts, sdk_model=lp)
 
     def port_delete(self, attachment_id):
-        lp = self.get_port(sdk_service=LogicalPorts, 
-            sdk_model=LogicalPort(attachment={ "id": attachment_id}))
+        attachment = {"id": attachment_id}
+        lp = self.get_port(sdk_service=LogicalPorts,
+                           sdk_model=LogicalPort(attachment=attachment))
 
         if lp:
             self.delete(sdk_service=LogicalPorts, sdk_model=lp)
@@ -245,7 +222,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             display_name=qos_policy_name,
             tags=[
                 Tag(
-                    scope=nsxv3_constants.NSXV3_REVISION_SCOPE, 
+                    scope=nsxv3_constants.NSXV3_REVISION_SCOPE,
                     tag=str(revision_number))
             ]
         )
@@ -259,7 +236,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             self.delete(sdk_service=SwitchingProfiles, sdk_model=qos)
         else:
             LOG.warning("QoS Profile '{}' already deleted."
-                .format(qos_policy_name))
+                        .format(qos_policy_name))
 
     def validate_switch_profile_qos(self, rules):
         for rule in rules:
@@ -267,8 +244,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 LOG.warning(
                     "The NSXv3 plugin cannot handler rule {}".format(rule))
 
-    def update_switch_profile_qos(self, context, policy_name, 
-        revision_number, rules):
+    def update_switch_profile_qos(self, context, policy_name,
+                                  revision_number, rules):
 
         qos = {}
         shaper_configuration_spec = copy.deepcopy(
@@ -321,7 +298,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 LOG.warning(
                     "The NSXv3 plugin cannot handler rule {}".format(rule))
 
-
         qos_spec = {
             "shaper_configuration": [
                 shaper_configuration_spec["IngressRateShaper"],
@@ -336,12 +312,11 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         }
 
         get_kwargs = {
-            "sdk_service" : SwitchingProfiles,
+            "sdk_service": SwitchingProfiles,
             "sdk_model": QosSwitchingProfile(display_name=policy_name)
         }
-        qos = self.retry_until_result(operation=self.get, 
-            kwargs=get_kwargs, retry_max=3,retry_sleep=5)
-        
+        qos = self.retry_until_result(operation=self.get, kwargs=get_kwargs)
+
         if not qos:
             raise Exception("Not found. Unable to update policy '{}'".format(
                 policy_name
@@ -415,7 +390,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         self.update(sdk_service=IpSets, sdk_model=ips)
 
     def update_security_group_rules(self, security_group_id,
-            revision_number, add_rules, del_rules):
+                                    revision_number, add_rules, del_rules):
 
         sec_spec = FirewallSection(display_name=security_group_id)
         sec = self.get(sdk_service=Sections, sdk_model=sec_spec)
@@ -428,26 +403,27 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         def get_delete_rule_req(section_id, rule_id):
             return BatchRequestItem(uri="/v1/firewall/sections/{}/rules/{}"
-                .format(section_id, rule_id), 
-                method=BatchRequestItem.METHOD_DELETE)
+                                    .format(section_id, rule_id),
+                                    method=BatchRequestItem.METHOD_DELETE)
+
+        def update_rules(rules):
+            return self.batch(request_items=sub_rules, atomic=False)
 
         rules_step = nsxv3_constants.NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE
         result = True
 
         add_rules_req = [get_create_rule_req(sec.id, r) for r in add_rules]
-        add_rules_cicles = len(add_rules_req) / float(rules_step)
-        for i in range(0, int(math.ceil(add_rules_cicles))):
+        add_rules_cycles = len(add_rules_req) / float(rules_step)
+        for i in range(0, int(math.ceil(add_rules_cycles))):
             sub_rules = add_rules_req[i * rules_step:(i + 1) * rules_step]
-            s = self.batch(request_items=sub_rules, 
-                continue_on_error=True, atomic=False)
+            s = update_rules(sub_rules)
             result = result and self.is_batch_successful(s)
 
         del_rules_req = [get_delete_rule_req(sec.id, r) for r in del_rules]
-        del_rules_cicles = len(del_rules_req) / float(rules_step)
-        for i in range(0, int(math.ceil(del_rules_cicles))):
+        del_rules_cycles = len(del_rules_req) / float(rules_step)
+        for i in range(0, int(math.ceil(del_rules_cycles))):
             sub_rules = del_rules_req[i * rules_step:(i + 1) * rules_step]
-            s = self.batch(request_items=sub_rules, 
-                continue_on_error=True, atomic=False)
+            s = update_rules(sub_rules)
             result = result and self.is_batch_successful(s)
 
         # Update Security Group (IP Set) revision_number
@@ -457,7 +433,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ips.tags = [Tag(scope=rev_scope, tag=str(revision_number))]
         self.update(sdk_service=IpSets, sdk_model=ips)
         return result
-    
+
     def get_security_group_rule_spec(self, rule):
         id = rule["id"]
         min = rule["port_range_min"]
@@ -471,9 +447,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         security_group_id = rule["security_group_id"]
         apply_to = rule["apply_to"]
 
-        DIRECTIONS = { 'ingress': 'IN', 'egress': 'OUT'}
-        PROTOCOLS = { 'IPv4': 'IPV4', 'IPv6': 'IPV6' }
-        PROTOCOL_TYPES = { 'IPv4': 'IPv4Address', 'IPv6': 'IPv6Address'}
+        DIRECTIONS = {'ingress': 'IN', 'egress': 'OUT'}
+        PROTOCOLS = {'IPv4': 'IPV4', 'IPv6': 'IPV6'}
+        PROTOCOL_TYPES = {'IPv4': 'IPv4Address', 'IPv6': 'IPv6Address'}
         SESSION_PROTOCOLS = {
             'tcp': L4PortSetNSService.L4PROTOCOL_TCP,
             'udp': L4PortSetNSService.L4PROTOCOL_UDP
@@ -483,31 +459,34 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             'IPv6': ICMPTypeNSService.PROTOCOL_ICMPV6
         }
 
-        target = ANY_TARGET = None
+        target = None
+        # For future use. Any type maps to None as value
+        # ANY_TARGET = None
         port = ANY_PORT = '0-65535'
         service = None
 
         current = ResourceReference(target_type='IPSet',
-            target_display_name=security_group_id,
-            target_id=local_group_id)
+                                    target_display_name=security_group_id,
+                                    target_id=local_group_id)
 
         applied_to = ResourceReference(
-            target_type='NSGroup', 
-            target_id=apply_to, 
-            is_valid=True, 
+            target_type='NSGroup',
+            target_id=apply_to,
+            is_valid=True,
             target_display_name=security_group_id)
-        
+
         if remote_group_id:
             target = ResourceReference(
                 target_type='IPSet',
-                target_id=remote_group_id, 
-                is_valid=True, 
+                target_id=remote_group_id,
+                is_valid=True,
                 target_display_name=security_group_id)
         elif remote_ip_prefix != '0.0.0.0/0':
             target = ResourceReference(target_type=PROTOCOL_TYPES[ethertype],
-                target_display_name=remote_ip_prefix,
-                target_id=remote_ip_prefix, is_valid=True)
-        
+                                       target_display_name=remote_ip_prefix,
+                                       target_id=remote_ip_prefix,
+                                       is_valid=True)
+
         if min and max:
             port = "{}-{}".format(min, max) if min != max else str(min)
         if protocol == 'icmp':
@@ -522,7 +501,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 source_ports=[ANY_PORT])
         else:
             LOG.warning("Unsupported protocol '{}' for rule '{}'."
-                .format(protocol, id))
+                        .format(protocol, id))
             return None
 
         return FirewallRule(
@@ -534,7 +513,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             destinations=[current] if direction in 'ingress' else [target],
             services=[FirewallService(service=service)] if service else None,
             applied_tos=[applied_to])
-
 
     def get_name_revision_dict(self, sdk_model, attr_key=None, attr_val=None):
         sdk_type = str(sdk_model.__class__.__name__)
@@ -548,10 +526,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         key = attr_key
         ands = [attr_val] if attr_val else []
 
-        cycle=0
+        cycle = 0
         while True:
-            objs = self._query(resource_type=sdk_type, key=key, ands=ands, 
-                size=limit, start=cursor)
+            objs = self._query(resource_type=sdk_type, key=key, ands=ands,
+                               size=limit, start=cursor)
 
             for obj in objs:
                 if 'LogicalPort' in sdk_type:
@@ -567,9 +545,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
                 name_rev[name] = revision
                 name_id[name] = obj.get("id")
-            cycle=1
+            cycle = 1
             if len(objs) < limit:
                 break
             cursor = cycle * limit
         return (name_rev, name_id)
-

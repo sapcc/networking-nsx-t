@@ -1,64 +1,32 @@
+import datetime
+import json
 import os
+import sys
+
+import oslo_messaging
+from com.vmware.nsx.model_client import (FirewallRule,
+                                         IPSet,
+                                         LogicalPort,
+                                         QosSwitchingProfile)
+from neutron.common import config as common_config
+from neutron.common import profiler, topics
+from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
+from neutron.plugins.ml2.drivers.agent import _common_agent as ca
+from neutron_lib import context as neutron_context
+from oslo_config import cfg
+from oslo_log import log as logging
+from oslo_service import service
+
+from networking_nsxv3.common import constants as nsxv3_constants
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.db import db as db_queries
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
 
 # Eventlet Best Practices
 # https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
-
-import collections
-import signal
-import six
-import sys
-import datetime
-import random
-import time
-import uuid
-import math
-import json
-
-import oslo_messaging
-
-from collections import defaultdict
-from oslo_config import cfg
-from oslo_log import log as logging
-from oslo_service import loopingcall
-from oslo_service import service
-from oslo_utils import timeutils
-from osprofiler.profiler import trace_cls
-
-from neutron.common import profiler
-from neutron.common import config as common_config, topics
-from neutron_lib import constants as n_const
-from neutron_lib import context as neutron_context
-from neutron_lib.utils import helpers
-from neutron.db.securitygroups_rpc_base import DIRECTION_IP_PREFIX
-from neutron.plugins.ml2.drivers.agent import _common_agent as ca
-from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
-from neutron.common import profiler as setup_profiler
-
-from networking_nsxv3.common import constants as nsxv3_constants
-from networking_nsxv3.common import config as nsxv3_config
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_client
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
-from networking_nsxv3.db import db as db_queries
-
-from com.vmware.nsx_client import  NsGroups, IpSets
-from com.vmware.nsx.model_client import FirewallRule
-from com.vmware.nsx.model_client import FirewallService
-from com.vmware.nsx.model_client import FirewallSection
-from com.vmware.nsx.model_client import FirewallSectionRuleList
-from com.vmware.nsx.model_client import ResourceReference
-from com.vmware.nsx.model_client import L4PortSetNSService
-from com.vmware.nsx.model_client import LogicalPort
-from com.vmware.nsx.model_client import VapiStruct
-from com.vmware.nsx.model_client import IPSet
-from com.vmware.nsx.model_client import NSGroup
-from com.vmware.nsx.model_client import ICMPTypeNSService
-from com.vmware.nsx.model_client import QosSwitchingProfile
-from com.vmware.nsx.firewall_client import Sections
-
-from networking_nsxv3.common.locking import LockManager
 
 LOG = logging.getLogger(__name__)
 
@@ -87,16 +55,19 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
         with LockManager.get_lock(sg_id):
             (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
 
-            (_, ips_name_id) = self.nsxv3.get_name_revision_dict(IPSet())
-            (_, rul_name_id) = self.nsxv3.get_name_revision_dict(FirewallRule(), 
-                attr_key="section_id", attr_val=sec.id)
+            get_dict = self.nsxv3.get_name_revision_dict
+
+            (_, ips_name_id) = (IPSet())
+            (_, rul_name_id) = get_dict(FirewallRule(),
+                                        attr_key="section_id",
+                                        attr_val=sec.id)
 
             nsx_rules = rul_name_id
             db_rules = self.db._get_rules_for_security_groups_id(sg_id)
 
-            attrs = ["id", "port_range_min", "port_range_max", "protocol", 
-                "ethertype", "direction", "remote_group_id", 
-                "remote_ip_prefix", "security_group_id" ]
+            attrs = ["id", "port_range_min", "port_range_max", "protocol",
+                     "ethertype", "direction", "remote_group_id",
+                     "remote_ip_prefix", "security_group_id"]
 
             add_rules = []
             for rule in db_rules:
@@ -115,13 +86,13 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
                 if name in nsx_rules:
                     del nsx_rules[name]
                     continue
-                
+
                 fwr = self.nsxv3.get_security_group_rule_spec(fwr)
                 if fwr:
                     add_rules.append(fwr)
             del_rules = nsx_rules.values()
 
-            (sg_id, revision) =self.db.get_security_group_revision(sg_id)
+            (sg_id, revision) = self.db.get_security_group_revision(sg_id)
 
             self.nsxv3.update_security_group_rules(
                 sg_id,
@@ -155,12 +126,12 @@ class NSXv3AgentManagerRpcCallBackBase(
     """
 
     def __init__(self, context, agent, sg_agent, nsxv3, db):
-        super(NSXv3AgentManagerRpcCallBackBase,self).__init__(
-            context,agent,sg_agent)
+        super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
+            context, agent, sg_agent)
         self.nsxv3 = nsxv3
         self.db = db
         self.pool = eventlet.greenpool.GreenPool(cfg.CONF.AGENT.sync_pool_size)
-    
+
     def get_active_workers(self):
         return self.pool.running()
 
@@ -238,11 +209,11 @@ class NSXv3AgentManagerRpcCallBackBase(
         for ip, subnet in self.db.get_port_addresses(port_id):
             port["fixed_ips"].append(
                 {"ip_address": ip, "mac_address": mac, "subnet_id": subnet})
-        
+
         for (ip, mac) in self.db.get_port_allowed_pairs(port_id):
             port["allowed_address_pairs"].append(
-                {"ip_address": ip,"mac_address": mac})
-        
+                {"ip_address": ip, "mac_address": mac})
+
         for (sg_id,) in self.db.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
 
@@ -286,11 +257,10 @@ class NSXv3AgentManagerRpcCallBackBase(
         LOG.debug("Synching security group '{}'.".format(security_group_id))
         self.security_group_member_updated(security_group_id)
         self.security_group_rule_updated(security_group_id)
-    
+
     def sync_security_group_orphaned(self, security_group_id):
         LOG.debug("Synching security group '{}'.".format(security_group_id))
         self.nsxv3.delete_security_group(security_group_id)
-    
 
     def get_name_revision_dict(self, query):
         limit = cfg.CONF.AGENT.db_max_records_per_query
@@ -316,7 +286,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             seg_id = ns.get("segmentation_id")
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
-                    .format(seg_id))
+                          .format(seg_id))
                 lock_id = "segmentation_id-{}".format(seg_id)
                 with LockManager.get_lock(lock_id):
                     id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
@@ -324,7 +294,7 @@ class NSXv3AgentManagerRpcCallBackBase(
         return {}
 
     def port_update(self, context, port=None, network_type=None,
-            physical_network=None, segmentation_id=None):
+                    physical_network=None, segmentation_id=None):
         LOG.debug("Updating port " + str(port))
 
         address_bindings = []
@@ -360,8 +330,9 @@ class NSXv3AgentManagerRpcCallBackBase(
     def update_policy(self, context, policy):
         LOG.debug("Updating policy={}.".format(policy["name"]))
         with LockManager.get_lock(policy["id"]):
-            self.nsxv3.update_switch_profile_qos(context, policy["id"], 
-                policy["revision_number"], policy["rules"])
+            self.nsxv3.update_switch_profile_qos(context, policy["id"],
+                                                 policy["revision_number"],
+                                                 policy["rules"])
 
     def delete_policy(self, context, policy):
         LOG.debug("Deleting policy={}.".format(policy["name"]))
@@ -394,7 +365,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         prefix.
         :return: set -- the set of all devices e.g. ['tap1', 'tap2']
         """
-        
+
         msg = "FULL SYNCHRONIZATION CYCLE - {}"
         if self.rpc:
             active_workers = self.rpc.get_active_workers()
@@ -404,7 +375,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
                 LOG.info(msg.format("COMPLETED"))
             else:
                 LOG.info(msg.format("IN PROGRESS - ACTIVE WORKERS '{}'"
-                    .format(active_workers)))
+                                    .format(active_workers)))
         return set()
 
     def get_devices_modified_timestamps(self, devices):
@@ -430,7 +401,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         :param admin_state_up: True for admin_state_up, False for
             admin_state_down
         """
-        pass
 
     def get_agent_configurations(self):
         """Establishes the agent configuration map.
@@ -439,16 +409,16 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         :return: map -- the map containing the configuration values
         :rtype: dict
         """
-        config = cfg.CONF.NSXV3
+        c = cfg.CONF.NSXV3
         return {
-            'nsxv3_connection_retry_count': config.nsxv3_connection_retry_count,
-            'nsxv3_connection_retry_sleep': config.nsxv3_connection_retry_sleep,
-            'nsxv3_host': config.nsxv3_login_hostname,
-            'nsxv3_port': config.nsxv3_login_port,
-            'nsxv3_user': config.nsxv3_login_user,
-            'nsxv3_password': config.nsxv3_login_password,
-            'nsxv3_managed_hosts': config.nsxv3_managed_hosts,
-            'nsxv3_transport_zone': config.nsxv3_transport_zone_name}
+            'nsxv3_connection_retry_count': c.nsxv3_connection_retry_count,
+            'nsxv3_connection_retry_sleep': c.nsxv3_connection_retry_sleep,
+            'nsxv3_host': c.nsxv3_login_hostname,
+            'nsxv3_port': c.nsxv3_login_port,
+            'nsxv3_user': c.nsxv3_login_user,
+            'nsxv3_password': c.nsxv3_login_password,
+            'nsxv3_managed_hosts': c.nsxv3_managed_hosts,
+            'nsxv3_transport_zone': c.nsxv3_transport_zone_name}
 
     def get_agent_id(self):
         """Calculate the agent id that should be used on this host
@@ -480,7 +450,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """Get L2 extensions drivers API interface class.
         :return: instance of the class containing Agent Extension API
         """
-        pass
 
     def get_rpc_consumers(self):
         """Get a list of topics for which an RPC consumer should be created
@@ -504,7 +473,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             Neutron Plugin
         """
         # Spoofguard is handled by port update operation
-        pass
 
     def delete_arp_spoofing_protection(self, devices):
         """Remove the arp spoofing protection for the given ports.
@@ -513,7 +481,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             Plug-in. E.g. ['tap1', 'tap2']
         """
         # Spoofguard is handled by port delete operation
-        pass
 
     def delete_unreferenced_arp_protection(self, current_devices):
         """Cleanup arp spoofing protection entries.
@@ -521,7 +488,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             host, where device is the device String that could have been stored
             in the Neutron Plug-in. E.g. ['tap1', 'tap2']
         """
-        pass
+
 
 def cli_sync():
     """
@@ -538,7 +505,7 @@ def cli_sync():
     qs_ids = cfg.CONF.AGENT_CLI.neutron_qos_policy_id
 
     nsxv3 = nsxv3_facada.NSXv3Facada()
-    # Force login as NSXv3Manager will not be started as daemon (like in the agent).
+    # Force login as NSXv3Manager will not be started as daemon.
     nsxv3._login()
     manager = NSXv3Manager(nsxv3=nsxv3)
     rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
@@ -561,7 +528,7 @@ def cli_sync():
     (qs_status, qs_error) = execute(rpc.sync_qos, qs_ids)
 
     result = {
-        "security_groups" : sg_status,
+        "security_groups": sg_status,
         "ports": pt_status,
         "qos_policies": qs_status
     }
@@ -569,6 +536,7 @@ def cli_sync():
     LOG.info(json.dumps(result))
 
     return 1 if pt_error or sg_error or qs_error else 0
+
 
 def main():
     LOG.info("VMware NSXv3 Agent initializing ...")

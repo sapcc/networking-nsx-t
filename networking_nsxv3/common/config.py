@@ -19,14 +19,15 @@ agent_opts = [
     cfg.IntOpt(
         'sync_pool_size',
         default=10,
-        help='Number of threads doing synchronization in background (OS to NSXv3).'
+        help='Number of threads synchronizing OpenStack and NSX-T.'
     ),
     cfg.IntOpt(
         'locking_coordinator_url',
         default=None,
         help='Url of the distributed locking coordinator. None for local.'
     ),
-    # Provided by neutron.plugins.ml2.drivers.agent._agent_manager_base (duplicate option)
+    # Provided by neutron.plugins.ml2.drivers.agent._agent_manager_base
+    # (duplicate option)
     # cfg.IntOpt(
     #     'polling_interval',
     #     default=5,
@@ -46,26 +47,37 @@ agent_opts = [
 
 agent_cli_opts = [
     cfg.MultiStrOpt('neutron_security_group_id',
-        default=[],
-        help="Neutron Security Group IDs synchronization targets. Multi-value string."),
+                    default=[],
+                    help="Neutron Security Group IDs synchronization targets."
+                    ),
     cfg.MultiStrOpt('neutron_port_id',
-        default=[],
-        help="Neutron Port IDs synchronization targets. Multi-value string."),
+                    default=[],
+                    help="Neutron Port IDs synchronization targets."),
     cfg.MultiStrOpt('neutron_qos_policy_id',
-        default=[],
-        help="Neutron QoS Policy IDs synchronization targets. Multi-value string.")
+                    default=[],
+                    help="Neutron QoS Policy IDs synchronization targets.")
 ]
 
 nsxv3_opts = [
     cfg.IntOpt(
         'nsxv3_connection_retry_count',
         default=10,
-        help='NSXv3 Manager client retry count on session/connection error.'
+        help='NSXv3 Manager client connection retry-count.'
     ),
     cfg.IntOpt(
         'nsxv3_connection_retry_sleep',
         default=5,
-        help='NSXv3 Manager client retry sleep on session/connection error in seconds.'
+        help='NSXv3 Manager client connection retry-sleep in seconds.'
+    ),
+    cfg.IntOpt(
+        'nsxv3_operation_retry_count',
+        default=3,
+        help='NSXv3 Manager failed operation retry-count.'
+    ),
+    cfg.IntOpt(
+        'nsxv3_operation_retry_sleep',
+        default=5,
+        help='NSXv3 Manager failed operation retry-sleep in seconds.'
     ),
     cfg.StrOpt(
         'nsxv3_login_user',
@@ -95,7 +107,7 @@ nsxv3_opts = [
     cfg.BoolOpt(
         'nsxv3_suppress_ssl_wornings',
         default=True,
-        help="NSXv3 Manager connection disables ssl host validattion. [Development Mode]"
+        help="NSXv3 Manager disables ssl host validattion. [Development Mode]"
     ),
     cfg.ListOpt(
         'nsxv3_managed_hosts',

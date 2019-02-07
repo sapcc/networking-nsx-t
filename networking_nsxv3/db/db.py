@@ -4,14 +4,11 @@ from neutron.db.qos.models import QosPortPolicyBinding
 from neutron.db.qos.models import QosPolicy
 from neutron.db.qos.models import QosBandwidthLimitRule
 from neutron.db.qos.models import QosDscpMarkingRule
-from neutron.db.qos.models import QosMinimumBandwidthRule
-from neutron.db.models import portbinding as pmodels
 from neutron.db.models_v2 import Port
 from neutron.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBindingLevel
 from neutron.db.models_v2 import IPAllocation
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
-from neutron.db.qos.models import QosPolicy
 
 from networking_nsxv3.common import constants as nsxv3_constants
 
@@ -79,8 +76,8 @@ class DB(object):
         ).filter(
             sg_db.SecurityGroup.id == security_group_id
         ).one_or_none()
-        return self._validate_one(result, 
-            "Security Group ID='{}'".format(security_group_id))
+        return self._validate_one(result, "Security Group ID='{}'"
+                                  .format(security_group_id))
 
     def get_security_group_revision_tuples(
             self,
@@ -109,8 +106,8 @@ class DB(object):
         ).join(
             StandardAttribute
         ).one_or_none()
-        return self._validate_one(result, 
-            "QoS Policy ID='{}'".format(qos_id))
+        return self._validate_one(result,
+                                  "QoS Policy ID='{}'".format(qos_id))
 
     def get_qos_bwl_rules(self, qos_id):
         return self.context.session.query(
@@ -145,8 +142,8 @@ class DB(object):
             QosPortPolicyBinding,
             QosPolicy
         ).one_or_none()
-        return self._validate_one(result, 
-            "Port ID='{}'".format(port_id))
+        return self._validate_one(result,
+                                  "Port ID='{}'".format(port_id))
 
     def get_port_security_groups(self, port_id):
         return self.context.session.query(
@@ -162,7 +159,7 @@ class DB(object):
         ).filter(
             allowed_address_pair.AllowedAddressPair.port_id == port_id
         ).all()
-    
+
     def get_port_addresses(self, port_id):
         return self.context.session.query(
             IPAllocation.ip_address,
@@ -243,24 +240,28 @@ class DB(object):
         ).all()
 
     def _get_security_group_members_ips(self, security_group_id):
+        port_id = sg_db.SecurityGroupPortBinding.port_id
+        group_id = sg_db.SecurityGroupPortBinding.security_group_id
         return list(
             self.context.session.query(
                 IPAllocation.ip_address
             ).join(
                 sg_db.SecurityGroupPortBinding,
-                IPAllocation.port_id == sg_db.SecurityGroupPortBinding.port_id
+                IPAllocation.port_id == port_id
             ).filter(
-                security_group_id == sg_db.SecurityGroupPortBinding.security_group_id
+                security_group_id == group_id
             ).all())
 
     def _get_security_group_members_address_bindings_ips(
             self, security_group_id):
+        port_id = sg_db.SecurityGroupPortBinding.port_id
+        group_id = sg_db.SecurityGroupPortBinding.security_group_id
         return list(
             self.context.session.query(
                 AllowedAddressPair.ip_address
             ).join(
                 sg_db.SecurityGroupPortBinding,
-                AllowedAddressPair.port_id == sg_db.SecurityGroupPortBinding.port_id
+                AllowedAddressPair.port_id == port_id
             ).filter(
-                security_group_id == sg_db.SecurityGroupPortBinding.security_group_id
+                security_group_id == group_id
             ).all())

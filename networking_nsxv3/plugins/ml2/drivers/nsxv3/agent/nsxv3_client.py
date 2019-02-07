@@ -1,11 +1,10 @@
+import time
+import json
+import requests
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
-import time
-import datetime
-
-import json
-import requests
 from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
@@ -14,26 +13,25 @@ from vmware.vapi.lib import connect
 from vmware.vapi.stdlib.client.factories import StubConfigurationFactory
 
 from com.vmware.nsx_client import Batch
-from com.vmware.nsx.model_client import BatchRequest, BatchRequestItem
+from com.vmware.nsx.model_client import BatchRequest
 
 from com.vmware.nsx.model_client import QosSwitchingProfile
 from com.vmware.nsx.model_client import IpDiscoverySwitchingProfile
 from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
 from com.vmware.vapi.std.errors_client import Unauthorized
-from com.vmware.vapi.std.errors_client import NotFound
-from com.vmware.vapi.std.errors_client import ConcurrentChange
 
-from networking_nsxv3.common import constants as nsxv3_constants
-from networking_nsxv3.common.locking import LockManager
+DEFAULT_RETRY_MAX = cfg.CONF.NSXV3.nsxv3_operation_retry_count
+DEFAULT_RETRY_SLEEP = cfg.CONF.NSXV3.nsxv3_operation_retry_sleep
 
 LOG = logging.getLogger(__name__)
 
-POLYMORPHIC_TYPES=(
-    QosSwitchingProfile, 
-    IpDiscoverySwitchingProfile, 
+POLYMORPHIC_TYPES = (
+    QosSwitchingProfile,
+    IpDiscoverySwitchingProfile,
     SpoofGuardSwitchingProfile
 )
+
 
 # Decorator
 class connection_retry_policy(object):
@@ -43,6 +41,7 @@ class connection_retry_policy(object):
 
     def __call__(self, func):
         driver = self.driver
+
         def decorator(self, *args, **kwargs):
 
             method = "{}.{}".format(self.__class__.__name__, func.__name__)
@@ -86,8 +85,14 @@ class connection_retry_policy(object):
 
 
 class NSXv3Client(object):
-    
-    def retry_until_result(self, operation, kwargs, retry_max, retry_sleep):
+
+    def retry_until_result(self, operation, kwargs,
+                           retry_max=None, retry_sleep=None):
+        if retry_max is None:
+            retry_max = DEFAULT_RETRY_MAX
+        if retry_sleep is None:
+            retry_sleep = DEFAULT_RETRY_SLEEP
+
         resp = None
         for _ in range(1, retry_max + 1):
             resp = operation(**kwargs)
@@ -104,10 +109,10 @@ class NSXv3Client(object):
 
     def update(self, sdk_service, sdk_model):
         pass
-    
+
     def delete(self, sdk_service, sdk_model):
         pass
-    
+
     def batch(self, request_items, continue_on_error=True, atomic=True):
         pass
 
@@ -132,8 +137,8 @@ class NSXv3ClientImpl(NSXv3Client):
 
         self.stub_config = StubConfigurationFactory.new_std_configuration(
             connect.get_requests_connector(
-                session=self.session, 
-                msg_protocol='rest', 
+                session=self.session,
+                msg_protocol='rest',
                 url=self.base_url))
 
     def _login(self):
@@ -159,14 +164,14 @@ class NSXv3ClientImpl(NSXv3Client):
             connector)
         LOG.info("NSXv3 session context initalized.")
 
-    def _get_query(self, resource_type, key, ands=[], ors=[], dsl="", 
-        size=50, start=0):
-        
+    def _get_query(self, resource_type, key, ands=[], ors=[], dsl="",
+                   size=50, start=0):
+
         def pattern(operator, key, patterns, join_patterns=[]):
-            patterns = [ "{}:( {} )".format(key, val) for val in patterns]
+            patterns = ["{}:( {} )".format(key, val) for val in patterns]
             patterns.extend(join_patterns)
             return "( {} )".format(operator).join(patterns)
-        
+
         q = []
         if resource_type:
             q.append("resource_type: ( {} )".format(resource_type))
@@ -191,9 +196,9 @@ class NSXv3ClientImpl(NSXv3Client):
                 }
             ]
         }
-    
-    def _query(self, resource_type, key, ands=[], ors=[], dsl="", 
-        size=50, start=0):        
+
+    def _query(self, resource_type, key, ands=[], ors=[], dsl="",
+               size=50, start=0):
 
         url = "{}/nsxapi/rpc/call/SearchFacade".format(self.base_url)
         query = json.dumps(self._get_query(
@@ -203,12 +208,12 @@ class NSXv3ClientImpl(NSXv3Client):
 
     @connection_retry_policy(driver="rest")
     def _post(self, url, data):
-        return self.session.post(url,data=data)
-    
+        return self.session.post(url, data=data)
+
     @connection_retry_policy(driver="rest")
     def _put(self, url, data):
-        return self.session.put(url,data=data)
-    
+        return self.session.put(url, data=data)
+
     @connection_retry_policy(driver="sdk")
     def get(self, sdk_service, sdk_model):
         svc = sdk_service(self.stub_config)
@@ -228,9 +233,9 @@ class NSXv3ClientImpl(NSXv3Client):
 
         if sdk_id != 'None':
             params = {"id": sdk_id}
-            # NSX-T object createation is an asynchronous opperation. 
+            # NSX-T object creation is an asynchronous operation.
             # If we immediately "get" the object the result could not be found.
-            return self.retry_until_result(get, params, retry_max=3, retry_sleep=5)
+            return self.retry_until_result(get, params)
 
         # SDK does not support get object by display_name
         params = {
@@ -238,23 +243,22 @@ class NSXv3ClientImpl(NSXv3Client):
             "key": sdk_key,
             "ands": [sdk_name]
         }
-        res = self.retry_until_result(self._query, params, 
-            retry_max=3, retry_sleep=5)
+        res = self.retry_until_result(self._query, params)
         if len(res) > 1:
-            raise Exception("{} has failed. Ambiguous ".format(msg))  
+            raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
             return get(res.pop()["id"])
         else:
             return None
-    
+
     @connection_retry_policy(driver="sdk")
     def get_by_attr(self, sdk_service, sdk_model, attr_key, attr_val):
         svc = sdk_service(self.stub_config)
         sdk_type = str(sdk_model.__class__.__name__)
 
-        msg = "Getting '{}' {}='{}' ... ".format(sdk_type,attr_key,attr_val)
+        msg = "Getting '{}' {}='{}' ... ".format(sdk_type, attr_key, attr_val)
 
-        LOG.info(msg) 
+        LOG.info(msg)
 
         res = svc.list(**{attr_key: attr_val})
         if res.result_count > 1:
@@ -269,16 +273,16 @@ class NSXv3ClientImpl(NSXv3Client):
         svc = sdk_service(self.stub_config)
         sdk_type = str(sdk_model.__class__.__name__)
         sdk_name = str(sdk_model.display_name)
-        msg = "Creating '{}' display_name='{}' ... " .format(sdk_type,sdk_name)
+        msg = "Creating '{}' display_name='{}' ... " .format(
+            sdk_type, sdk_name)
 
         LOG.info(msg)
-        
+
         get_kwargs = {
-            "sdk_service" : sdk_service,
+            "sdk_service": sdk_service,
             "sdk_model": sdk_model
         }
-        res = self.retry_until_result(operation=self.get, 
-            kwargs=get_kwargs, retry_max=3,retry_sleep=5)
+        res = self.retry_until_result(operation=self.get, kwargs=get_kwargs)
 
         if res:
             raise Exception("{} has failed. Object exists ".format(msg))
@@ -290,7 +294,7 @@ class NSXv3ClientImpl(NSXv3Client):
         sdk_type = str(sdk_model.__class__.__name__)
         sdk_id = str(sdk_model.id)
         sdk_name = str(sdk_model.display_name)
-        msg = "Updating '{}' display_name='{}' ... ".format(sdk_type,sdk_name)
+        msg = "Updating '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
 
         LOG.info(msg)
         if not sdk_id:
@@ -299,7 +303,7 @@ class NSXv3ClientImpl(NSXv3Client):
         if not sdk_id:
             raise Exception("{} has failed. Object not found ".format(msg))
         return svc.update(sdk_id, sdk_model)
-    
+
     @connection_retry_policy(driver="sdk")
     def delete(self, sdk_service, sdk_model):
         svc = sdk_service(self.stub_config)
@@ -307,14 +311,14 @@ class NSXv3ClientImpl(NSXv3Client):
         sdk_id = sdk_model.id
         sdk_name = str(sdk_model.display_name)
         msg = "Deleting '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
-        
+
         LOG.info(msg)
         if not sdk_id:
             sdk_id = self.get(sdk_service=sdk_service, sdk_model=sdk_model).id
         if not sdk_id:
             raise Exception("{} has failed. Object not found ".format(msg))
         return svc.delete(sdk_id)
-    
+
     @connection_retry_policy(driver="sdk")
     def batch(self, request_items, continue_on_error=True, atomic=True):
         req = BatchRequest(

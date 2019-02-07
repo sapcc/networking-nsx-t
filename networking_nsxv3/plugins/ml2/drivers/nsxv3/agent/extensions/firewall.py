@@ -1,4 +1,3 @@
-import os
 
 from oslo_log import log as logging
 from neutron.agent import firewall
@@ -14,7 +13,6 @@ class NSXv3SecurityGroupsDriver(firewall.FirewallDriver):
 
     def __init__(self, **kwargs):
         LOG.debug("Initializing NSXv3SecurityGroupsDriver")
-        pass
 
     def prepare_port_filter(self, ports):
         pass
