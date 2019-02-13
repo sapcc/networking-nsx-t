@@ -129,3 +129,10 @@ Port Binding (Trunk)
     --subport port=<trunk_subport_id_1>,segmentation-type=vlan,segmentation-id=100  \
     --subport port=<trunk_subport_id_2>,segmentation-type=vlan,segmentation-id=200 
     openstack server create --image <image_name> --flavor "1" --nic "port-id=<trunk-parent-port-id>" <server-name>
+
+
+Ansible Playbook - Install ML2 Driver & ML2 Agent
+-------------------
+- cd tools
+- ansible-playbook -i open_stack.cfg configure_ml2_agent.yml
+- ansible-playbook -i open_stack.cfg configure_ml2_plugin.yml

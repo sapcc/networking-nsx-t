@@ -1,0 +1,23 @@
+---
+- hosts: open_stack
+  vars_files:
+      - answerfile.yml
+  tasks:
+    - name: Synchronize the files from the root of the git repository to the targeted host
+      synchronize:
+       src: ../../
+       dest: /opt/networking-nsx-t
+    - name: Execute installation procedure
+      shell: sh -c "cd /opt/networking-nsx-t && python2.7 setup.py install"
+      become: yes
+    - lineinfile:
+        dest: /etc/neutron/neutron.conf
+        regexp: "^core_plugin"
+        line: "core_plugin = {{ core_plugin }}"
+    - lineinfile:
+        dest: /etc/neutron/neutron.conf
+        regexp: "^service_plugins"
+        line: "service_plugins = {{ service_plugins }}"
+    - name: Restart Neutron service
+      shell: systemctl restart devstack@q-s*
+      become: yes

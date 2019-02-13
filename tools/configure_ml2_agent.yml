@@ -1,0 +1,52 @@
+---
+- hosts: open_stack
+  vars_files:
+    - answerfile.yml
+  tasks:
+    - name: Synchronize the files from the root of the git repository to the targeted host
+      synchronize:
+       src: ../../
+       dest: /opt/networking-nsx-t
+    - name: Execute installation procedure
+      shell: sh -c "cd /opt/networking-nsx-t && python2.7 setup.py install"
+      become: yes
+    - name: Update configuration
+      ini_file:
+        path: /etc/neutron/plugins/ml2/ml2_conf.ini
+        section: "{{ item.section }}"
+        option: "{{ item.option }}"
+        value: "{{ item.value }}"
+      with_items:
+        - { section: "ml2", option: "tenant_network_types", value: "{{ tenant_network_types }}"}
+        - { section: "ml2", option: "type_drivers", value: "{{ tenant_network_types }}" }
+        - { section: "ml2", option: "mechanism_drivers", value: "{{ tenant_network_types }}" }
+        - { section: "ml2", option: "path_mtu", value: "{{ tenant_network_types }}" }
+        - { section: "ml2", option: "extension_drivers", value: "{{ extension_drivers }}" }
+        - { section: "ml2_type_flat", option: "flat_networks", value: "{{ flat_networks }}" }
+        - { section: "ml2_type_vlan", option: "network_vlan_ranges", value: "{{ network_vlan_ranges }}" }
+        - { section: "securitygroup", option: "enable_security_group", value: "{{ enable_security_group }}" }
+        - { section: "securitygroup", option: "firewall_driver", value: "{{ firewall_driver }}" }
+        - { section: "AGENT", option: "agent_id", value: "{{ agent_id }}" }
+        - { section: "AGENT", option: "sync_pool_size", value: "{{ sync_pool_size }}" }
+        - { section: "AGENT", option: "locking_coordinator_url", value: "{{ locking_coordinator_url }}" }
+        - { section: "AGENT", option: "polling_interval", value: "{{ polling_interval }}" }
+        - { section: "AGENT", option: "quitting_rpc_timeout", value: "{{ quitting_rpc_timeout }}" }
+        - { section: "AGENT", option: "db_max_records_per_query", value: "{{ db_max_records_per_query }}" }
+        - { section: "AGENT_CLI", option: "neutron_security_group_id", value: "{{ neutron_security_group_id }}" }
+        - { section: "AGENT_CLI", option: "neutron_port_id", value: "{{ neutron_port_id }}" }
+        - { section: "AGENT_CLI", option: "neutron_qos_policy_id", value: "{{ neutron_qos_policy_id }}" }
+        - { section: "NSXV3", option: "nsxv3_connection_retry_count", value: "{{ nsxv3_connection_retry_count }}" }
+        - { section: "NSXV3", option: "nsxv3_connection_retry_sleep", value: "{{ nsxv3_connection_retry_sleep }}" }
+        - { section: "NSXV3", option: "nsxv3_operation_retry_count", value: "{{ nsxv3_operation_retry_count }}" }
+        - { section: "NSXV3", option: "nsxv3_operation_retry_sleep", value: "{{ nsxv3_operation_retry_sleep }}" }
+        - { section: "NSXV3", option: "nsxv3_login_user", value: "{{ nsxv3_login_user }}" }
+        - { section: "NSXV3", option: "nsxv3_login_password", value: "{{ nsxv3_login_password }}" }
+        - { section: "NSXV3", option: "nsxv3_login_hostname", value: "{{ nsxv3_login_hostname }}" }
+        - { section: "NSXV3", option: "nsxv3_login_port", value: "{{ nsxv3_login_port }}" }
+        - { section: "NSXV3", option: "nsxv3_transport_zone_name", value: "{{ nsxv3_transport_zone_name }}" }
+        - { section: "NSXV3", option: "nsxv3_suppress_ssl_wornings", value: "{{ nsxv3_suppress_ssl_wornings }}" }
+        - { section: "NSXV3", option: "nsxv3_managed_hosts", value: "{{ nsxv3_managed_hosts }}" }
+        - { section: "NSXV3", option: "nsxv3_max_records_per_query", value: "{{ nsxv3_max_records_per_query }}" }
+    - name: Start agent as daemon
+      shell: screen -dmS neutron-nsxv3-agent /usr/local/bin/neutron-nsxv3-agent --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini
+      become: yes
