@@ -1,0 +1,47 @@
+# Neutron
+core_plugin: "ml2"
+service_plugins: "trunk,neutron.services.qos.qos_plugin.QoSPlugin"
+
+# ml2
+tenant_network_types: "vlan"
+type_drivers: "flat,vlan"
+mechanism_drivers: "nsxt"
+path_mtu: "1500"
+extension_drivers: "qos"
+
+# ml2_type_flat
+flat_networks: "*"
+
+# ml2_type_vlan
+network_vlan_ranges: "default:1000:2999"
+
+# securitygroup
+firewall_driver: "networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.extensions.firewall.NSXv3SecurityGroupsDriver"
+enable_security_group: "true"
+
+# AGENT
+agent_id: "nsxm-l-01a.corp.local"
+sync_pool_size: "10"
+locking_coordinator_url: ""
+polling_interval: "5"
+quitting_rpc_timeout: "5"
+db_max_records_per_query: "2000"
+
+# AGENT_CLI
+neutron_security_group_id:
+neutron_port_id:
+neutron_qos_policy_id:
+
+# NSXV3
+nsxv3_connection_retry_count: "10"
+nsxv3_connection_retry_sleep: "5"
+nsxv3_operation_retry_count: "3"
+nsxv3_operation_retry_sleep: "5"
+nsxv3_login_user: "admin"
+nsxv3_login_password: "VMware1!"
+nsxv3_login_hostname: "nsxm-l-01a.corp.local"
+nsxv3_login_port: "443"
+nsxv3_transport_zone_name: "openstack-tz"
+nsxv3_suppress_ssl_wornings: "True"
+nsxv3_managed_hosts:
+nsxv3_max_records_per_query: "2000"
