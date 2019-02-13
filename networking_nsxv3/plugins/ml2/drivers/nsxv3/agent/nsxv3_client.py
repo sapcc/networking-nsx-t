@@ -21,9 +21,6 @@ from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
 from com.vmware.vapi.std.errors_client import Unauthorized
 
-DEFAULT_RETRY_MAX = cfg.CONF.NSXV3.nsxv3_operation_retry_count
-DEFAULT_RETRY_SLEEP = cfg.CONF.NSXV3.nsxv3_operation_retry_sleep
-
 LOG = logging.getLogger(__name__)
 
 POLYMORPHIC_TYPES = (
@@ -89,9 +86,9 @@ class NSXv3Client(object):
     def retry_until_result(self, operation, kwargs,
                            retry_max=None, retry_sleep=None):
         if retry_max is None:
-            retry_max = DEFAULT_RETRY_MAX
+            retry_max = cfg.CONF.NSXV3.nsxv3_operation_retry_count
         if retry_sleep is None:
-            retry_sleep = DEFAULT_RETRY_SLEEP
+            retry_sleep = cfg.CONF.NSXV3.nsxv3_operation_retry_sleep
 
         resp = None
         for _ in range(1, retry_max + 1):
@@ -214,6 +211,12 @@ class NSXv3ClientImpl(NSXv3Client):
     def _put(self, url, data):
         return self.session.put(url, data=data)
 
+    def _get_object(self, sdk_model, sdk_object):
+        o = sdk_object
+        if isinstance(sdk_model, POLYMORPHIC_TYPES):
+            o = o.convert_to(sdk_model)
+        return o
+
     @connection_retry_policy(driver="sdk")
     def get(self, sdk_service, sdk_model):
         svc = sdk_service(self.stub_config)
@@ -225,17 +228,11 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Getting '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
         LOG.info(msg)
 
-        def get(id):
-            res = svc.get(id)
-            if isinstance(sdk_model, POLYMORPHIC_TYPES):
-                res = res.convert_to(sdk_model)
-            return res
-
         if sdk_id != 'None':
-            params = {"id": sdk_id}
             # NSX-T object creation is an asynchronous operation.
             # If we immediately "get" the object the result could not be found.
-            return self.retry_until_result(get, params)
+            sdk_object = self.retry_until_result(svc.get, sdk_id)
+            return self._get_object(sdk_model, sdk_object)
 
         # SDK does not support get object by display_name
         params = {
@@ -247,7 +244,8 @@ class NSXv3ClientImpl(NSXv3Client):
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
-            return get(res.pop()["id"])
+            sdk_object = svc.get(res.pop()["id"])
+            return self._get_object(sdk_model, sdk_object)
         else:
             return None
 
@@ -286,7 +284,8 @@ class NSXv3ClientImpl(NSXv3Client):
 
         if res:
             raise Exception("{} has failed. Object exists ".format(msg))
-        return svc.create(sdk_model)
+
+        return self._get_object(sdk_model, svc.create(sdk_model))
 
     @connection_retry_policy(driver="sdk")
     def update(self, sdk_service, sdk_model):

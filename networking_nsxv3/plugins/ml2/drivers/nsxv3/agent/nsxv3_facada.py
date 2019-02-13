@@ -105,7 +105,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ipd_sp = self.get(sdk_service=SwitchingProfiles, sdk_model=ipd_sp_spec)
         sg_sp = self.get(sdk_service=SwitchingProfiles, sdk_model=sg_sp_spec)
 
-        if not ipd_sp_spec:
+        if not ipd_sp:
             ipd_sp = self.create(
                 sdk_service=SwitchingProfiles, sdk_model=ipd_sp_spec)
         if not sg_sp:
