@@ -102,16 +102,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             display_name="{}-{}".format(self.tz_name, "default-SpoofGuard"),
             tags=[])
 
-        ipd_sp = self.get(sdk_service=SwitchingProfiles, sdk_model=ipd_sp_spec)
-        sg_sp = self.get(sdk_service=SwitchingProfiles, sdk_model=sg_sp_spec)
-
-        if not ipd_sp:
-            ipd_sp = self.create(
-                sdk_service=SwitchingProfiles, sdk_model=ipd_sp_spec)
-        if not sg_sp:
-            sg_sp = self.create(
-                sdk_service=SwitchingProfiles, sdk_model=sg_sp_spec)
-
+        ipd_sp = self.create(sdk_service=SwitchingProfiles, 
+                             sdk_model=ipd_sp_spec)
+        sg_sp = self.create(sdk_service=SwitchingProfiles,
+                            sdk_model=sg_sp_spec)
         self.default_switching_profile_ids = [
             SwitchingProfileTypeIdEntry(key=self.IPK, value=ipd_sp.id),
             SwitchingProfileTypeIdEntry(key=self.SGK, value=sg_sp.id)
@@ -143,14 +137,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             }
         )
 
-        try:
-            ls = self.create(sdk_service=LogicalSwitches, sdk_model=ls_spec)
-        except Exception as e:
-            if "Object exists" in str(e):
-                ls = self.get(sdk_service=LogicalSwitches, sdk_model=ls_spec)
-            else:
-                raise e
-            return ls.id
+        return self.create(sdk_service=LogicalSwitches, sdk_model=ls_spec).id
 
     def get_port(self, sdk_service, sdk_model):
         sdk_service(self.stub_config)
@@ -311,11 +298,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             }]
         }
 
-        get_kwargs = {
-            "sdk_service": SwitchingProfiles,
-            "sdk_model": QosSwitchingProfile(display_name=policy_name)
-        }
-        qos = self.retry_until_result(operation=self.get, kwargs=get_kwargs)
+        sdk_service = SwitchingProfiles
+        sdk_model = QosSwitchingProfile(display_name=policy_name)
+        qos = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
 
         if not qos:
             raise Exception("Not found. Unable to update policy '{}'".format(
@@ -359,18 +344,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             stateful=True
         )
 
-        ipset = self.get(sdk_service=IpSets, sdk_model=ips_spec)
-        if not ipset:
-            ipset = self.create(sdk_service=IpSets, sdk_model=ips_spec)
-
-        nsg = self.get(sdk_service=NsGroups, sdk_model=nsg_spec)
-        if not nsg:
-            nsg = self.create(sdk_service=NsGroups, sdk_model=nsg_spec)
-
-        sec = self.get(sdk_service=Sections, sdk_model=sec_spec)
-        if not sec:
-            sec = self.create(sdk_service=Sections, sdk_model=sec_spec)
-
+        ipset = self.create(sdk_service=IpSets, sdk_model=ips_spec)
+        nsg = self.create(sdk_service=NsGroups, sdk_model=nsg_spec)
+        sec = self.create(sdk_service=Sections, sdk_model=sec_spec)
         return (ipset, nsg, sec)
 
     def delete_security_group(self, security_group_id):

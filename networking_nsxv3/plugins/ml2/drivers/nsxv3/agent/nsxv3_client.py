@@ -229,25 +229,16 @@ class NSXv3ClientImpl(NSXv3Client):
         LOG.info(msg)
 
         if sdk_id != 'None':
-            # NSX-T object creation is an asynchronous operation.
-            # If we immediately "get" the object the result could not be found.
-            sdk_object = self.retry_until_result(svc.get, sdk_id)
-            return self._get_object(sdk_model, sdk_object)
+            return self._get_object(sdk_model, svc.get(sdk_id))
 
         # SDK does not support get object by display_name
-        params = {
-            "resource_type": sdk_type,
-            "key": sdk_key,
-            "ands": [sdk_name]
-        }
-        res = self.retry_until_result(self._query, params)
+        res = self._query(resource_type=sdk_type, key=sdk_key, ands=[sdk_name])
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
             sdk_object = svc.get(res.pop()["id"])
             return self._get_object(sdk_model, sdk_object)
-        else:
-            return None
+        return None
 
     @connection_retry_policy(driver="sdk")
     def get_by_attr(self, sdk_service, sdk_model, attr_key, attr_val):
@@ -261,10 +252,9 @@ class NSXv3ClientImpl(NSXv3Client):
         res = svc.list(**{attr_key: attr_val})
         if res.result_count > 1:
             raise Exception("{} Ambiguous.".format(msg))
-        elif res.result_count == 0:
+        if res.result_count == 0:
             return None
-        else:
-            return res.results.pop()
+        return res.results.pop()
 
     @connection_retry_policy(driver="sdk")
     def create(self, sdk_service, sdk_model):
@@ -274,18 +264,25 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Creating '{}' display_name='{}' ... " .format(
             sdk_type, sdk_name)
 
-        LOG.info(msg)
-
-        get_kwargs = {
-            "sdk_service": sdk_service,
-            "sdk_model": sdk_model
-        }
-        res = self.retry_until_result(operation=self.get, kwargs=get_kwargs)
-
-        if res:
-            raise Exception("{} has failed. Object exists ".format(msg))
-
-        return self._get_object(sdk_model, svc.create(sdk_model))
+        sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
+        if not sdk_obj:
+            LOG.info(msg)
+            sdk_obj = svc.create(sdk_model)
+            params = {
+                "resource_type": sdk_type,
+                "key": "display_name",
+                "ands": [sdk_name]
+            }
+            # Not all NSX objects can be query by name using the SDK
+            # Wait for object to appear in Elastic search
+            # This is important as we search NSX objects by name
+            res = self.retry_until_result(self._query, params)
+            if len(res) > 1:
+                msg = "{}. Reverse lookup is ambiguous. Anomaly!".format(msg)
+                raise Exception(msg)
+            if len(res) == 1:
+                sdk_obj = self._get_object(sdk_model, sdk_obj)
+        return sdk_obj
 
     @connection_retry_policy(driver="sdk")
     def update(self, sdk_service, sdk_model):
@@ -297,10 +294,11 @@ class NSXv3ClientImpl(NSXv3Client):
 
         LOG.info(msg)
         if not sdk_id:
-            sdk_id = self.get(sdk_service=sdk_service, sdk_model=sdk_model).id
-
-        if not sdk_id:
-            raise Exception("{} has failed. Object not found ".format(msg))
+            sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
+            if sdk_obj or sdk_obj.id:
+                sdk_id = sdk_obj.id
+            else:
+                raise Exception("{} has failed. Object not found ".format(msg))
         return svc.update(sdk_id, sdk_model)
 
     @connection_retry_policy(driver="sdk")
@@ -313,10 +311,12 @@ class NSXv3ClientImpl(NSXv3Client):
 
         LOG.info(msg)
         if not sdk_id:
-            sdk_id = self.get(sdk_service=sdk_service, sdk_model=sdk_model).id
-        if not sdk_id:
-            raise Exception("{} has failed. Object not found ".format(msg))
-        return svc.delete(sdk_id)
+            sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
+            if sdk_obj and sdk_obj.id:
+                return svc.delete(sdk_obj.id)
+
+        LOG.warning("{} failed. Object not found ".format(msg))
+        return sdk_model
 
     @connection_retry_policy(driver="sdk")
     def batch(self, request_items, continue_on_error=True, atomic=True):
