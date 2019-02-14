@@ -313,7 +313,7 @@ class NSXv3AgentManagerRpcCallBackBase(
                 port["revision_number"],
                 port["security_groups"],
                 address_bindings,
-                qos_name=port["qos_policy_id"]
+                qos_name=port.get("qos_policy_id")
             )
 
     def port_delete(self, context, **kwargs):
