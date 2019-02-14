@@ -58,7 +58,7 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
             get_dict = self.nsxv3.get_name_revision_dict
 
-            (_, ips_name_id) = (IPSet())
+            (_, ips_name_id) = get_dict(IPSet())
             (_, rul_name_id) = get_dict(FirewallRule(),
                                         attr_key="section_id",
                                         attr_val=sec.id)
