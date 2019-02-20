@@ -17,6 +17,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
 
+from ratelimiter import RateLimiter
+
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
@@ -137,19 +139,25 @@ class NSXv3AgentManagerRpcCallBackBase(
         return self.pool.running()
 
     def sync(self):
+        max_calls = cfg.CONF.AGENT.sync_requests_per_second
+
+        @RateLimiter(max_calls=max_calls, period=1)
+        def spawn(func, *args, **kw):
+            self.pool.spawn(func, args, kw)
+
         (added, updated, orphaned) = self.get_sync_data(
             sdk_model=QosSwitchingProfile(),
             query=self.db.get_qos_policy_revision_tuples)
         for id in added:
-            self.pool.spawn(self.sync_qos, id)
+            spawn(self.sync_qos, id)
         for id in updated:
-            self.pool.spawn(self.sync_qos, id)
+            spawn(self.sync_qos, id)
 
         (added, updated, orphaned) = self.get_sync_data(
             sdk_model=LogicalPort(),
             query=self.db.get_port_revision_tuples)
         for id in updated:
-            self.pool.spawn(self.sync_port, id)
+            spawn(self.sync_port, id)
 
         (added, updated, orphaned) = self.get_sync_data(
             sdk_model=IPSet(),

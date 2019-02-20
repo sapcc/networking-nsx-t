@@ -28,6 +28,7 @@
         - { section: "securitygroup", option: "firewall_driver", value: "{{ firewall_driver }}" }
         - { section: "AGENT", option: "agent_id", value: "{{ agent_id }}" }
         - { section: "AGENT", option: "sync_pool_size", value: "{{ sync_pool_size }}" }
+        - { section: "AGENT", option: "sync_requests_per_second", value: "{{ sync_requests_per_second }}" }
         - { section: "AGENT", option: "locking_coordinator_url", value: "{{ locking_coordinator_url }}" }
         - { section: "AGENT", option: "polling_interval", value: "{{ polling_interval }}" }
         - { section: "AGENT", option: "quitting_rpc_timeout", value: "{{ quitting_rpc_timeout }}" }
@@ -39,6 +40,7 @@
         - { section: "NSXV3", option: "nsxv3_connection_retry_sleep", value: "{{ nsxv3_connection_retry_sleep }}" }
         - { section: "NSXV3", option: "nsxv3_operation_retry_count", value: "{{ nsxv3_operation_retry_count }}" }
         - { section: "NSXV3", option: "nsxv3_operation_retry_sleep", value: "{{ nsxv3_operation_retry_sleep }}" }
+        - { section: "NSXV3", option: "nsxv3_requests_per_second", value: "{{ nsxv3_requests_per_second }}" }
         - { section: "NSXV3", option: "nsxv3_login_user", value: "{{ nsxv3_login_user }}" }
         - { section: "NSXV3", option: "nsxv3_login_password", value: "{{ nsxv3_login_password }}" }
         - { section: "NSXV3", option: "nsxv3_login_hostname", value: "{{ nsxv3_login_hostname }}" }

@@ -9,6 +9,8 @@ from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
 
+from ratelimiter import RateLimiter
+
 from vmware.vapi.lib import connect
 from vmware.vapi.stdlib.client.factories import StubConfigurationFactory
 
@@ -39,6 +41,9 @@ class connection_retry_policy(object):
     def __call__(self, func):
         driver = self.driver
 
+        max_calls = cfg.CONF.NSXV3.nsxv3_requests_per_second
+
+        @RateLimiter(max_calls=max_calls, period=1)
         def decorator(self, *args, **kwargs):
 
             method = "{}.{}".format(self.__class__.__name__, func.__name__)

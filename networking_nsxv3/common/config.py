@@ -19,7 +19,12 @@ agent_opts = [
     cfg.IntOpt(
         'sync_pool_size',
         default=10,
-        help='Number of threads synchronizing OpenStack and NSX-T.'
+        help='Number of threads synchronizing OpenStack and NSXv3.'
+    ),
+    cfg.IntOpt(
+        'sync_requests_per_second',
+        default=10,
+        help='''Requests per second synchronizing OpenStack and NSXv3.'''
     ),
     cfg.IntOpt(
         'locking_coordinator_url',
@@ -78,6 +83,11 @@ nsxv3_opts = [
         'nsxv3_operation_retry_sleep',
         default=5,
         help='NSXv3 Manager failed operation retry-sleep in seconds.'
+    ),
+    cfg.IntOpt(
+        'nsxv3_requests_per_second',
+        default=90,
+        help='''Requests per second to NSXv3 Manager. NSXv3 limit 100 req/s'''
     ),
     cfg.StrOpt(
         'nsxv3_login_user',
