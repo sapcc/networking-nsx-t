@@ -40,9 +40,6 @@ Install dependencies
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common_client-2.9.0-py2.py3-none-any.whl
     sudo pip install nsx_python_sdk-2.3.0.0.0.10085514-py2.py3-none-any.whl
-    
-    # Other dependeicnes
-    sudo pip install ratelimiter
 
 
 Install on devstack
