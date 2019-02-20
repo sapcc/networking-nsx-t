@@ -102,7 +102,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             display_name="{}-{}".format(self.tz_name, "default-SpoofGuard"),
             tags=[])
 
-        ipd_sp = self.create(sdk_service=SwitchingProfiles, 
+        ipd_sp = self.create(sdk_service=SwitchingProfiles,
                              sdk_model=ipd_sp_spec)
         sg_sp = self.create(sdk_service=SwitchingProfiles,
                             sdk_model=sg_sp_spec)

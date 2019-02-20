@@ -29,9 +29,12 @@ NSX-T L2 Agent implements OpenStack network related events into VMware NSX-T con
 Installation
 ------------
 
-Install NSX-T 2.3 SDK (download SDK from VMware web site)
+Install dependencies
+^^^^^^^^^^^^^^^^^^^^
+
 ::
 
+    # Install NSX-T 2.3 SDK (download SDK from VMware web site)
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_runtime-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
@@ -40,6 +43,7 @@ Install NSX-T 2.3 SDK (download SDK from VMware web site)
 
 
 Install on devstack
+^^^^^^^^^^^^^^^^^^^
 
 clone repo into /opt/stack
 ::
@@ -132,7 +136,9 @@ Port Binding (Trunk)
 
 
 Ansible Playbook - Install ML2 Driver & ML2 Agent
--------------------
-- cd tools
-- ansible-playbook -i open_stack.cfg configure_ml2_agent.yml
-- ansible-playbook -i open_stack.cfg configure_ml2_plugin.yml
+-------------------------------------------------
+::
+
+    cd tools
+    ansible-playbook -i open_stack.cfg configure_ml2_agent.yml
+    ansible-playbook -i open_stack.cfg configure_ml2_plugin.yml

@@ -16,6 +16,7 @@ python-neutronclient
 ipaddress
 pyvmomi                         # Apache-2.0
 tooz
+ratelimiter                     # Apache-2.0
 
 datadog
 attrs                           # MIT License
