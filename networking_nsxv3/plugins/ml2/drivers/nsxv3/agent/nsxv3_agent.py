@@ -143,7 +143,7 @@ class NSXv3AgentManagerRpcCallBackBase(
 
         @RateLimiter(max_calls=max_calls, period=1)
         def spawn(func, *args, **kw):
-            self.pool.spawn(func, args, kw)
+            self.pool.spawn(func, *args, **kw)
 
         (added, updated, orphaned) = self.get_sync_data(
             sdk_model=QosSwitchingProfile(),
