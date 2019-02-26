@@ -2,7 +2,6 @@ from oslo_log import log as logging
 from oslo_config import cfg
 import copy
 import json
-import math
 
 from com.vmware.nsx_client import LogicalSwitches
 from com.vmware.nsx_client import TransportZones
@@ -35,6 +34,7 @@ from com.vmware.nsx.model_client import NSGroupTagExpression
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_client
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 
 
 LOG = logging.getLogger(__name__)
@@ -371,44 +371,29 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         sec_spec = FirewallSection(display_name=security_group_id)
         sec = self.get(sdk_service=Sections, sdk_model=sec_spec)
 
-        def get_create_rule_req(section_id, rule):
-            return BatchRequestItem(
-                uri="/v1/firewall/sections/{}/rules".format(section_id),
-                method=BatchRequestItem.METHOD_POST,
-                body=rule)
+        path = "/api/v1/firewall/sections/{}/rules".format(sec.id)
 
-        def get_delete_rule_req(section_id, rule_id):
-            return BatchRequestItem(uri="/v1/firewall/sections/{}/rules/{}"
-                                    .format(section_id, rule_id),
-                                    method=BatchRequestItem.METHOD_DELETE)
+        revision = int(sec.revision)
+        for sdk_obj in add_rules:
+            data = nsxv3_utils.get_firewall_rule(sdk_obj)
+            data["_revision"] = revision
+            self._post(path=path, data=data)
+            # Optimization
+            # No need to parse response and load generated revision number as
+            # we are holders of the security group Lock
+            revision += 1
 
-        def update_rules(rules):
-            return self.batch(request_items=sub_rules, atomic=False)
+        for rule_id in del_rules:
+            self._delete(path="{}/{}".format(path, rule_id))
 
-        rules_step = nsxv3_constants.NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE
-        result = True
-
-        add_rules_req = [get_create_rule_req(sec.id, r) for r in add_rules]
-        add_rules_cycles = len(add_rules_req) / float(rules_step)
-        for i in range(0, int(math.ceil(add_rules_cycles))):
-            sub_rules = add_rules_req[i * rules_step:(i + 1) * rules_step]
-            s = update_rules(sub_rules)
-            result = result and self.is_batch_successful(s)
-
-        del_rules_req = [get_delete_rule_req(sec.id, r) for r in del_rules]
-        del_rules_cycles = len(del_rules_req) / float(rules_step)
-        for i in range(0, int(math.ceil(del_rules_cycles))):
-            sub_rules = del_rules_req[i * rules_step:(i + 1) * rules_step]
-            s = update_rules(sub_rules)
-            result = result and self.is_batch_successful(s)
-
-        # Update Security Group (IP Set) revision_number
+        # Update Security Group (IP Set) revision_number when everythings is 
+        # updated. In case of falure above the revision will not be updated
+        # and synchronization will try to fix the security group state
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
         ips_spec = IPSet(display_name=security_group_id)
         ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
         ips.tags = [Tag(scope=rev_scope, tag=str(revision_number))]
         self.update(sdk_service=IpSets, sdk_model=ips)
-        return result
 
     def get_security_group_rule_spec(self, rule):
         id = rule["id"]
@@ -439,7 +424,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         # For future use. Any type maps to None as value
         # ANY_TARGET = None
         port = ANY_PORT = '0-65535'
-        service = None
+        service = ANY_SERVICE = None
+        ANY_PROTOCOL = None
+        ANY_TARGET = None
 
         current = ResourceReference(target_type='IPSet',
                                     target_display_name=security_group_id,
@@ -457,6 +444,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 target_id=remote_group_id,
                 is_valid=True,
                 target_display_name=security_group_id)
+        elif remote_ip_prefix is None:
+            target = ANY_TARGET
         elif remote_ip_prefix != '0.0.0.0/0':
             target = ResourceReference(target_type=PROTOCOL_TYPES[ethertype],
                                        target_display_name=remote_ip_prefix,
@@ -475,18 +464,23 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 l4_protocol=SESSION_PROTOCOLS[protocol],
                 destination_ports=[port],
                 source_ports=[ANY_PORT])
+        elif protocol is ANY_PROTOCOL:
+            service = ANY_SERVICE
         else:
             LOG.warning("Unsupported protocol '{}' for rule '{}'."
                         .format(protocol, id))
             return None
+
+        current = [current]
+        target = [target] if target else None
 
         return FirewallRule(
             action=FirewallRule.ACTION_ALLOW,
             display_name=id,
             direction=DIRECTIONS[direction],
             ip_protocol=PROTOCOLS[ethertype],
-            sources=[target] if direction in 'ingress' else [current],
-            destinations=[current] if direction in 'ingress' else [target],
+            sources=target if direction in 'ingress' else current,
+            destinations=current if direction in 'ingress' else target,
             services=[FirewallService(service=service)] if service else None,
             applied_tos=[applied_to])
 
