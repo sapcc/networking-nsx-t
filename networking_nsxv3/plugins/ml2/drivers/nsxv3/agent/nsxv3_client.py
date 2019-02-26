@@ -1,6 +1,7 @@
 import time
 import json
 import requests
+import inspect
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -198,23 +199,29 @@ class NSXv3ClientImpl(NSXv3Client):
                 }
             ]
         }
+    
+    def _get_url(self, path):
+        return "{}{}".format(self.base_url, path)
 
     def _query(self, resource_type, key, ands=[], ors=[], dsl="",
                size=50, start=0):
-
-        url = "{}/nsxapi/rpc/call/SearchFacade".format(self.base_url)
-        query = json.dumps(self._get_query(
-            resource_type, key, ands, ors, dsl, size, start))
-        resp = self._post(url=url, data=query)
+        data = self._get_query(resource_type, key, ands, ors, dsl, size, start)
+        resp = self._post(path="/nsxapi/rpc/call/SearchFacade", data=data)
         return json.loads(resp.content)["result"]["results"]
 
     @connection_retry_policy(driver="rest")
-    def _post(self, url, data):
-        return self.session.post(url, data=data)
+    def _post(self, path, data):
+        return self.session.post(url=self._get_url(path),
+                                 data=json.dumps(data))
 
     @connection_retry_policy(driver="rest")
-    def _put(self, url, data):
-        return self.session.put(url, data=data)
+    def _put(self, path, data):
+        return self.session.put(url=self._get_url(path),
+                                data=json.dumps(data))
+
+    @connection_retry_policy(driver="rest")
+    def _delete(self, path):
+        return self.session.delete(url=self._get_url(path))
 
     def _get_object(self, sdk_model, sdk_object):
         o = sdk_object
@@ -318,7 +325,16 @@ class NSXv3ClientImpl(NSXv3Client):
         if not sdk_id:
             sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
             if sdk_obj and sdk_obj.id:
-                return svc.delete(sdk_obj.id)
+                sdk_id = sdk_obj.id
+            else:
+                LOG.warning("{} failed. Object not found ".format(msg))
+                return sdk_model
+
+        # Not all services have cascade property
+        if 'cascade' in inspect.getargspec(svc.delete).args:
+            return svc.delete(sdk_id, cascade=True)
+        else:
+            return svc.delete(sdk_id)
 
         LOG.warning("{} failed. Object not found ".format(msg))
         return sdk_model
