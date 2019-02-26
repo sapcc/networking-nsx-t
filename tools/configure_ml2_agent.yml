@@ -17,9 +17,9 @@
         option: "{{ item.option }}"
         value: "{{ item.value }}"
       with_items:
+        - { section: "ml2", option: "mechanism_drivers", value: "nsxv3" }
         - { section: "ml2", option: "tenant_network_types", value: "{{ tenant_network_types }}"}
         - { section: "ml2", option: "type_drivers", value: "{{ type_drivers }}" }
-        - { section: "ml2", option: "mechanism_drivers", value: "{{ mechanism_drivers }}" }
         - { section: "ml2", option: "path_mtu", value: "{{ path_mtu }}" }
         - { section: "ml2", option: "extension_drivers", value: "{{ extension_drivers }}" }
         - { section: "ml2_type_flat", option: "flat_networks", value: "{{ flat_networks }}" }
