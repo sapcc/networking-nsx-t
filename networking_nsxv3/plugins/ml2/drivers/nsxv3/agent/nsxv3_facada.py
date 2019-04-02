@@ -124,17 +124,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             uplink_teaming_policy_name=None,
             replication_mode=LogicalSwitch.REPLICATION_MODE_MTEP,
             vni=None,
-            vlan=None,
+            vlan=int(segmentation_id),
             switching_profile_ids=[],
-            address_bindings=[],
-            vlan_trunk_spec={
-                "vlan_ranges": [
-                    {
-                        "start": int(segmentation_id),
-                        "end": int(segmentation_id)
-                    }
-                ]
-            }
+            address_bindings=[]
         )
 
         return self.create(sdk_service=LogicalSwitches, sdk_model=ls_spec).id
