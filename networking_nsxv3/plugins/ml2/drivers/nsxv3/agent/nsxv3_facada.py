@@ -390,7 +390,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
     def get_security_group_rule_spec(self, rule):
         id = rule["id"]
         min = rule["port_range_min"]
-        max = rule["port_range_min"]
+        max = rule["port_range_max"]
         protocol = rule["protocol"]
         ethertype = rule['ethertype']
         direction = rule['direction']
@@ -415,7 +415,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         target = None
         # For future use. Any type maps to None as value
         # ANY_TARGET = None
-        port = ANY_PORT = '0-65535'
+        port = ANY_PORT = '1-65535'
         service = ANY_SERVICE = None
         ANY_PROTOCOL = None
         ANY_TARGET = None
