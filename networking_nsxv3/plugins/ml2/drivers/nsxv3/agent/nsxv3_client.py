@@ -199,7 +199,7 @@ class NSXv3ClientImpl(NSXv3Client):
                 }
             ]
         }
-    
+
     def _get_url(self, path):
         return "{}{}".format(self.base_url, path)
 

@@ -139,12 +139,14 @@ class NSXv3AgentManagerRpcCallBackBase(
         return self.pool.running()
 
     def sync(self):
+        msg = "FULL SYNCHRONIZATION CYCLE - {}"
         max_calls = cfg.CONF.AGENT.sync_requests_per_second
 
         @RateLimiter(max_calls=max_calls, period=1)
         def spawn(func, *args, **kw):
             self.pool.spawn(func, *args, **kw)
 
+        LOG.info(msg.format("STARTED"))
         (added, updated, orphaned) = self.get_sync_data(
             sdk_model=QosSwitchingProfile(),
             query=self.db.get_qos_policy_revision_tuples)
@@ -170,6 +172,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             self.pool.spawn(self.sync_security_group_orphaned, id)
 
         self.pool.waitall()
+        LOG.info(msg.format("COMPLETED"))
 
     def get_sync_delta(self, db_dict, ep_dict):
         orphaned = ep_dict.copy()
@@ -375,16 +378,13 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         :return: set -- the set of all devices e.g. ['tap1', 'tap2']
         """
 
-        msg = "FULL SYNCHRONIZATION CYCLE - {}"
         if self.rpc:
             active_workers = self.rpc.get_active_workers()
             if active_workers == 0:
-                LOG.info(msg.format("STARTED"))
-                self.rpc.sync()
-                LOG.info(msg.format("COMPLETED"))
+                eventlet.spawn(self.rpc.sync)
             else:
-                LOG.info(msg.format("IN PROGRESS - ACTIVE WORKERS '{}'"
-                                    .format(active_workers)))
+                LOG.info("IN PROGRESS SYNCHRONIZATION - ACTIVE WORKERS '{}'"
+                         .format(active_workers))
         return set()
 
     def get_devices_modified_timestamps(self, devices):
