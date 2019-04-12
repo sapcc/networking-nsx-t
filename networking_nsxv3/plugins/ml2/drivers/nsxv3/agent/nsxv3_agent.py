@@ -295,8 +295,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             network_current):
         LOG.debug("Trying to map network bridge for networks ...")
         for ns in network_segments:
-            seg_id = '3200'
-            # TODO - remove mock ns.get("segmentation_id")
+            seg_id = ns.get("segmentation_id")
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
                           .format(seg_id))

@@ -12,7 +12,6 @@ from com.vmware.nsx_client import IpSets
 
 from com.vmware.nsx.model_client import TransportZone
 from com.vmware.nsx.model_client import LogicalSwitch
-from com.vmware.nsx.model_client import BatchRequestItem
 from com.vmware.nsx.model_client import Tag
 from com.vmware.nsx.model_client import LogicalPort
 from com.vmware.nsx.model_client import PacketAddressClassifier
@@ -378,7 +377,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         for rule_id in del_rules:
             self._delete(path="{}/{}".format(path, rule_id))
 
-        # Update Security Group (IP Set) revision_number when everythings is 
+        # Update Security Group (IP Set) revision_number when everythings is
         # updated. In case of falure above the revision will not be updated
         # and synchronization will try to fix the security group state
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
