@@ -16,6 +16,7 @@
 # Instead, to create sections,
 # use: POST /api/v1/firewall/sections To create rules,
 # use: POST /api/v1/firewall/sections/<section-id>/rules
+from uuid import UUID
 
 
 def get_firewall_rule(sdk_model):
@@ -68,3 +69,12 @@ def get_service_reference(sdk_model):
         service["source_ports"] = sdk_model.source_ports
         service["destination_ports"] = sdk_model.destination_ports
     return {"service": service}
+
+
+def is_valid_uuid(uuid, version=4):
+    try:
+        uuid_obj = UUID(uuid, version=version)
+    except ValueError:
+        return False
+
+    return str(uuid_obj) == uuid

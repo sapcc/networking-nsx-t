@@ -12,6 +12,7 @@ from neutron.common import config as common_config
 from neutron.common import profiler, topics
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
+from neutron_lib.api.definitions import portbindings
 from neutron_lib import context as neutron_context
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -23,7 +24,7 @@ from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.db import db as db_queries
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada, nsxv3_utils
 
 # Eventlet Best Practices
 # https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
@@ -169,7 +170,8 @@ class NSXv3AgentManagerRpcCallBackBase(
         for id in added:
             self.pool.spawn(self.sync_security_group, id)
         for id in orphaned:
-            self.pool.spawn(self.sync_security_group_orphaned, id)
+            if nsxv3_utils.is_valid_uuid(id):
+                self.pool.spawn(self.sync_security_group_orphaned, id)
 
         self.pool.waitall()
         LOG.info(msg.format("COMPLETED"))
@@ -307,6 +309,12 @@ class NSXv3AgentManagerRpcCallBackBase(
 
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
+        vnic_type = port.get(portbindings.VNIC_TYPE)
+        vif_type = port.get(portbindings.VIF_TYPE)
+        if not ((vnic_type and vnic_type == portbindings.VNIC_NORMAL) and
+                (vif_type and vif_type == portbindings.VIF_TYPE_OVS)):
+            return
+
         LOG.debug("Updating port " + str(port))
 
         address_bindings = []
@@ -326,6 +334,7 @@ class NSXv3AgentManagerRpcCallBackBase(
                 address_bindings,
                 qos_name=port.get("qos_policy_id")
             )
+        self.updated_devices.add(port['mac_address'])
 
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))

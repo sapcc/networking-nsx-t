@@ -1,5 +1,7 @@
+from neutron_lib.callbacks import resources
 from oslo_log import log
 
+from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
 from neutron.agent import securitygroups_rpc
 
@@ -120,3 +122,21 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             return False
         else:
             context.set_binding(segment[api.ID], self.vif_type, vif_details)
+            return True
+
+    def update_port_postcommit(self, context):
+        """ Set port status to ACTIVE, this is normaly done by
+            neutron itself if the device (port) has been added
+            to the updated devices, but this won't work because
+            get_all_devices is implemented as a empty set.
+
+                self.updated_devices.add(port['mac_address'])
+
+            As a workaround we manually set every updated port
+            using our database session to completed."""
+        port = context.current
+        if (port[portbindings.VNIC_TYPE] in self.supported_vnic_types and
+                port[portbindings.VIF_TYPE] == self.vif_type):
+            provisioning_blocks.provisioning_complete(
+                context._plugin_context, port['id'], resources.PORT,
+                provisioning_blocks.L2_AGENT_ENTITY)
