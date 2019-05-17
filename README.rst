@@ -142,3 +142,43 @@ Ansible Playbook - Install ML2 Driver & ML2 Agent
     cd tools
     ansible-playbook -i open_stack.cfg configure_ml2_agent.yml
     ansible-playbook -i open_stack.cfg configure_ml2_plugin.yml
+
+
+Workload Migration from DVS ML2 driver
+-------------------------------------------------
+The driver supports migration of worklods from DVS ML2 driver to NSXv3 ML2 driver.
+
+Migration Prerequisites
+^^^^^^^^^^^^^^^^^^^^^^^
+
+- ESXi hosts have to be both enabled for DVS and N-VDS workloads
+- Virtual machines target of migration have to be assigned with the NSX-T tag:
+    ::
+
+        scope = "vswitch_migration_target"
+        tag = "dvs"
+
+- Enable DVS and NSX-T drivers to work at the same time as follow:
+    ::
+
+        # /etc/neutron/plugins/ml2/ml2_conf.ini
+        mechanism_drivers = nsxv3,dvs
+
+NSX-T ML2 Driver Behaviour
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Once both drivers are enabled the OpenStack networking will behave as follow:
+    - network operations related to the existing virtual machines assigned with NSX-T tag = "dvs" will be skipped by NSX-T driver and handled by the DVS driver
+    - network operations related to the new virtual machines will be handled by the NSX-T dirver
+- Migrate DVS managed virtual machine to NSX-T:
+    - change the NSX-T tag:
+        ::
+        
+            scope = "vswitch_migration_target"
+            tag = "nvds"
+
+    - re-trigger port binding for every virtual machine port by using an random name for a dummy host and then switch back to the original host
+        ::
+
+            os port set --host <dummy host> <port_id>
+            os port set --host <original host> <port_id>

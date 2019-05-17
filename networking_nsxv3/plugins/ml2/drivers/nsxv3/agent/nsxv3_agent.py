@@ -24,7 +24,10 @@ from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.db import db as db_queries
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada, nsxv3_utils
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_migration
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import vsphere_client
 
 # Eventlet Best Practices
 # https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
@@ -129,10 +132,11 @@ class NSXv3AgentManagerRpcCallBackBase(
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, agent, sg_agent, nsxv3, db):
+    def __init__(self, context, agent, sg_agent, nsxv3, vsphere, db):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
             context, agent, sg_agent)
         self.nsxv3 = nsxv3
+        self.vsphere = vsphere
         self.db = db
         self.pool = eventlet.greenpool.GreenPool(cfg.CONF.AGENT.sync_pool_size)
 
@@ -289,6 +293,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             created_after = pr_tuples.pop()[2]
         return id_rev
 
+    @nsxv3_migration.migrator()
     def get_network_bridge(
             self,
             context,
@@ -307,6 +312,7 @@ class NSXv3AgentManagerRpcCallBackBase(
                     return {'nsx-logical-switch-id': id}
         return {}
 
+    @nsxv3_migration.migrator()
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
@@ -336,6 +342,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             )
         self.updated_devices.add(port['mac_address'])
 
+    @nsxv3_migration.migrator()
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))
         # Port is deleted by Nova when destroying the instance
@@ -367,11 +374,12 @@ class NSXv3AgentManagerRpcCallBackBase(
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
 
-    def __init__(self, nsxv3=None):
+    def __init__(self, nsxv3=None, vsphere=None):
         super(NSXv3Manager, self).__init__()
         context = neutron_context.get_admin_context()
 
         self.nsxv3 = nsxv3
+        self.vsphere = vsphere
         self.rpc = None
         self.db = db_queries.DB(config=cfg.CONF, context=context)
 
@@ -461,6 +469,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
                 agent=agent,
                 sg_agent=sg_agent,
                 nsxv3=self.nsxv3,
+                vsphere=self.vsphere,
                 db=self.db)
         return self.rpc
 
@@ -572,9 +581,13 @@ def main():
 
     nsxv3 = nsxv3_facada.NSXv3Facada()
     nsxv3.setup()
+    vsphere = vsphere_client.VSphereClient()
+    # TODO = remove login afger implement
+    # automatic login through connection retry annotation
+    vsphere._login()
 
     agent = ca.CommonAgentLoop(
-        NSXv3Manager(nsxv3=nsxv3),
+        NSXv3Manager(nsxv3=nsxv3, vsphere=vsphere),
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,

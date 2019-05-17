@@ -131,8 +131,32 @@ nsxv3_opts = [
     )
 ]
 
+vsphere_opts = [
+    cfg.StrOpt(
+        'vsphere_login_username',
+        default='administrator@vsphere.local',
+        help="vSphere client login user"
+    ),
+    cfg.StrOpt(
+        'vsphere_login_password',
+        default='VMware1!',
+        help="vSphere client login password."
+    ),
+    cfg.HostAddressOpt(
+        'vsphere_login_hostname',
+        default='vc-l-01a.corp.local',
+        help="vSphere client hostname or IP address."
+    ),
+    cfg.BoolOpt(
+        'vsphere_suppress_ssl_wornings',
+        default=True,
+        help="vSphere client disables ssl host validattion. [Development Mode]"
+    ),
+]
+
 
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(agent_cli_opts, "AGENT_CLI")
 cfg.CONF.register_opts(nsxv3_opts, "NSXV3")
+cfg.CONF.register_opts(vsphere_opts, "vsphere")
 config.register_agent_state_opts_helper(cfg.CONF)
