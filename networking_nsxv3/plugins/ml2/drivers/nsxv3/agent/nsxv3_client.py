@@ -253,6 +253,16 @@ class NSXv3ClientImpl(NSXv3Client):
         return None
 
     @connection_retry_policy(driver="sdk")
+    def list(self, sdk_service, **kwargs):
+        svc = sdk_service(self.stub_config)
+        svc_type = sdk_service.__class__
+
+        msg = "Getting objects from service='{}' ... by '{}' ".format(svc_type,
+                                                                      kwargs)
+        LOG.info(msg)
+        return svc.list(**kwargs)
+
+    @connection_retry_policy(driver="sdk")
     def get_by_attr(self, sdk_service, sdk_model, attr_key, attr_val):
         svc = sdk_service(self.stub_config)
         sdk_type = str(sdk_model.__class__.__name__)

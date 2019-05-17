@@ -16,6 +16,10 @@ NSXV3_SECURITY_GROUP_SCOPE = "security_group"
 NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE = 265
 NSXV3_REVISION_SCOPE = "revision_number"
 
+NSXV3_MIGRATION_SCOPE = "vswitch_migration_target"
+NSXV3_MIGRATION_TAG_DVS = "dvs"
+NSXV3_MIGRATION_TAG_NVDS = "nvds"
+
 # Set RPC API version to 1.0 by default.
 # history
 #   1.1 Support Security Group RPC
