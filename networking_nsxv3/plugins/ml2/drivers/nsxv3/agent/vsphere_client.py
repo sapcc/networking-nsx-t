@@ -20,7 +20,7 @@ class VSphereClient(object):
 
         ssl_context = None
         if suppress_ssl_wornings:
-            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+            ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
             ssl_context.verify_mode = ssl.CERT_NONE
         self.connection = SmartConnect(host=hostname, user=username,
                                        pwd=password, sslContext=ssl_context)
