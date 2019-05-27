@@ -87,7 +87,7 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
                 fwr["local_group_id"] = ipset.id
                 fwr["apply_to"] = nsg.id
-                if remote_group_id:
+                if remote_group_id and remote_group_id in ips_name_id:
                     fwr["remote_group_id"] = ips_name_id[remote_group_id]
 
                 if name in nsx_rules:
