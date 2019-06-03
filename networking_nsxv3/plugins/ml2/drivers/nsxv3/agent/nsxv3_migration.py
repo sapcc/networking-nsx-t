@@ -68,7 +68,7 @@ class NSXv3NVDsMigrator(object):
         vim_nic = vsphere.get_vm_nic_by_mac(vm_obj=vim_vm,
                                             macAddress=port.get("mac_address"))
         # Change NIC external ID to the OpenStack Port
-        vim_nic.key = port.get("id")
+        vim_nic.externalId = port.get("id")
         nsx_ls_spec = LogicalSwitch(id=nsx_ls_id)
         nsx_ls = nsxv3.get(sdk_service=LogicalSwitches, sdk_model=nsx_ls_spec)
 
