@@ -38,6 +38,10 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 LOG = logging.getLogger(__name__)
 
 
+def get_segmentation_id_lock(segmentation_id):
+    return "segmentation_id-{}".format(segmentation_id)
+
+
 class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
     def security_group_member_updated(self, security_group_id):
@@ -293,7 +297,6 @@ class NSXv3AgentManagerRpcCallBackBase(
             created_after = pr_tuples.pop()[2]
         return id_rev
 
-    @nsxv3_migration.migrator()
     def get_network_bridge(
             self,
             context,
@@ -306,7 +309,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
                           .format(seg_id))
-                lock_id = "segmentation_id-{}".format(seg_id)
+                lock_id = get_segmentation_id_lock(seg_id)
                 with LockManager.get_lock(lock_id):
                     id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
                     return {'nsx-logical-switch-id': id}
@@ -321,7 +324,13 @@ class NSXv3AgentManagerRpcCallBackBase(
                 (vif_type and vif_type == portbindings.VIF_TYPE_OVS)):
             return
 
-        LOG.debug("Updating port " + str(port))
+        LOG.debug("Updating Port='{}' with Segment='{}'", str(port),
+                  segmentation_id)
+
+        if not cfg.CONF.host == port['binding:host_id']:
+            LOG.debug("Skipping Port='{}' as it is not managed by the agent",
+                      str(port))
+            return
 
         address_bindings = []
 

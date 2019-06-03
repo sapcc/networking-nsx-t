@@ -115,6 +115,11 @@ nsxv3_opts = [
         help="NSXv3 Manager transport zone name."
     ),
     cfg.BoolOpt(
+        'nsxv3_enable_spoof_guard',
+        default=False,
+        help="NSXv3 Manager enables SpoofGuard protection."
+    ),
+    cfg.BoolOpt(
         'nsxv3_suppress_ssl_wornings',
         default=True,
         help="NSXv3 Manager disables ssl host validattion. [Development Mode]"

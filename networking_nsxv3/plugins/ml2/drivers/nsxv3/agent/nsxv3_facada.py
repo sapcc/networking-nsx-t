@@ -103,12 +103,19 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         ipd_sp = self.create(sdk_service=SwitchingProfiles,
                              sdk_model=ipd_sp_spec)
+
         sg_sp = self.create(sdk_service=SwitchingProfiles,
                             sdk_model=sg_sp_spec)
-        self.default_switching_profile_ids = [
-            SwitchingProfileTypeIdEntry(key=self.IPK, value=ipd_sp.id),
-            SwitchingProfileTypeIdEntry(key=self.SGK, value=sg_sp.id)
+
+        id_entities = [
+            SwitchingProfileTypeIdEntry(key=self.IPK, value=ipd_sp.id)
         ]
+
+        if cfg.CONF.NSXV3.nsxv3_enable_spoof_guard:
+            id_entities.append(SwitchingProfileTypeIdEntry(key=self.SGK,
+                                                           value=sg_sp.id))
+
+        self.default_switching_profile_ids = id_entities
 
     def get_switch_id_for_segmentation_id(self, segmentation_id):
         sw_name = "{}-{}".format(self.tz_name, segmentation_id)

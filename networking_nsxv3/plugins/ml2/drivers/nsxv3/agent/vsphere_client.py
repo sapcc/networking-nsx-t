@@ -73,6 +73,7 @@ class VSphereClient(object):
         nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
         nic_spec.device = nic_obj
         nic_spec.device.key = nic_obj.key
+        nic_spec.device.externalId = nic_obj.externalId
         nic_spec.device.macAddress = nic_obj.macAddress
         nic_spec.device.backing = nic_obj.backing
         nic_spec.device.wakeOnLanEnabled = nic_obj.wakeOnLanEnabled
