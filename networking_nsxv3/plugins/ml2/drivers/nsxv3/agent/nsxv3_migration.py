@@ -86,7 +86,8 @@ class NSXv3NVDsMigrator(object):
 
         vim_net = vsphere.get_managed_object(vim.Network, nsx_ls.display_name)
         if not isinstance(vim_net, vim.OpaqueNetwork):
-            raise Exception("Provided network '{}' is not of type NSX-T".format(vim_net))
+            raise Exception("Provided network '{}' is not of type NSX-T"
+                            .format(vim_net))
         vsphere.attach_vm_to_network(vm_obj=vim_vm, nic_obj=vim_nic,
                                      network_obj=vim_net)
 
