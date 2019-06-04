@@ -211,7 +211,7 @@ class NSXv3AgentManagerRpcCallBackBase(
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
 
-        (id, mac, up, status, qos_id, rev, 
+        (id, mac, up, status, qos_id, rev,
          binding_host, vif_details) = self.db.get_port(port_id)
         port = {
             "id": id,
@@ -239,8 +239,8 @@ class NSXv3AgentManagerRpcCallBackBase(
         for (sg_id,) in self.db.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
 
-        self.port_update(context=None, port=port, 
-                        segmentation_id=segmentation_id)
+        self.port_update(context=None, port=port,
+                         segmentation_id=segmentation_id)
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
@@ -328,7 +328,13 @@ class NSXv3AgentManagerRpcCallBackBase(
                 (vif_type and vif_type == portbindings.VIF_TYPE_OVS)):
             return
 
-        LOG.debug("Updating Port='{}' with Segment='{}'", str(port),
+        if hasattr(port, 'binding:host_id'):
+            if not cfg.CONF.host == port.get('binding:host_id'):
+                LOG.debug("Skipping Port='%s'. It is not assigned to agent.",
+                          str(port))
+                return
+
+        LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
                   segmentation_id)
 
         address_bindings = []

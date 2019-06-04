@@ -6,18 +6,17 @@ import inspect
 from oslo_config import cfg
 from oslo_log import log as logging
 
+from ratelimiter import RateLimiter
+
 from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
-
-from ratelimiter import RateLimiter
 
 from vmware.vapi.lib import connect
 from vmware.vapi.stdlib.client.factories import StubConfigurationFactory
 
 from com.vmware.nsx_client import Batch
 from com.vmware.nsx.model_client import BatchRequest
-
 from com.vmware.nsx.model_client import QosSwitchingProfile
 from com.vmware.nsx.model_client import IpDiscoverySwitchingProfile
 from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile

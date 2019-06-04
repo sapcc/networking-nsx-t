@@ -64,10 +64,11 @@ class NSXv3NVDsMigrator(object):
         vsphere = self.target.vsphere
         nsxv3 = self.target.nsxv3
 
-        if not cfg.CONF.host == port['binding:host_id']:
-            LOG.debug("Skipping Port='{}' as it is not managed by the agent",
-                      str(port))
-            return
+        if hasattr(port, 'binding:host_id'):
+            if not cfg.CONF.host == port['binding:host_id']:
+                LOG.debug("Skipping Port='%s'. It is not assigned to agent.",
+                        str(port))
+                return
 
         lock_id = nsxv3_utils.get_segmentation_id_lock(segmentation_id)
         with LockManager.get_lock(lock_id):
@@ -96,8 +97,12 @@ class NSXv3NVDsMigrator(object):
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
         # If context is not defined then port_update is called by
-        # the synchronization job. 
+        # the synchronization job.
         # In this case the migration should not be triggered.
+        LOG.debug("Migrating port='%s' segmentation_id='%s' context_set='%s'",
+                  str(port),
+                  str(segmentation_id),
+                  str(True if context else False))
         if context:
             self._migrate_port(port, segmentation_id)
         return self.func(self.target, *self.args, **self.kwargs)

@@ -8,6 +8,7 @@ from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
+
 # Decorator
 class connection_retry_policy(object):
 
@@ -17,7 +18,8 @@ class connection_retry_policy(object):
             try:
                 return func(self, *args, **kwargs)
             except vim.fault.NotAuthenticated:
-                LOG.exception("NotAuthenticated. Probably the session has expired.")
+                LOG.exception(
+                    "NotAuthenticated. Probably the session has expired.")
                 self._connect()
                 return func(self, *args, **kwargs)
 
@@ -46,7 +48,7 @@ class VSphereClient(object):
         if not self.connection:
             self._connect()
         return self.connection
-    
+
     @connection_retry_policy()
     def get_managed_object(self, vimtype, name):
         content = self._get_conn().content
