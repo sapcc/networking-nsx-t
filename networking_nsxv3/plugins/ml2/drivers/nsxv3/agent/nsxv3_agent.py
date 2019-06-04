@@ -233,6 +233,10 @@ class NSXv3AgentManagerRpcCallBackBase(
                 {"ip_address": ip, "mac_address": mac, "subnet_id": subnet})
 
         for (ip, mac) in self.db.get_port_allowed_pairs(port_id):
+            # TODO - fix in future.
+            # NSX-T does not support CIDR as port manual binding
+            if "/" in ip:
+                continue
             port["allowed_address_pairs"].append(
                 {"ip_address": ip, "mac_address": mac})
 

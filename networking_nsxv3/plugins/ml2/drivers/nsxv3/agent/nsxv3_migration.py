@@ -67,7 +67,7 @@ class NSXv3NVDsMigrator(object):
         if hasattr(port, 'binding:host_id'):
             if not cfg.CONF.host == port['binding:host_id']:
                 LOG.debug("Skipping Port='%s'. It is not assigned to agent.",
-                        str(port))
+                          str(port))
                 return
 
         lock_id = nsxv3_utils.get_segmentation_id_lock(segmentation_id)
