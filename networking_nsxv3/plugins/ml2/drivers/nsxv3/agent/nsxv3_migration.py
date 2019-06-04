@@ -95,7 +95,11 @@ class NSXv3NVDsMigrator(object):
     # Agent RCP method signature
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
-        self._migrate_port(port, segmentation_id)
+        # If context is not defined then port_update is called by
+        # the synchronization job. 
+        # In this case the migration should not be triggered.
+        if context:
+            self._migrate_port(port, segmentation_id)
         return self.func(self.target, *self.args, **self.kwargs)
 
 

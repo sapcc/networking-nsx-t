@@ -211,7 +211,8 @@ class NSXv3AgentManagerRpcCallBackBase(
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
 
-        (id, mac, up, status, qos_id, revision) = self.db.get_port(port_id)
+        (id, mac, up, status, qos_id, rev, 
+         binding_host, segmentation_id) = self.db.get_port(port_id)
         port = {
             "id": id,
             "mac_address": mac,
@@ -221,7 +222,8 @@ class NSXv3AgentManagerRpcCallBackBase(
             "fixed_ips": [],
             "allowed_address_pairs": [],
             "security_groups": [],
-            "revision_number": revision
+            "revision_number": rev,
+            "host": binding_host
         }
 
         for ip, subnet in self.db.get_port_addresses(port_id):
@@ -235,7 +237,8 @@ class NSXv3AgentManagerRpcCallBackBase(
         for (sg_id,) in self.db.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
 
-        self.port_update(context=None, port=port)
+        self.port_update(context=None, port=port, 
+                        segmentation_id=segmentation_id)
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
@@ -322,11 +325,6 @@ class NSXv3AgentManagerRpcCallBackBase(
 
         LOG.debug("Updating Port='{}' with Segment='{}'", str(port),
                   segmentation_id)
-
-        if not cfg.CONF.host == port['binding:host_id']:
-            LOG.debug("Skipping Port='{}' as it is not managed by the agent",
-                      str(port))
-            return
 
         address_bindings = []
 
