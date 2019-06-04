@@ -9,7 +9,6 @@ from neutron.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBindingLevel
 from neutron.db.models_v2 import IPAllocation
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
-from neutron.db.models.segment import NetworkSegment
 
 from neutron.plugins.ml2.models import PortBinding
 
@@ -139,13 +138,12 @@ class DB(object):
             QosPolicy.id,
             StandardAttribute.revision_number,
             PortBinding.host,
-            NetworkSegment.segmentation_id,
+            PortBinding.vif_details,
         ).filter(
             Port.id == port_id
         ).join(
             StandardAttribute,
             PortBinding,
-            (NetworkSegment, NetworkSegment.network_id == Port.network_id)
         ).outerjoin(
             QosPortPolicyBinding,
             QosPolicy

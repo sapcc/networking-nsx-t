@@ -212,7 +212,7 @@ class NSXv3AgentManagerRpcCallBackBase(
         LOG.debug("Synching port '{}'.".format(port_id))
 
         (id, mac, up, status, qos_id, rev, 
-         binding_host, segmentation_id) = self.db.get_port(port_id)
+         binding_host, vif_details) = self.db.get_port(port_id)
         port = {
             "id": id,
             "mac_address": mac,
@@ -225,6 +225,8 @@ class NSXv3AgentManagerRpcCallBackBase(
             "revision_number": rev,
             "host": binding_host
         }
+
+        segmentation_id = json.loads(vif_details).get("segmentation_id")
 
         for ip, subnet in self.db.get_port_addresses(port_id):
             port["fixed_ips"].append(
@@ -311,7 +313,10 @@ class NSXv3AgentManagerRpcCallBackBase(
                 lock_id = nsxv3_utils.get_segmentation_id_lock(seg_id)
                 with LockManager.get_lock(lock_id):
                     id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
-                    return {'nsx-logical-switch-id': id}
+                    return {
+                        'nsx-logical-switch-id': id,
+                        'segmentation_id': seg_id
+                    }
         return {}
 
     @nsxv3_migration.migrator()
