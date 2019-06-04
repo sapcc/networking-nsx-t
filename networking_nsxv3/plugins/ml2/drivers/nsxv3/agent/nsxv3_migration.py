@@ -96,7 +96,7 @@ class NSXv3NVDsMigrator(object):
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
         # If context is not defined then port_update is called by
-        # the synchronization job. 
+        # the synchronization job.
         # In this case the migration should not be triggered.
         if context:
             self._migrate_port(port, segmentation_id)

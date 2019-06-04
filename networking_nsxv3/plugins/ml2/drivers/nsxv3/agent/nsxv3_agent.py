@@ -211,7 +211,7 @@ class NSXv3AgentManagerRpcCallBackBase(
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
 
-        (id, mac, up, status, qos_id, rev, 
+        (id, mac, up, status, qos_id, rev,
          binding_host, vif_details) = self.db.get_port(port_id)
         port = {
             "id": id,
@@ -239,8 +239,8 @@ class NSXv3AgentManagerRpcCallBackBase(
         for (sg_id,) in self.db.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
 
-        self.port_update(context=None, port=port, 
-                        segmentation_id=segmentation_id)
+        self.port_update(context=None, port=port,
+                         segmentation_id=segmentation_id)
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
