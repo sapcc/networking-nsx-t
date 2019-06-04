@@ -38,10 +38,6 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 LOG = logging.getLogger(__name__)
 
 
-def get_segmentation_id_lock(segmentation_id):
-    return "segmentation_id-{}".format(segmentation_id)
-
-
 class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
     def security_group_member_updated(self, security_group_id):
@@ -309,7 +305,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
                           .format(seg_id))
-                lock_id = get_segmentation_id_lock(seg_id)
+                lock_id = nsxv3_utils.get_segmentation_id_lock(seg_id)
                 with LockManager.get_lock(lock_id):
                     id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
                     return {'nsx-logical-switch-id': id}

@@ -78,3 +78,6 @@ def is_valid_uuid(uuid, version=4):
         return False
 
     return str(uuid_obj) == uuid
+
+def get_segmentation_id_lock(segmentation_id):
+    return "segmentation_id-{}".format(segmentation_id)

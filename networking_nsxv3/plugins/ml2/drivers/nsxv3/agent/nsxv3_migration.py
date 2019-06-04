@@ -9,7 +9,8 @@ from com.vmware.nsx.model_client import LogicalSwitch
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_agent
+
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class NSXv3NVDsMigrator(object):
                       str(port))
             return
 
-        lock_id = nsxv3_agent.get_segmentation_id_lock(segmentation_id)
+        lock_id = nsxv3_utils.get_segmentation_id_lock(segmentation_id)
         with LockManager.get_lock(lock_id):
             nsxv3.get_switch_id_for_segmentation_id(segmentation_id)
 
