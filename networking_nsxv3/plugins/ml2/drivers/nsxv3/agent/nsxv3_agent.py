@@ -328,7 +328,13 @@ class NSXv3AgentManagerRpcCallBackBase(
                 (vif_type and vif_type == portbindings.VIF_TYPE_OVS)):
             return
 
-        LOG.debug("Updating Port='{}' with Segment='{}'", str(port),
+        if hasattr(port, 'binding:host_id'):
+            if not cfg.CONF.host == port.get('binding:host_id'):
+                LOG.debug("Skipping Port='%s'. It is not assigned to agent",
+                          str(port))
+                return
+
+        LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
                   segmentation_id)
 
         address_bindings = []

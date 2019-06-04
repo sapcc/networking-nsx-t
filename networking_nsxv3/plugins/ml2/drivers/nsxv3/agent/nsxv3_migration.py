@@ -98,6 +98,10 @@ class NSXv3NVDsMigrator(object):
         # If context is not defined then port_update is called by
         # the synchronization job.
         # In this case the migration should not be triggered.
+        LOG.debug("Migrating port='%s' segmentation_id='%s' context_set='%s'",
+                  str(port),
+                  str(segmentation_id),
+                  str(True if context else False))
         if context:
             self._migrate_port(port, segmentation_id)
         return self.func(self.target, *self.args, **self.kwargs)
