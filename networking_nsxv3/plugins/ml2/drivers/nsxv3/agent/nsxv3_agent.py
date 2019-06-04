@@ -585,9 +585,6 @@ def main():
     nsxv3 = nsxv3_facada.NSXv3Facada()
     nsxv3.setup()
     vsphere = vsphere_client.VSphereClient()
-    # TODO = remove login afger implement
-    # automatic login through connection retry annotation
-    vsphere._login()
 
     agent = ca.CommonAgentLoop(
         NSXv3Manager(nsxv3=nsxv3, vsphere=vsphere),
