@@ -330,7 +330,7 @@ class NSXv3AgentManagerRpcCallBackBase(
 
         if hasattr(port, 'binding:host_id'):
             if not cfg.CONF.host == port.get('binding:host_id'):
-                LOG.debug("Skipping Port='%s'. It is not assigned to agent",
+                LOG.debug("Skipping Port='%s'. It is not assigned to agent.",
                           str(port))
                 return
 

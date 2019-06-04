@@ -64,10 +64,11 @@ class NSXv3NVDsMigrator(object):
         vsphere = self.target.vsphere
         nsxv3 = self.target.nsxv3
 
-        if not cfg.CONF.host == port['binding:host_id']:
-            LOG.debug("Skipping Port='{}' as it is not managed by the agent",
-                      str(port))
-            return
+        if hasattr(port, 'binding:host_id'):
+            if not cfg.CONF.host == port['binding:host_id']:
+                LOG.debug("Skipping Port='%s'. It is not assigned to agent.",
+                        str(port))
+                return
 
         lock_id = nsxv3_utils.get_segmentation_id_lock(segmentation_id)
         with LockManager.get_lock(lock_id):
