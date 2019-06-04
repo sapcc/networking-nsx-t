@@ -8,11 +8,28 @@ from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
+# Decorator
+class connection_retry_policy(object):
 
-# TODO - add connection retry annotations
+    def __call__(self, func):
+
+        def decorator(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            except vim.fault.NotAuthenticated:
+                LOG.exception("NotAuthenticated. Probably the session has expired.")
+                self._connect()
+                return func(self, *args, **kwargs)
+
+        return decorator
+
+
 class VSphereClient(object):
 
-    def _login(self):
+    def __init__(self):
+        self.connection = None
+
+    def _connect(self):
         suppress_ssl_wornings = cfg.CONF.vsphere.vsphere_suppress_ssl_wornings
         hostname = cfg.CONF.vsphere.vsphere_login_hostname
         username = cfg.CONF.vsphere.vsphere_login_username
@@ -26,11 +43,11 @@ class VSphereClient(object):
                                        pwd=password, sslContext=ssl_context)
 
     def _get_conn(self):
-        if self.connection:
-            return self.connection
-        else:
-            raise "VSphere client have to be connected first."
-
+        if not self.connection:
+            self._connect()
+        return self.connection
+    
+    @connection_retry_policy()
     def get_managed_object(self, vimtype, name):
         content = self._get_conn().content
         ccv = content.viewManager.CreateContainerView
@@ -38,6 +55,7 @@ class VSphereClient(object):
             if name in o.name:
                 return o
 
+    @connection_retry_policy()
     def wait_for_task(self, task):
         pc = self._get_conn().content.propertyCollector
         pc_spec = vmodl.query.PropertyCollector
@@ -68,6 +86,7 @@ class VSphereClient(object):
             if pcfilter:
                 pcfilter.Destroy()
 
+    @connection_retry_policy()
     def attach_vm_to_network(self, vm_obj, nic_obj, network_obj):
         nic_spec = vim.vm.device.VirtualDeviceSpec()
         nic_spec.operation = vim.vm.device.VirtualDeviceSpec.Operation.edit
@@ -92,6 +111,7 @@ class VSphereClient(object):
         LOG.info("Server with id={}, nic_mac={} was attached to network={}."
                  .format(vm_obj.name, nic_obj.macAddress, network_obj.name))
 
+    @connection_retry_policy()
     def get_vm_nic_by_mac(self, vm_obj, macAddress):
         card = vim.vm.device.VirtualEthernetCard
         for device in vm_obj.config.hardware.device:

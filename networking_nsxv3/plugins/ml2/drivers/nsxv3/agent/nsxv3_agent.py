@@ -38,10 +38,6 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 LOG = logging.getLogger(__name__)
 
 
-def get_segmentation_id_lock(segmentation_id):
-    return "segmentation_id-{}".format(segmentation_id)
-
-
 class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
     def security_group_member_updated(self, security_group_id):
@@ -215,7 +211,8 @@ class NSXv3AgentManagerRpcCallBackBase(
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
 
-        (id, mac, up, status, qos_id, revision) = self.db.get_port(port_id)
+        (id, mac, up, status, qos_id, rev, 
+         binding_host, vif_details) = self.db.get_port(port_id)
         port = {
             "id": id,
             "mac_address": mac,
@@ -225,8 +222,11 @@ class NSXv3AgentManagerRpcCallBackBase(
             "fixed_ips": [],
             "allowed_address_pairs": [],
             "security_groups": [],
-            "revision_number": revision
+            "revision_number": rev,
+            "host": binding_host
         }
+
+        segmentation_id = json.loads(vif_details).get("segmentation_id")
 
         for ip, subnet in self.db.get_port_addresses(port_id):
             port["fixed_ips"].append(
@@ -239,7 +239,8 @@ class NSXv3AgentManagerRpcCallBackBase(
         for (sg_id,) in self.db.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
 
-        self.port_update(context=None, port=port)
+        self.port_update(context=None, port=port, 
+                        segmentation_id=segmentation_id)
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
@@ -309,10 +310,13 @@ class NSXv3AgentManagerRpcCallBackBase(
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
                           .format(seg_id))
-                lock_id = get_segmentation_id_lock(seg_id)
+                lock_id = nsxv3_utils.get_segmentation_id_lock(seg_id)
                 with LockManager.get_lock(lock_id):
                     id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
-                    return {'nsx-logical-switch-id': id}
+                    return {
+                        'nsx-logical-switch-id': id,
+                        'segmentation_id': seg_id
+                    }
         return {}
 
     @nsxv3_migration.migrator()
@@ -326,11 +330,6 @@ class NSXv3AgentManagerRpcCallBackBase(
 
         LOG.debug("Updating Port='{}' with Segment='{}'", str(port),
                   segmentation_id)
-
-        if not cfg.CONF.host == port['binding:host_id']:
-            LOG.debug("Skipping Port='{}' as it is not managed by the agent",
-                      str(port))
-            return
 
         address_bindings = []
 
@@ -591,9 +590,6 @@ def main():
     nsxv3 = nsxv3_facada.NSXv3Facada()
     nsxv3.setup()
     vsphere = vsphere_client.VSphereClient()
-    # TODO = remove login afger implement
-    # automatic login through connection retry annotation
-    vsphere._login()
 
     agent = ca.CommonAgentLoop(
         NSXv3Manager(nsxv3=nsxv3, vsphere=vsphere),

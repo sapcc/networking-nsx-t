@@ -10,6 +10,9 @@ from neutron.plugins.ml2.models import PortBindingLevel
 from neutron.db.models_v2 import IPAllocation
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
 
+from neutron.plugins.ml2.models import PortBinding
+
+
 from networking_nsxv3.common import constants as nsxv3_constants
 
 import datetime
@@ -133,11 +136,14 @@ class DB(object):
             Port.admin_state_up,
             Port.status,
             QosPolicy.id,
-            StandardAttribute.revision_number
-        ).join(
-            StandardAttribute
+            StandardAttribute.revision_number,
+            PortBinding.host,
+            PortBinding.vif_details,
         ).filter(
             Port.id == port_id
+        ).join(
+            StandardAttribute,
+            PortBinding,
         ).outerjoin(
             QosPortPolicyBinding,
             QosPolicy

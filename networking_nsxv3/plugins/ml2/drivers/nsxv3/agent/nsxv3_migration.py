@@ -9,7 +9,8 @@ from com.vmware.nsx.model_client import LogicalSwitch
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_agent
+
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ class NSXv3NVDsMigrator(object):
                       str(port))
             return
 
-        lock_id = nsxv3_agent.get_segmentation_id_lock(segmentation_id)
+        lock_id = nsxv3_utils.get_segmentation_id_lock(segmentation_id)
         with LockManager.get_lock(lock_id):
             nsxv3.get_switch_id_for_segmentation_id(segmentation_id)
 
@@ -86,14 +87,19 @@ class NSXv3NVDsMigrator(object):
 
         vim_net = vsphere.get_managed_object(vim.Network, nsx_ls.display_name)
         if not isinstance(vim_net, vim.OpaqueNetwork):
-            raise Exception("Provided network '{}' is not of type NSX-T".format(vim_net))
+            raise Exception("Provided network '{}' is not of type NSX-T"
+                            .format(vim_net))
         vsphere.attach_vm_to_network(vm_obj=vim_vm, nic_obj=vim_nic,
                                      network_obj=vim_net)
 
     # Agent RCP method signature
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
-        self._migrate_port(port, segmentation_id)
+        # If context is not defined then port_update is called by
+        # the synchronization job. 
+        # In this case the migration should not be triggered.
+        if context:
+            self._migrate_port(port, segmentation_id)
         return self.func(self.target, *self.args, **self.kwargs)
 
 
