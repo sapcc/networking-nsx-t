@@ -104,7 +104,10 @@ class NSXv3NVDsMigrator(object):
                   str(segmentation_id),
                   str(True if context else False))
         if context:
-            self._migrate_port(port, segmentation_id)
+            try:
+                self._migrate_port(port, segmentation_id)
+            except Exception as e:
+                LOG.exception(e)
         return self.func(self.target, *self.args, **self.kwargs)
 
 
