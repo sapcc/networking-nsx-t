@@ -54,8 +54,13 @@ class VSphereClient(object):
         content = self._get_conn().content
         ccv = content.viewManager.CreateContainerView
         for o in ccv(content.rootFolder, [vimtype], True).view:
-            if name in o.name:
-                return o
+            try:
+                if name in o.name:
+                    return o
+            except Exception:
+                # Can happen if server is being created/deleted meanwhile
+                continue
+        LOG.error("%s not found in vcenter", name)
 
     @connection_retry_policy()
     def wait_for_task(self, task):
