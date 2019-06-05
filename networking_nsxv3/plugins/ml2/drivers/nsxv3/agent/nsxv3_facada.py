@@ -329,6 +329,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         lp.address_bindings = []
         for ip, mac in address_bindings:
+            if '/' in ip:
+                continue
             pc = PacketAddressClassifier(ip_address=ip, mac_address=mac)
             lp.address_bindings.append(pc)
 
