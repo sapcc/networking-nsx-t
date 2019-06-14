@@ -79,16 +79,8 @@ class NSXv3NVDsMigrator(object):
 
         vim_vm = vsphere.get_managed_object(vim.VirtualMachine,
                                             port.get("device_id"))
-        if not vim_vm:
-            LOG.error("Not found. VM for VMID='%s'.",
-                      port.get("device_id"))
-            return False
         vim_nic = vsphere.get_vm_nic_by_mac(vm_obj=vim_vm,
                                             macAddress=port.get("mac_address"))
-        if not vim_vm:
-            LOG.error("Not found. NIC with MAC='%s' for VM with VMID='%s'",
-                      port.get("mac_address"), port.get("device_id"))
-            return False
         # Change NIC external ID to the OpenStack Port
         vim_nic.externalId = port.get("id")
         vim_nic.connectable.connected = True
@@ -101,7 +93,6 @@ class NSXv3NVDsMigrator(object):
                             .format(vim_net))
         vsphere.attach_vm_to_network(vm_obj=vim_vm, nic_obj=vim_nic,
                                      network_obj=vim_net)
-        return True
 
     # Agent RCP method signature
     def port_update(self, context, port=None, network_type=None,
@@ -115,11 +106,10 @@ class NSXv3NVDsMigrator(object):
                   str(True if context else False))
         if context:
             try:
-                if self._migrate_port(port, segmentation_id):
-                    # Update port only if it is sucessfully migrated
-                    return self.func(self.target, *self.args, **self.kwargs)
+                self._migrate_port(port, segmentation_id)
             except Exception as e:
                 LOG.exception(e)
+        return self.func(self.target, *self.args, **self.kwargs)
 
 
 class migrator(object):
