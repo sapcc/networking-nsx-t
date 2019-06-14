@@ -91,6 +91,7 @@ class NSXv3NVDsMigrator(object):
             return False
         # Change NIC external ID to the OpenStack Port
         vim_nic.externalId = port.get("id")
+        vim_nic.connectable.connected = True
         nsx_ls_spec = LogicalSwitch(id=nsx_ls_id)
         nsx_ls = nsxv3.get(sdk_service=LogicalSwitches, sdk_model=nsx_ls_spec)
 
