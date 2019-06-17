@@ -549,7 +549,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ethertype = rule['ethertype']
         direction = rule['direction']
         remote_group_id = rule["remote_group_id"]
-        local_group_id = rule["local_group_id"]
+        # Required by default security group rule to allow group members only
+        # local_group_id = rule["local_group_id"]
         remote_ip_prefix = rule["remote_ip_prefix"]
         security_group_id = rule["security_group_id"]
         apply_to = rule["apply_to"]
@@ -574,9 +575,14 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ANY_PROTOCOL = None
         ANY_TARGET = None
 
-        current = ResourceReference(target_type='IPSet',
-                                    target_display_name=security_group_id,
-                                    target_id=local_group_id)
+        # Set default security group rule to allow ANY
+        current = ANY_TARGET
+
+        # Set default security group rule to allow group members only
+        # When set it allowes inbout/outbound traffic only to group memebrs.
+        # current = ResourceReference(target_type='IPSet',
+        #                             target_display_name=security_group_id,
+        #                             target_id=local_group_id)
 
         applied_to = ResourceReference(
             target_type='NSGroup',
