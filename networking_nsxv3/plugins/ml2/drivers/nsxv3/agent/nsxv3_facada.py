@@ -628,7 +628,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                         .format(protocol, id))
             return None
 
-        current = [current]
+        current = [current] if current else None
         target = [target] if target else None
 
         return FirewallRule(
