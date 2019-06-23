@@ -41,9 +41,6 @@ class connection_retry_policy(object):
     def __call__(self, func):
         driver = self.driver
 
-        max_calls = cfg.CONF.NSXV3.nsxv3_requests_per_second
-
-        @RateLimiter(max_calls=max_calls, period=1)
         def decorator(self, *args, **kwargs):
 
             method = "{}.{}".format(self.__class__.__name__, func.__name__)
@@ -127,6 +124,16 @@ class NSXv3ClientImpl(NSXv3Client):
     def __init__(self):
         self.session = requests.session()
         self.stub_config = None
+
+        api_requests_per_second = cfg.CONF.NSXV3.nsxv3_requests_per_second
+
+        def limited(until):
+            seconds = int(round(until - time.time()))
+            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:d}s.'
+                        .format(api_requests_per_second, seconds))
+
+        self.api_limiter = RateLimiter(max_calls=api_requests_per_second,
+                                       period=1, callback=limited)
 
         if cfg.CONF.NSXV3.nsxv3_suppress_ssl_wornings:
             self.session.verify = False
@@ -215,12 +222,14 @@ class NSXv3ClientImpl(NSXv3Client):
 
     @connection_retry_policy(driver="rest")
     def _put(self, path, data):
-        return self.session.put(url=self._get_url(path),
-                                data=json.dumps(data))
+        with self.api_limiter:
+            return self.session.put(url=self._get_url(path),
+                                    data=json.dumps(data))
 
     @connection_retry_policy(driver="rest")
     def _delete(self, path):
-        return self.session.delete(url=self._get_url(path))
+        with self.api_limiter:
+            return self.session.delete(url=self._get_url(path))
 
     def _get_object(self, sdk_model, sdk_object):
         o = sdk_object
@@ -240,14 +249,16 @@ class NSXv3ClientImpl(NSXv3Client):
         LOG.info(msg)
 
         if sdk_id != 'None':
-            return self._get_object(sdk_model, svc.get(sdk_id))
+            with self.api_limiter:
+                return self._get_object(sdk_model, svc.get(sdk_id))
 
         # SDK does not support get object by display_name
         res = self._query(resource_type=sdk_type, key=sdk_key, ands=[sdk_name])
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
-            sdk_object = svc.get(res.pop()["id"])
+            with self.api_limiter:
+                sdk_object = svc.get(res.pop()["id"])
             return self._get_object(sdk_model, sdk_object)
         return None
 
@@ -259,7 +270,8 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Getting objects from service='{}' ... by '{}' ".format(svc_type,
                                                                       kwargs)
         LOG.info(msg)
-        return svc.list(**kwargs)
+        with self.api_limiter:
+            return svc.list(**kwargs)
 
     @connection_retry_policy(driver="sdk")
     def get_by_attr(self, sdk_service, sdk_model, attr_key, attr_val):
@@ -269,8 +281,8 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Getting '{}' {}='{}' ... ".format(sdk_type, attr_key, attr_val)
 
         LOG.info(msg)
-
-        res = svc.list(**{attr_key: attr_val})
+        with self.api_limiter:
+            res = svc.list(**{attr_key: attr_val})
         if res.result_count > 1:
             raise Exception("{} Ambiguous.".format(msg))
         if res.result_count == 0:
@@ -288,7 +300,8 @@ class NSXv3ClientImpl(NSXv3Client):
         sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
         if not sdk_obj:
             LOG.info(msg)
-            sdk_obj = svc.create(sdk_model)
+            with self.api_limiter:
+                sdk_obj = svc.create(sdk_model)
             params = {
                 "resource_type": sdk_type,
                 "key": "display_name",
@@ -320,7 +333,8 @@ class NSXv3ClientImpl(NSXv3Client):
                 sdk_id = sdk_obj.id
             else:
                 raise Exception("{} has failed. Object not found ".format(msg))
-        return svc.update(sdk_id, sdk_model)
+        with self.api_limiter:
+            return svc.update(sdk_id, sdk_model)
 
     @connection_retry_policy(driver="sdk")
     def delete(self, sdk_service, sdk_model):
@@ -340,10 +354,11 @@ class NSXv3ClientImpl(NSXv3Client):
                 return sdk_model
 
         # Not all services have cascade property
-        if 'cascade' in inspect.getargspec(svc.delete).args:
-            return svc.delete(sdk_id, cascade=True)
-        else:
-            return svc.delete(sdk_id)
+        with self.api_limiter:
+            if 'cascade' in inspect.getargspec(svc.delete).args:
+                return svc.delete(sdk_id, cascade=True)
+            else:
+                return svc.delete(sdk_id)
 
         LOG.warning("{} failed. Object not found ".format(msg))
         return sdk_model
@@ -352,7 +367,8 @@ class NSXv3ClientImpl(NSXv3Client):
     def batch(self, request_items, continue_on_error=True, atomic=True):
         req = BatchRequest(
             continue_on_error=continue_on_error, requests=request_items)
-        status = Batch(self.stub_config).create(req, atomic=atomic)
+        with self.api_limiter:
+            status = Batch(self.stub_config).create(req, atomic=atomic)
         return status
 
     def is_batch_successful(self, status):
