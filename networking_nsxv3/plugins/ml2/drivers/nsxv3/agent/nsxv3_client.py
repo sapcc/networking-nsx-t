@@ -67,7 +67,7 @@ class connection_retry_policy(object):
                     error_code = int(error["error_code"])
                     if 400 < error_code and error_code < 500:
                         LOG.error("Unauthorized: {}".format(error_msg))
-                        self._login()
+                        self.login()
                     else:
                         LOG.error("Error: {}".format(error_msg))
                         raise e
@@ -122,7 +122,7 @@ class NSXv3Client(object):
 class NSXv3ClientImpl(NSXv3Client):
 
     def __init__(self):
-        self.session = requests.session()
+        self.session = None
         self.stub_config = None
 
         api_requests_per_second = cfg.CONF.NSXV3.nsxv3_requests_per_second
@@ -135,28 +135,25 @@ class NSXv3ClientImpl(NSXv3Client):
         self.api_limiter = RateLimiter(max_calls=api_requests_per_second,
                                        period=1, callback=limited)
 
-        if cfg.CONF.NSXV3.nsxv3_suppress_ssl_wornings:
-            self.session.verify = False
-            requests.packages.urllib3.disable_warnings()
-
         self.base_url = 'https://{}:{}'.format(
             cfg.CONF.NSXV3.nsxv3_login_hostname,
             cfg.CONF.NSXV3.nsxv3_login_port
         )
 
-        self.stub_config = StubConfigurationFactory.new_std_configuration(
-            connect.get_requests_connector(
-                session=self.session,
-                msg_protocol='rest',
-                url=self.base_url))
-
-    def _login(self):
+    def login(self):
         LOG.info("Initializing NSXv3 session context.")
+
         login_url = ''.join((self.base_url, "/api/session/create"))
         login_data = {
             "j_username": cfg.CONF.NSXV3.nsxv3_login_user,
             "j_password": cfg.CONF.NSXV3.nsxv3_login_password
         }
+
+        self.session = requests.session()
+
+        if cfg.CONF.NSXV3.nsxv3_suppress_ssl_wornings:
+            self.session.verify = False
+            requests.packages.urllib3.disable_warnings()
 
         resp = self.session.post(login_url, data=login_data)
         if resp.status_code != requests.codes.ok:
@@ -167,10 +164,10 @@ class NSXv3ClientImpl(NSXv3Client):
         self.session.headers["Accept"] = "application/json"
         self.session.headers["Content-Type"] = "application/json"
 
-        connector = connect.get_requests_connector(
-            session=self.session, msg_protocol='rest', url=self.base_url)
-        self.stub_config = StubConfigurationFactory.new_std_configuration(
-            connector)
+        conr = connect.get_requests_connector(session=self.session,
+                                              msg_protocol='rest',
+                                              url=self.base_url)
+        self.stub_config = StubConfigurationFactory.new_std_configuration(conr)
         LOG.info("NSXv3 session context initalized.")
 
     def _get_query(self, resource_type, key, ands=[], ors=[], dsl="",

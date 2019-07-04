@@ -551,7 +551,7 @@ def cli_sync():
 
     nsxv3 = nsxv3_facada.NSXv3Facada()
     # Force login as NSXv3Manager will not be started as daemon.
-    nsxv3._login()
+    nsxv3.login()
     manager = NSXv3Manager(nsxv3=nsxv3)
     rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
 
