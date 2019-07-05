@@ -107,6 +107,10 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
                 add_rules=add_rules,
                 del_rules=del_rules)
 
+    def security_group_delete(self, security_group_id):
+        with LockManager.get_lock(security_group_id):
+            self.nsxv3.delete_security_group(security_group_id)
+
     # RPC method
     def security_groups_member_updated(self, context, **kwargs):
         o = kwargs["security_groups"]
@@ -287,7 +291,7 @@ class NSXv3AgentManagerRpcCallBackBase(
 
     def sync_security_group_orphaned(self, security_group_id):
         LOG.debug("Synching security group '{}'.".format(security_group_id))
-        self.nsxv3.delete_security_group(security_group_id)
+        self.security_group_delete(security_group_id)
 
     def get_name_revision_dict(self, query):
         limit = cfg.CONF.AGENT.db_max_records_per_query
@@ -551,7 +555,7 @@ def cli_sync():
 
     nsxv3 = nsxv3_facada.NSXv3Facada()
     # Force login as NSXv3Manager will not be started as daemon.
-    nsxv3._login()
+    nsxv3.login()
     manager = NSXv3Manager(nsxv3=nsxv3)
     rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
 

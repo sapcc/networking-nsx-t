@@ -226,7 +226,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         self.tz_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
 
     def setup(self):
-        self._login()
+        self.login()
         self.tz_id = self.get(sdk_service=TransportZones,
                               sdk_model=TransportZone(display_name=self.tz_name
                                                       )).id
