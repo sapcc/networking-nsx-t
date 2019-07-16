@@ -37,6 +37,8 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 
 LOG = logging.getLogger(__name__)
 
+AGENT_SYNCHRONIZATION_LOCK = "AGENT_SYNCHRONIZATION_LOCK"
+
 
 class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
@@ -148,38 +150,39 @@ class NSXv3AgentManagerRpcCallBackBase(
         return self.pool.running()
 
     def sync(self):
-        msg = "FULL SYNCHRONIZATION CYCLE - {}"
-        max_calls = cfg.CONF.AGENT.sync_requests_per_second
+        with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
+            msg = "FULL SYNCHRONIZATION CYCLE - {}"
+            max_calls = cfg.CONF.AGENT.sync_requests_per_second
 
-        @RateLimiter(max_calls=max_calls, period=1)
-        def spawn(func, *args, **kw):
-            self.pool.spawn(func, *args, **kw)
+            @RateLimiter(max_calls=max_calls, period=1)
+            def spawn(func, *args, **kw):
+                self.pool.spawn(func, *args, **kw)
 
-        LOG.info(msg.format("STARTED"))
-        (added, updated, orphaned) = self.get_sync_data(
-            sdk_model=QosSwitchingProfile(),
-            query=self.db.get_qos_policy_revision_tuples)
-        for id in added:
-            spawn(self.sync_qos, id)
-        for id in updated:
-            spawn(self.sync_qos, id)
+            LOG.info(msg.format("STARTED"))
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=QosSwitchingProfile(),
+                query=self.db.get_qos_policy_revision_tuples)
+            for id in added:
+                spawn(self.sync_qos, id)
+            for id in updated:
+                spawn(self.sync_qos, id)
 
-        (added, updated, orphaned) = self.get_sync_data(
-            sdk_model=LogicalPort(),
-            query=self.db.get_port_revision_tuples)
-        for id in updated:
-            spawn(self.sync_port, id)
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=LogicalPort(),
+                query=self.db.get_port_revision_tuples)
+            for id in updated:
+                spawn(self.sync_port, id)
 
-        (added, updated, orphaned) = self.get_sync_data(
-            sdk_model=IPSet(),
-            query=self.db.get_security_group_revision_tuples)
-        for id in updated:
-            self.pool.spawn(self.sync_security_group, id)
-        for id in added:
-            self.pool.spawn(self.sync_security_group, id)
-        for id in orphaned:
-            if nsxv3_utils.is_valid_uuid(id):
-                self.pool.spawn(self.sync_security_group_orphaned, id)
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=IPSet(),
+                query=self.db.get_security_group_revision_tuples)
+            for id in updated:
+                self.pool.spawn(self.sync_security_group, id)
+            for id in added:
+                self.pool.spawn(self.sync_security_group, id)
+            for id in orphaned:
+                if nsxv3_utils.is_valid_uuid(id):
+                    self.pool.spawn(self.sync_security_group_orphaned, id)
 
         self.pool.waitall()
         LOG.info(msg.format("COMPLETED"))
