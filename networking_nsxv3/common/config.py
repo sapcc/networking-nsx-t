@@ -47,6 +47,11 @@ agent_opts = [
         'db_max_records_per_query',
         default=2000,
         help="Neutron DB maximum rows per query request."
+    ),
+    cfg.BoolOpt(
+        'enable_runtime_migration_from_dvs_driver',
+        default=False,
+        help="Enable runtime migration from DVS ML2 Driver."
     )
 ]
 
