@@ -37,6 +37,12 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 
 LOG = logging.getLogger(__name__)
 
+AGENT_SYNCHRONIZATION_LOCK = "AGENT_SYNCHRONIZATION_LOCK"
+
+
+def is_migration_enabled():
+    return cfg.CONF.AGENT.enable_runtime_migration_from_dvs_driver
+
 
 class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
 
@@ -148,38 +154,39 @@ class NSXv3AgentManagerRpcCallBackBase(
         return self.pool.running()
 
     def sync(self):
-        msg = "FULL SYNCHRONIZATION CYCLE - {}"
-        max_calls = cfg.CONF.AGENT.sync_requests_per_second
+        with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
+            msg = "FULL SYNCHRONIZATION CYCLE - {}"
+            max_calls = cfg.CONF.AGENT.sync_requests_per_second
 
-        @RateLimiter(max_calls=max_calls, period=1)
-        def spawn(func, *args, **kw):
-            self.pool.spawn(func, *args, **kw)
+            @RateLimiter(max_calls=max_calls, period=1)
+            def spawn(func, *args, **kw):
+                self.pool.spawn(func, *args, **kw)
 
-        LOG.info(msg.format("STARTED"))
-        (added, updated, orphaned) = self.get_sync_data(
-            sdk_model=QosSwitchingProfile(),
-            query=self.db.get_qos_policy_revision_tuples)
-        for id in added:
-            spawn(self.sync_qos, id)
-        for id in updated:
-            spawn(self.sync_qos, id)
+            LOG.info(msg.format("STARTED"))
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=QosSwitchingProfile(),
+                query=self.db.get_qos_policy_revision_tuples)
+            for id in added:
+                spawn(self.sync_qos, id)
+            for id in updated:
+                spawn(self.sync_qos, id)
 
-        (added, updated, orphaned) = self.get_sync_data(
-            sdk_model=LogicalPort(),
-            query=self.db.get_port_revision_tuples)
-        for id in updated:
-            spawn(self.sync_port, id)
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=LogicalPort(),
+                query=self.db.get_port_revision_tuples)
+            for id in updated:
+                spawn(self.sync_port, id)
 
-        (added, updated, orphaned) = self.get_sync_data(
-            sdk_model=IPSet(),
-            query=self.db.get_security_group_revision_tuples)
-        for id in updated:
-            self.pool.spawn(self.sync_security_group, id)
-        for id in added:
-            self.pool.spawn(self.sync_security_group, id)
-        for id in orphaned:
-            if nsxv3_utils.is_valid_uuid(id):
-                self.pool.spawn(self.sync_security_group_orphaned, id)
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=IPSet(),
+                query=self.db.get_security_group_revision_tuples)
+            for id in updated:
+                self.pool.spawn(self.sync_security_group, id)
+            for id in added:
+                self.pool.spawn(self.sync_security_group, id)
+            for id in orphaned:
+                if nsxv3_utils.is_valid_uuid(id):
+                    self.pool.spawn(self.sync_security_group_orphaned, id)
 
         self.pool.waitall()
         LOG.info(msg.format("COMPLETED"))
@@ -327,7 +334,7 @@ class NSXv3AgentManagerRpcCallBackBase(
                     }
         return {}
 
-    @nsxv3_migration.migrator()
+    @nsxv3_migration.migrator(enabled=is_migration_enabled())
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
@@ -364,7 +371,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             )
         self.updated_devices.add(port['mac_address'])
 
-    @nsxv3_migration.migrator()
+    @nsxv3_migration.migrator(enabled=is_migration_enabled())
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))
         # Port is deleted by Nova when destroying the instance
@@ -613,5 +620,6 @@ def main():
         nsxv3_constants.NSXV3_BIN
     )
 
+    LOG.info("Activate runtime migration from ML2 DVS driver=%s", is_migration_enabled())
     LOG.info("VMware NSXv3 Agent initialized successfully.")
     service.launch(cfg.CONF, agent, restart_method='mutate').wait()

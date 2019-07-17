@@ -214,8 +214,9 @@ class NSXv3ClientImpl(NSXv3Client):
 
     @connection_retry_policy(driver="rest")
     def _post(self, path, data):
-        return self.session.post(url=self._get_url(path),
-                                 data=json.dumps(data))
+        with self.api_limiter:
+            return self.session.post(url=self._get_url(path),
+                                     data=json.dumps(data))
 
     @connection_retry_policy(driver="rest")
     def _put(self, path, data):

@@ -31,12 +31,11 @@ class NSXv3NVDsMigrator(object):
         self.args = args
         self.kwargs = kwargs
 
-    def decorate(self):
-        if hasattr(self, self.func.__name__):
+    def decorate(self, enabled):
+        if enabled and hasattr(self, self.func.__name__):
             func = getattr(self, self.func.__name__)
             return func(*self.args, **self.kwargs)
-        else:
-            return self.func(self.target, *self.args, **self.kwargs)
+        return self.func(self.target, *self.args, **self.kwargs)
 
     def _get_port_tags(self, port, scope):
         result = []
@@ -113,7 +112,14 @@ class NSXv3NVDsMigrator(object):
 
 
 class migrator(object):
+
+    def __init__(self, enabled):
+        self.migration_enabled = enabled
+
     def __call__(self, func):
+        enabled = self.migration_enabled
+
         def decorator(self, *args, **kwargs):
-            return NSXv3NVDsMigrator(self, func, *args, **kwargs).decorate()
+            return NSXv3NVDsMigrator(self, func, *args,
+                                     **kwargs).decorate(enabled)
         return decorator
