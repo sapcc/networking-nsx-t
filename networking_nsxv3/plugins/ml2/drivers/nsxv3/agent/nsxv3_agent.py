@@ -234,7 +234,9 @@ class NSXv3AgentManagerRpcCallBackBase(
             "allowed_address_pairs": [],
             "security_groups": [],
             "revision_number": rev,
-            "host": binding_host
+            "binding:host_id": binding_host,
+            portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
+            portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
         }
 
         segmentation_id = json.loads(vif_details).get("segmentation_id")
