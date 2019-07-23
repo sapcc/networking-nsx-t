@@ -31,7 +31,8 @@ class NSXv3NVDsMigrator(object):
         self.args = args
         self.kwargs = kwargs
 
-    def decorate(self, enabled):
+    def decorate(self):
+        enabled = cfg.CONF.AGENT.enable_runtime_migration_from_dvs_driver
         if enabled and hasattr(self, self.func.__name__):
             func = getattr(self, self.func.__name__)
             return func(*self.args, **self.kwargs)
@@ -114,12 +115,10 @@ class NSXv3NVDsMigrator(object):
 class migrator(object):
 
     def __init__(self, enabled):
-        self.migration_enabled = enabled
+        pass
 
     def __call__(self, func):
-        enabled = self.migration_enabled
-
         def decorator(self, *args, **kwargs):
             return NSXv3NVDsMigrator(self, func, *args,
-                                     **kwargs).decorate(enabled)
+                                     **kwargs).decorate()
         return decorator
