@@ -622,6 +622,7 @@ def main():
         nsxv3_constants.NSXV3_BIN
     )
 
-    LOG.info("Activate runtime migration from ML2 DVS driver=%s", is_migration_enabled())
+    LOG.info("Activate runtime migration from ML2 DVS driver=%s",
+             is_migration_enabled())
     LOG.info("VMware NSXv3 Agent initialized successfully.")
     service.launch(cfg.CONF, agent, restart_method='mutate').wait()

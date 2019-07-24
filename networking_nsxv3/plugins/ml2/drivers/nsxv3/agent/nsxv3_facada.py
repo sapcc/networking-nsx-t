@@ -526,12 +526,12 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             ret = self._post(path=path, data=data)
             if ret.status_code == 200:
                 # Optimization
-                # No need to parse response and load generated revision number as
-                # we are holders of the security group Lock
+                # No need to parse response and load generated revision number
+                # as we are holders of the security group Lock
                 revision += 1
             else:
                 LOG.error("Error post rule {}: {}"
-                            .format(sdk_obj.display_name, ret.content))
+                          .format(sdk_obj.display_name, ret.content))
 
         for rule_id in del_rules:
             self._delete(path="{}/{}".format(path, rule_id))
