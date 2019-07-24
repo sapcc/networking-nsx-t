@@ -336,7 +336,7 @@ class NSXv3AgentManagerRpcCallBackBase(
                     }
         return {}
 
-    @nsxv3_migration.migrator(enabled=is_migration_enabled())
+    @nsxv3_migration.migrator(is_enabled_callback=is_migration_enabled)
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
@@ -373,7 +373,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             )
         self.updated_devices.add(port['mac_address'])
 
-    @nsxv3_migration.migrator(enabled=is_migration_enabled())
+    @nsxv3_migration.migrator(is_enabled_callback=is_migration_enabled)
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))
         # Port is deleted by Nova when destroying the instance

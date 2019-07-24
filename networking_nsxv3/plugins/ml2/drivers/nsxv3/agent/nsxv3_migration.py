@@ -113,13 +113,13 @@ class NSXv3NVDsMigrator(object):
 
 class migrator(object):
 
-    def __init__(self, enabled):
-        self.migration_enabled = enabled
+    def __init__(self, is_enabled_callback):
+        self.is_migration_enabled_callback = is_enabled_callback
 
     def __call__(self, func):
-        enabled = self.migration_enabled
+        is_enabled = self.is_migration_enabled_callback
 
         def decorator(self, *args, **kwargs):
             return NSXv3NVDsMigrator(self, func, *args,
-                                     **kwargs).decorate(enabled)
+                                     **kwargs).decorate(is_enabled())
         return decorator

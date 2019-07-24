@@ -154,7 +154,7 @@ class NSXv3ClientImpl(NSXv3Client):
         if cfg.CONF.NSXV3.nsxv3_suppress_ssl_wornings:
             self.session.verify = False
             requests.packages.urllib3.disable_warnings()
-
+        
         resp = self.session.post(login_url, data=login_data)
         if resp.status_code != requests.codes.ok:
             resp.raise_for_status()
