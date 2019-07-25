@@ -326,9 +326,9 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Updating '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
 
         LOG.info(msg)
-        if not sdk_id:
+        if sdk_id == 'None':
             sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
-            if sdk_obj or sdk_obj.id:
+            if sdk_obj and sdk_obj.id:
                 sdk_id = sdk_obj.id
             else:
                 raise Exception("{} has failed. Object not found ".format(msg))
@@ -339,12 +339,12 @@ class NSXv3ClientImpl(NSXv3Client):
     def delete(self, sdk_service, sdk_model):
         svc = sdk_service(self.stub_config)
         sdk_type = str(sdk_model.__class__.__name__)
-        sdk_id = sdk_model.id
+        sdk_id = str(sdk_model.id)
         sdk_name = str(sdk_model.display_name)
         msg = "Deleting '{}' display_name='{}' ... ".format(sdk_type, sdk_name)
 
         LOG.info(msg)
-        if not sdk_id:
+        if sdk_id == 'None':
             sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
             if sdk_obj and sdk_obj.id:
                 sdk_id = sdk_obj.id
