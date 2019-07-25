@@ -523,17 +523,19 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         for sdk_obj in add_rules:
             data = nsxv3_utils.get_firewall_rule(sdk_obj)
             data["_revision"] = revision
+            LOG.debug("Creating Firewall Rule %s", json.dumps(data))
             ret = self._post(path=path, data=data)
             if ret.status_code == 200:
                 # Optimization
-                # No need to parse response and load generated revision number as
-                # we are holders of the security group Lock
+                # No need to parse response and load generated revision number
+                # as we are holders of the security group Lock
                 revision += 1
             else:
                 LOG.error("Error post rule {}: {}"
-                            .format(sdk_obj.display_name, ret.content))
+                          .format(sdk_obj.display_name, ret.content))
 
         for rule_id in del_rules:
+            LOG.debug("Removing Firewall Rule %s", rule_id)
             self._delete(path="{}/{}".format(path, rule_id))
 
         # Update Security Group (IP Set) revision_number when everythings is
