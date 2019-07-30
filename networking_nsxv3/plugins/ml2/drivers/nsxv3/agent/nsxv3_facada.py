@@ -678,7 +678,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
                 name_rev[name] = revision
                 name_id[name] = obj.get("id")
-            cycle = 1
+            cycle += 1
             if len(objs) < limit:
                 break
             cursor = cycle * limit
