@@ -55,20 +55,11 @@ def get_resource_reference(sdk_model):
 
 
 def get_service_reference(sdk_model):
-    service = {}
-    svc = sdk_model.service.__class__.__name__
-    sdk_model = sdk_model.service
-    if svc == "ICMPTypeNSService":
-        service["resource_type"] = "ICMPTypeNSService"
-        service["protocol"] = sdk_model.protocol
-        service["icmp_type"] = sdk_model.icmp_type
-        service["icmp_code"] = sdk_model.icmp_code
-    elif svc == "L4PortSetNSService":
-        service["resource_type"] = "L4PortSetNSService"
-        service["l4_protocol"] = sdk_model.l4_protocol
-        service["source_ports"] = sdk_model.source_ports
-        service["destination_ports"] = sdk_model.destination_ports
-    return {"service": service}
+    json = {}
+    for key, val in vars(sdk_model.service).iteritems():
+        if not key.startswith("_"):
+            json[key] = val
+    return {"service": json}
 
 
 def is_valid_uuid(uuid, version=4):
