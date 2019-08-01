@@ -1,3 +1,4 @@
+import ipaddress
 from oslo_log import log as logging
 from oslo_config import cfg
 import copy
@@ -596,6 +597,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             is_valid=True,
             target_display_name=security_group_id)
 
+        if remote_ip_prefix:
+            remote_ip_prefix = str(ipaddress.ip_network(unicode(remote_ip_prefix), strict=False))
         if remote_group_id:
             target = ResourceReference(
                 target_type='IPSet',
