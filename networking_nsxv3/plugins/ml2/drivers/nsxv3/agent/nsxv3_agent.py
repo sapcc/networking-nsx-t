@@ -181,12 +181,12 @@ class NSXv3AgentManagerRpcCallBackBase(
                 sdk_model=IPSet(),
                 query=self.db.get_security_group_revision_tuples)
             for id in updated:
-                self.pool.spawn(self.sync_security_group, id)
+                spawn(self.sync_security_group, id)
             for id in added:
-                self.pool.spawn(self.sync_security_group, id)
+                spawn(self.sync_security_group, id)
             for id in orphaned:
                 if nsxv3_utils.is_valid_uuid(id):
-                    self.pool.spawn(self.sync_security_group_orphaned, id)
+                    spawn(self.sync_security_group_orphaned, id)
 
         self.pool.waitall()
         LOG.info(msg.format("COMPLETED"))
