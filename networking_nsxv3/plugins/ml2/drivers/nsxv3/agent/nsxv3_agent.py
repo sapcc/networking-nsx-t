@@ -3,6 +3,7 @@ import json
 import os
 import sys
 
+import netaddr
 import oslo_messaging
 from com.vmware.nsx.model_client import (FirewallRule,
                                          IPSet,
@@ -57,7 +58,7 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
             ip2 = self.db._get_security_group_members_address_bindings_ips(
                 sg_id)
 
-            members = [str(ip[0]) for ip in ip1 + ip2]
+            members = [str(ip) for ip in netaddr.IPSet([str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
             self.nsxv3.update_security_group_members(sg_id, members)
 
     def security_group_rule_updated(self, security_group_id):
