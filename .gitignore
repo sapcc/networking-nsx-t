@@ -12,3 +12,4 @@ developer/
 networking_nsx_t.egg-info
 *.egg-info
 *.pyc
+venv*
