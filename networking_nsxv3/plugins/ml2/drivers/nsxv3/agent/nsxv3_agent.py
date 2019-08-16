@@ -57,7 +57,8 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
             ip2 = self.db._get_security_group_members_address_bindings_ips(
                 sg_id)
 
-            members = [str(ip) for ip in netaddr.IPSet([str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
+            members = [str(ip) for ip in netaddr.IPSet(
+                [str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
             self.nsxv3.update_security_group_members(sg_id, members)
 
     def security_group_rule_updated(self, security_group_id):
@@ -151,13 +152,13 @@ class NSXv3AgentManagerRpcCallBackBase(
         self.pool_jobs = eventlet.greenpool.GreenPool(1)
         self.pool_workers = eventlet.greenpool.GreenPool(
             cfg.CONF.AGENT.sync_pool_size)
-    
+
     def sync_all(self):
         if self.pool_jobs.running() == 0:
             self.pool_jobs.spawn_n(self._sync_all)
         else:
             LOG.info("IN PROGRESS SYNCHRONIZATION - ACTIVE WORKERS '{}'"
-                         .format(self.pool_workers.running()))
+                     .format(self.pool_workers.running()))
 
     def _sync_all(self):
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):

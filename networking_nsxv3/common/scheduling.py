@@ -3,9 +3,13 @@ import time
 import functools
 import collections
 
+from oslo_log import log as logging
+
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
+
+LOG = logging.getLogger(__name__)
 
 
 class Scheduler(object):
@@ -46,6 +50,7 @@ class Scheduler(object):
                     eventlet.greenthread.sleep(sleeptime)
                 run_time = self.schedule[offset] + self.limit
             self.schedule.append(run_time)
+            LOG.debug("Executing function at {}".format(time.time()))
             return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
