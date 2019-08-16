@@ -1,4 +1,3 @@
-import ipaddress
 from oslo_log import log as logging
 from oslo_config import cfg
 import copy
@@ -459,9 +458,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         qos_spec["resource_type"] = qos.resource_type
         qos_spec["_revision"] = qos.revision
 
-        url = "{}/{}/{}".format(
+        path = "{}/{}/{}".format(
             self.base_url, "api/v1/switching-profiles", qos_spec["id"])
-        return self._put(url=url, data=json.dumps(qos_spec))
+        return self._put(path=path, data=json.dumps(qos_spec))
 
     def get_or_create_security_group(self, security_group_id):
         ips_spec = IPSet(
@@ -597,8 +596,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             is_valid=True,
             target_display_name=security_group_id)
 
-        if remote_ip_prefix:
-            remote_ip_prefix = str(ipaddress.ip_network(unicode(remote_ip_prefix), strict=False))
         if remote_group_id:
             target = ResourceReference(
                 target_type='IPSet',

@@ -19,8 +19,6 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
 
-from ratelimiter import RateLimiter
-
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
@@ -29,6 +27,7 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_migration
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import vsphere_client
+from networking_nsxv3.common.scheduling import Scheduler
 
 # Eventlet Best Practices
 # https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
@@ -157,9 +156,9 @@ class NSXv3AgentManagerRpcCallBackBase(
     def sync(self):
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
             msg = "FULL SYNCHRONIZATION CYCLE - {}"
-            max_calls = cfg.CONF.AGENT.sync_requests_per_second
+            rate = cfg.CONF.AGENT.sync_requests_per_second
 
-            @RateLimiter(max_calls=max_calls, period=1)
+            @Scheduler(rate=rate, limit=1)
             def spawn(func, *args, **kw):
                 self.pool.spawn(func, *args, **kw)
 

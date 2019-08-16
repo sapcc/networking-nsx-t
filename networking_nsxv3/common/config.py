@@ -24,7 +24,7 @@ agent_opts = [
     cfg.IntOpt(
         'sync_requests_per_second',
         default=10,
-        help='''Requests per second synchronizing OpenStack and NSXv3.'''
+        help='''Objects per second synchronizing OpenStack and NSXv3.'''
     ),
     cfg.IntOpt(
         'locking_coordinator_url',
