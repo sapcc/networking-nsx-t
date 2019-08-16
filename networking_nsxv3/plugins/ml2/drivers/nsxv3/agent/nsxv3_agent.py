@@ -148,47 +148,61 @@ class NSXv3AgentManagerRpcCallBackBase(
         self.nsxv3 = nsxv3
         self.vsphere = vsphere
         self.db = db
-        self.pool = eventlet.greenpool.GreenPool(cfg.CONF.AGENT.sync_pool_size)
+        self.pool_jobs = eventlet.greenpool.GreenPool(1)
+        self.pool_workers = eventlet.greenpool.GreenPool(
+            cfg.CONF.AGENT.sync_pool_size)
+    
+    def sync_all(self):
+        if self.pool_jobs.running() == 0:
+            self.pool_jobs.spawn_n(self._sync_all)
+        else:
+            LOG.info("IN PROGRESS SYNCHRONIZATION - ACTIVE WORKERS '{}'"
+                         .format(self.pool_workers.running()))
 
-    def get_active_workers(self):
-        return self.pool.running()
-
-    def sync(self):
+    def _sync_all(self):
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
             msg = "FULL SYNCHRONIZATION CYCLE - {}"
             rate = cfg.CONF.AGENT.sync_requests_per_second
 
             @Scheduler(rate=rate, limit=1)
             def spawn(func, *args, **kw):
-                self.pool.spawn(func, *args, **kw)
+                self.pool_workers.spawn_n(func, *args, **kw)
 
             LOG.info(msg.format("STARTED"))
-            (added, updated, orphaned) = self.get_sync_data(
-                sdk_model=QosSwitchingProfile(),
-                query=self.db.get_qos_policy_revision_tuples)
-            for id in added:
-                spawn(self.sync_qos, id)
-            for id in updated:
-                spawn(self.sync_qos, id)
-
-            (added, updated, orphaned) = self.get_sync_data(
-                sdk_model=LogicalPort(),
-                query=self.db.get_port_revision_tuples)
-            for id in updated:
-                spawn(self.sync_port, id)
 
             (added, updated, orphaned) = self.get_sync_data(
                 sdk_model=IPSet(),
                 query=self.db.get_security_group_revision_tuples)
-            for id in updated:
-                spawn(self.sync_security_group, id)
-            for id in added:
-                spawn(self.sync_security_group, id)
-            for id in orphaned:
-                if nsxv3_utils.is_valid_uuid(id):
-                    spawn(self.sync_security_group_orphaned, id)
+            # Create all Security Groups before use their references in rules
+            # Creating FirewallSections, IPSets, NSGroups without FirewallRules
+            for oid in added:
+                spawn(self.sync_security_group, oid, update_rules=False)
+            self.pool_workers.waitall()
 
-        self.pool.waitall()
+            # Creating all FirewallRules and update Revisions
+            for oid in added:
+                spawn(self.sync_security_group, oid)
+            for oid in updated:
+                spawn(self.sync_security_group, oid)
+            for oid in orphaned:
+                if nsxv3_utils.is_valid_uuid(id):
+                    spawn(self.sync_security_group_orphaned, oid)
+
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=QosSwitchingProfile(),
+                query=self.db.get_qos_policy_revision_tuples)
+            for oid in added:
+                spawn(self.sync_qos, oid)
+            for oid in updated:
+                spawn(self.sync_qos, oid)
+
+            (added, updated, orphaned) = self.get_sync_data(
+                sdk_model=LogicalPort(),
+                query=self.db.get_port_revision_tuples)
+            for oid in updated:
+                spawn(self.sync_port, oid)
+
+        self.pool_workers.waitall()
         LOG.info(msg.format("COMPLETED"))
 
     def get_sync_delta(self, db_dict, ep_dict):
@@ -293,10 +307,11 @@ class NSXv3AgentManagerRpcCallBackBase(
         # except Exception as e:
         #     LOG.error("Unable to update policy '{}'".format(e))
 
-    def sync_security_group(self, security_group_id):
+    def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching security group '{}'.".format(security_group_id))
         self.security_group_member_updated(security_group_id)
-        self.security_group_rule_updated(security_group_id)
+        if update_rules:
+            self.security_group_rule_updated(security_group_id)
 
     def sync_security_group_orphaned(self, security_group_id):
         LOG.debug("Synching security group '{}'.".format(security_group_id))
@@ -427,12 +442,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
 
         if self.rpc:
-            active_workers = self.rpc.get_active_workers()
-            if active_workers == 0:
-                eventlet.spawn(self.rpc.sync)
-            else:
-                LOG.info("IN PROGRESS SYNCHRONIZATION - ACTIVE WORKERS '{}'"
-                         .format(active_workers))
+            self.rpc.sync_all()
         return set()
 
     def get_devices_modified_timestamps(self, devices):
