@@ -32,7 +32,7 @@
         - { section: "AGENT", option: "locking_coordinator_url", value: "{{ locking_coordinator_url }}" }
         - { section: "AGENT", option: "polling_interval", value: "{{ polling_interval }}" }
         - { section: "AGENT", option: "quitting_rpc_timeout", value: "{{ quitting_rpc_timeout }}" }
-        - { section: "AGENT", option: "db_max_records_per_query", value: "{{ db_max_records_per_query }}" }
+        - { section: "AGENT", option: "rpc_max_records_per_query", value: "{{ rpc_max_records_per_query }}" }
         - { section: "AGENT_CLI", option: "neutron_security_group_id", value: "{{ neutron_security_group_id }}" }
         - { section: "AGENT_CLI", option: "neutron_port_id", value: "{{ neutron_port_id }}" }
         - { section: "AGENT_CLI", option: "neutron_qos_policy_id", value: "{{ neutron_qos_policy_id }}" }

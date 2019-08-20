@@ -27,3 +27,4 @@ NSXV3_MIGRATION_TAG_NVDS = "nvds"
 #   1.4 Added support for network_update
 #   1.5 Added binding_activate and binding_deactivate
 RPC_VERSION = '1.5'
+NSXV3_SERVER_RPC_VERSION = '1.0'
