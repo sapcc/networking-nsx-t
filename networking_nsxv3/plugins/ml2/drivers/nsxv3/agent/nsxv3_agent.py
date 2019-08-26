@@ -186,7 +186,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             for oid in updated:
                 spawn(self.sync_security_group, oid)
             for oid in orphaned:
-                if nsxv3_utils.is_valid_uuid(id):
+                if nsxv3_utils.is_valid_uuid(oid):
                     spawn(self.sync_security_group_orphaned, oid)
 
             (added, updated, orphaned) = self.get_sync_data(
