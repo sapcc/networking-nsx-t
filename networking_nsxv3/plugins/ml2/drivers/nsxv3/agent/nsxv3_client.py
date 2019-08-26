@@ -6,8 +6,6 @@ import inspect
 from oslo_config import cfg
 from oslo_log import log as logging
 
-from ratelimiter import RateLimiter
-
 from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
@@ -22,6 +20,8 @@ from com.vmware.nsx.model_client import IpDiscoverySwitchingProfile
 from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
 from com.vmware.vapi.std.errors_client import Unauthorized
+
+from networking_nsxv3.common.scheduling import Scheduler
 
 LOG = logging.getLogger(__name__)
 
@@ -128,12 +128,12 @@ class NSXv3ClientImpl(NSXv3Client):
         api_requests_per_second = cfg.CONF.NSXV3.nsxv3_requests_per_second
 
         def limited(until):
-            seconds = int(round(until - time.time()))
-            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:d}s.'
+            seconds = until - time.time()
+            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'
                         .format(api_requests_per_second, seconds))
 
-        self.api_limiter = RateLimiter(max_calls=api_requests_per_second,
-                                       period=1, callback=limited)
+        self.api_scheduler = Scheduler(rate=api_requests_per_second,
+                                       limit=1, callback=limited)
 
         self.base_url = 'https://{}:{}'.format(
             cfg.CONF.NSXV3.nsxv3_login_hostname,
@@ -143,7 +143,7 @@ class NSXv3ClientImpl(NSXv3Client):
     def login(self):
         LOG.info("Initializing NSXv3 session context.")
 
-        login_url = ''.join((self.base_url, "/api/session/create"))
+        login_path = "/api/session/create"
         login_data = {
             "j_username": cfg.CONF.NSXV3.nsxv3_login_user,
             "j_password": cfg.CONF.NSXV3.nsxv3_login_password
@@ -155,8 +155,7 @@ class NSXv3ClientImpl(NSXv3Client):
             self.session.verify = False
             requests.packages.urllib3.disable_warnings()
 
-        with self.api_limiter:
-            resp = self.session.post(login_url, data=login_data)
+        resp = self._post(path=login_path, data=login_data, asJson=False)
         if resp.status_code != requests.codes.ok:
             resp.raise_for_status()
 
@@ -214,20 +213,20 @@ class NSXv3ClientImpl(NSXv3Client):
         return json.loads(resp.content)["result"]["results"]
 
     @connection_retry_policy(driver="rest")
-    def _post(self, path, data):
-        with self.api_limiter:
+    def _post(self, path, data, asJson=True):
+        with self.api_scheduler:
             return self.session.post(url=self._get_url(path),
-                                     data=json.dumps(data))
+                                     data=json.dumps(data) if asJson else data)
 
     @connection_retry_policy(driver="rest")
     def _put(self, path, data):
-        with self.api_limiter:
+        with self.api_scheduler:
             return self.session.put(url=self._get_url(path),
                                     data=json.dumps(data))
 
     @connection_retry_policy(driver="rest")
     def _delete(self, path):
-        with self.api_limiter:
+        with self.api_scheduler:
             return self.session.delete(url=self._get_url(path))
 
     def _get_object(self, sdk_model, sdk_object):
@@ -248,7 +247,7 @@ class NSXv3ClientImpl(NSXv3Client):
         LOG.info(msg)
 
         if sdk_id != 'None':
-            with self.api_limiter:
+            with self.api_scheduler:
                 return self._get_object(sdk_model, svc.get(sdk_id))
 
         # SDK does not support get object by display_name
@@ -256,7 +255,7 @@ class NSXv3ClientImpl(NSXv3Client):
         if len(res) > 1:
             raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
-            with self.api_limiter:
+            with self.api_scheduler:
                 sdk_object = svc.get(res.pop()["id"])
             return self._get_object(sdk_model, sdk_object)
         return None
@@ -269,7 +268,7 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Getting objects from service='{}' ... by '{}' ".format(svc_type,
                                                                       kwargs)
         LOG.info(msg)
-        with self.api_limiter:
+        with self.api_scheduler:
             return svc.list(**kwargs)
 
     @connection_retry_policy(driver="sdk")
@@ -280,7 +279,7 @@ class NSXv3ClientImpl(NSXv3Client):
         msg = "Getting '{}' {}='{}' ... ".format(sdk_type, attr_key, attr_val)
 
         LOG.info(msg)
-        with self.api_limiter:
+        with self.api_scheduler:
             res = svc.list(**{attr_key: attr_val})
         if res.result_count > 1:
             raise Exception("{} Ambiguous.".format(msg))
@@ -299,7 +298,7 @@ class NSXv3ClientImpl(NSXv3Client):
         sdk_obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
         if not sdk_obj:
             LOG.info(msg)
-            with self.api_limiter:
+            with self.api_scheduler:
                 sdk_obj = svc.create(sdk_model)
             params = {
                 "resource_type": sdk_type,
@@ -332,7 +331,7 @@ class NSXv3ClientImpl(NSXv3Client):
                 sdk_id = sdk_obj.id
             else:
                 raise Exception("{} has failed. Object not found ".format(msg))
-        with self.api_limiter:
+        with self.api_scheduler:
             return svc.update(sdk_id, sdk_model)
 
     @connection_retry_policy(driver="sdk")
@@ -353,7 +352,7 @@ class NSXv3ClientImpl(NSXv3Client):
                 return sdk_model
 
         # Not all services have cascade property
-        with self.api_limiter:
+        with self.api_scheduler:
             if 'cascade' in inspect.getargspec(svc.delete).args:
                 return svc.delete(sdk_id, cascade=True)
             else:
@@ -366,7 +365,7 @@ class NSXv3ClientImpl(NSXv3Client):
     def batch(self, request_items, continue_on_error=True, atomic=True):
         req = BatchRequest(
             continue_on_error=continue_on_error, requests=request_items)
-        with self.api_limiter:
+        with self.api_scheduler:
             status = Batch(self.stub_config).create(req, atomic=atomic)
         return status
 
