@@ -599,15 +599,16 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         if remote_ip_prefix:
             remote_ip_prefix = str(ipaddress.ip_network(unicode(remote_ip_prefix), strict=False))
+
         if remote_group_id:
             target = ResourceReference(
                 target_type='IPSet',
                 target_id=remote_group_id,
                 is_valid=True,
                 target_display_name=security_group_id)
-        elif remote_ip_prefix is None:
+        elif remote_ip_prefix is None or remote_ip_prefix == '0.0.0.0/0':
             target = ANY_TARGET
-        elif remote_ip_prefix != '0.0.0.0/0':
+        else:
             target = ResourceReference(target_type=PROTOCOL_TYPES[ethertype],
                                        target_display_name=remote_ip_prefix,
                                        target_id=remote_ip_prefix,
