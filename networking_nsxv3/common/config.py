@@ -44,9 +44,9 @@ agent_opts = [
     #     help="NSXv3 agent RPC timeout in seconds."
     # ),
     cfg.IntOpt(
-        'db_max_records_per_query',
+        'rpc_max_records_per_query',
         default=2000,
-        help="Neutron DB maximum rows per query request."
+        help="Neutron RPC maximum records per query."
     ),
     cfg.BoolOpt(
         'enable_runtime_migration_from_dvs_driver',
@@ -137,7 +137,7 @@ nsxv3_opts = [
     cfg.IntOpt(
         'nsxv3_max_records_per_query',
         default=2000,
-        help="Neutron DB maximum rows per query request."
+        help="Neutron RPC maximum records per query request."
     )
 ]
 

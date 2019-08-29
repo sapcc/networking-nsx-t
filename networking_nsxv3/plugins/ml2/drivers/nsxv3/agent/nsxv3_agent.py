@@ -22,7 +22,7 @@ from oslo_service import service
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.db import db as db_queries
+from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_migration
@@ -53,8 +53,8 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
         with LockManager.get_lock(sg_id):
             (ipset, _, _) = self.nsxv3.get_or_create_security_group(sg_id)
 
-            ip1 = self.db._get_security_group_members_ips(sg_id)
-            ip2 = self.db._get_security_group_members_address_bindings_ips(
+            ip1 = self.rpc.get_security_group_members_ips(sg_id)
+            ip2 = self.rpc.get_security_group_members_address_bindings_ips(
                 sg_id)
 
             members = [str(ip) for ip in netaddr.IPSet(
@@ -77,14 +77,14 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
                                         attr_val=sec.id)
 
             nsx_rules = rul_name_id
-            db_rules = self.db._get_rules_for_security_groups_id(sg_id)
+            neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
 
             attrs = ["id", "port_range_min", "port_range_max", "protocol",
                      "ethertype", "direction", "remote_group_id",
                      "remote_ip_prefix", "security_group_id"]
 
             add_rules = []
-            for rule in db_rules:
+            for rule in neutron_rules:
                 name = rule["id"]
                 remote_group_id = rule["remote_group_id"]
 
@@ -106,7 +106,7 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
                     add_rules.append(fwr)
             del_rules = nsx_rules.values()
 
-            (sg_id, revision) = self.db.get_security_group_revision(sg_id)
+            (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
 
             self.nsxv3.update_security_group_rules(
                 sg_id,
@@ -143,12 +143,12 @@ class NSXv3AgentManagerRpcCallBackBase(
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, agent, sg_agent, nsxv3, vsphere, db):
+    def __init__(self, context, agent, sg_agent, nsxv3, vsphere, rpc):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
             context, agent, sg_agent)
         self.nsxv3 = nsxv3
         self.vsphere = vsphere
-        self.db = db
+        self.rpc = rpc
         self.pool_jobs = eventlet.greenpool.GreenPool(1)
         self.pool_workers = eventlet.greenpool.GreenPool(
             cfg.CONF.AGENT.sync_pool_size)
@@ -173,7 +173,7 @@ class NSXv3AgentManagerRpcCallBackBase(
 
             (added, updated, orphaned) = self.get_sync_data(
                 sdk_model=IPSet(),
-                query=self.db.get_security_group_revision_tuples)
+                query=self.rpc.get_security_group_revision_tuples)
             # Create all Security Groups before use their references in rules
             # Creating FirewallSections, IPSets, NSGroups without FirewallRules
             for oid in added:
@@ -191,7 +191,7 @@ class NSXv3AgentManagerRpcCallBackBase(
 
             (added, updated, orphaned) = self.get_sync_data(
                 sdk_model=QosSwitchingProfile(),
-                query=self.db.get_qos_policy_revision_tuples)
+                query=self.rpc.get_qos_policy_revision_tuples)
             for oid in added:
                 spawn(self.sync_qos, oid)
             for oid in updated:
@@ -199,36 +199,36 @@ class NSXv3AgentManagerRpcCallBackBase(
 
             (added, updated, orphaned) = self.get_sync_data(
                 sdk_model=LogicalPort(),
-                query=self.db.get_port_revision_tuples)
+                query=self.rpc.get_port_revision_tuples)
             for oid in updated:
                 spawn(self.sync_port, oid)
 
         self.pool_workers.waitall()
         LOG.info(msg.format("COMPLETED"))
 
-    def get_sync_delta(self, db_dict, ep_dict):
-        orphaned = ep_dict.copy()
+    def get_sync_delta(self, neutron_dict, nsxv3_dict):
+        orphaned = nsxv3_dict.copy()
         added = {}
         updated = {}
 
         # OpenStack is single source of truth
-        for id in db_dict:
+        for id in neutron_dict:
             if id in orphaned:
                 ep_revision = orphaned.pop(id)
-                if db_dict[id] != ep_revision:
-                    updated[id] = db_dict[id]
+                if neutron_dict[id] != ep_revision:
+                    updated[id] = neutron_dict[id]
             else:
-                added[id] = db_dict[id]
+                added[id] = neutron_dict[id]
         return (added, updated, orphaned)
 
     def get_sync_data(self, sdk_model, query):
         sdk_type = sdk_model.__class__.__name__
-        db = self.get_name_revision_dict(query=query)
+        neutron_dict = self.get_name_revision_dict(query=query)
         (name_revision, _) = self.nsxv3.get_name_revision_dict(
             sdk_model=sdk_model)
 
         (added, updated, orphaned) = self.get_sync_delta(
-            db_dict=db, ep_dict=name_revision)
+            neutron_dict=neutron_dict, nsxv3_dict=name_revision)
         LOG.info("Neutron -> NSX create {}={}".format(sdk_type, added))
         LOG.info("Neutron -> NSX update {}={}".format(sdk_type, updated))
         LOG.info("Neutron -> NSX orphan {}={}".format(sdk_type, orphaned))
@@ -238,7 +238,7 @@ class NSXv3AgentManagerRpcCallBackBase(
         LOG.debug("Synching port '{}'.".format(port_id))
 
         (id, mac, up, status, qos_id, rev,
-         binding_host, vif_details) = self.db.get_port(port_id)
+         binding_host, vif_details) = self.rpc.get_port(port_id)
         port = {
             "id": id,
             "mac_address": mac,
@@ -256,11 +256,11 @@ class NSXv3AgentManagerRpcCallBackBase(
 
         segmentation_id = json.loads(vif_details).get("segmentation_id")
 
-        for ip, subnet in self.db.get_port_addresses(port_id):
+        for ip, subnet in self.rpc.get_port_addresses(port_id):
             port["fixed_ips"].append(
                 {"ip_address": ip, "mac_address": mac, "subnet_id": subnet})
 
-        for (ip, mac) in self.db.get_port_allowed_pairs(port_id):
+        for (ip, mac) in self.rpc.get_port_allowed_pairs(port_id):
             # TODO - fix in future.
             # NSX-T does not support CIDR as port manual binding
             if "/" in ip:
@@ -268,7 +268,7 @@ class NSXv3AgentManagerRpcCallBackBase(
             port["allowed_address_pairs"].append(
                 {"ip_address": ip, "mac_address": mac})
 
-        for (sg_id,) in self.db.get_port_security_groups(port_id):
+        for (sg_id,) in self.rpc.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
 
         self.port_update(context=None, port=port,
@@ -276,9 +276,9 @@ class NSXv3AgentManagerRpcCallBackBase(
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
-        (qos_name, qos_revision_number) = self.db.get_qos(qos_id)
-        bwls_rules = self.db.get_qos_bwl_rules(qos_id)
-        dscp_rules = self.db.get_qos_dscp_rules(qos_id)
+        (qos_name, qos_revision_number) = self.rpc.get_qos(qos_id)
+        bwls_rules = self.rpc.get_qos_bwl_rules(qos_id)
+        dscp_rules = self.rpc.get_qos_dscp_rules(qos_id)
 
         rules = []
         if dscp_rules:
@@ -319,7 +319,7 @@ class NSXv3AgentManagerRpcCallBackBase(
         self.security_group_delete(security_group_id)
 
     def get_name_revision_dict(self, query):
-        limit = cfg.CONF.AGENT.db_max_records_per_query
+        limit = cfg.CONF.AGENT.rpc_max_records_per_query
         id_rev = {}
         created_after = datetime.datetime(1970, 1, 1)
         while True:
@@ -428,7 +428,9 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.nsxv3 = nsxv3
         self.vsphere = vsphere
         self.rpc = None
-        self.db = db_queries.DB(config=cfg.CONF, context=context)
+        self.rpc_plugin = nsxv3_rpc.NSXv3ServerRpcApi(context,
+                                                      topics.PLUGIN,
+                                                      cfg.CONF.host)
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -512,7 +514,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
                 sg_agent=sg_agent,
                 nsxv3=self.nsxv3,
                 vsphere=self.vsphere,
-                db=self.db)
+                rpc=self.rpc_plugin)
         return self.rpc
 
     def get_agent_api(self, **kwargs):

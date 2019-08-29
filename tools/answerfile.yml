@@ -26,7 +26,7 @@ locking_coordinator_url: ""
 # 24 hours = 86400 seconds
 polling_interval: "86400"
 quitting_rpc_timeout: "5"
-db_max_records_per_query: "2000"
+rpc_max_records_per_query: "2000"
 
 # AGENT_CLI
 neutron_security_group_id:
