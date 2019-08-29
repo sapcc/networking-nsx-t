@@ -201,7 +201,6 @@ class NSXv3ServerRpcApi(object):
                           security_group_id=security_group_id)
 
 
-
 class NSXv3ServerRpcCallback(object):
     """Plugin-side RPC (implementation) for agent-to-plugin interaction.
     This class implements the server side of an rpc interface.  The client
@@ -209,10 +208,8 @@ class NSXv3ServerRpcCallback(object):
     changing rpc interfaces, see doc/source/contributor/internals/rpc_api.rst.
     """
 
-    rpc_version=nsxv3_constants.NSXV3_SERVER_RPC_VERSION
-
-    def __init__(self):
-        target = oslo_messaging.Target(version=self.rpc_version)
+    rpc_version = nsxv3_constants.NSXV3_SERVER_RPC_VERSION
+    target = oslo_messaging.Target(version=rpc_version)
 
     @property
     def plugin(self):
@@ -220,47 +217,61 @@ class NSXv3ServerRpcCallback(object):
             self._plugin = directory.get_plugin()
         return self._plugin
 
+    @log_helpers.log_method_call
     def get_port_revision_tuples(self, context, host, limit, created_after):
         return db.get_port_revision_tuples(context, host, limit, created_after)
 
+    @log_helpers.log_method_call
     def get_qos_policy_revision_tuples(self, context, limit, created_after):
         return db.get_qos_policy_revision_tuples(context, limit, created_after)
 
+    @log_helpers.log_method_call
     def get_security_group_revision(self, context, security_group_id):
         return db.get_security_group_revision(context, security_group_id)
-    
+
+    @log_helpers.log_method_call
     def get_security_group_revision_tuples(
             self, context, limit, created_after):
         return db.get_security_group_revision_tuples(
             context, limit, created_after)
 
+    @log_helpers.log_method_call
     def get_qos(self, context, qos_id):
         return db.get_qos(context, qos_id)
 
+    @log_helpers.log_method_call
     def get_qos_bwl_rules(self, context, qos_id):
         return db.get_qos_bwl_rules(context, qos_id)
 
+    @log_helpers.log_method_call
     def get_qos_dscp_rules(self, context, qos_id):
         return db.get_qos_dscp_rules(context, qos_id)
 
+    @log_helpers.log_method_call
     def get_port(self, context, port_id):
         return db.get_port(context, port_id)
 
+    @log_helpers.log_method_call
     def get_port_security_groups(self, context, port_id):
         return db.get_port_security_groups(context, port_id)
 
+    @log_helpers.log_method_call
     def get_port_allowed_pairs(self, context, port_id):
         return db.get_port_allowed_pairs(context, port_id)
 
+    @log_helpers.log_method_call
     def get_port_addresses(self, context, port_id):
         return db.get_port_addresses(context, port_id)
 
+    @log_helpers.log_method_call
     def get_rules_for_security_groups_id(self, context, security_group_id):
         return db.get_rules_for_security_groups_id(context, security_group_id)
 
+    @log_helpers.log_method_call
     def get_security_group_members_ips(self, context, security_group_id):
         return db.get_security_group_members_ips(context, security_group_id)
 
+    @log_helpers.log_method_call
     def get_security_group_members_address_bindings_ips(self, context,
                                                         security_group_id):
         return db.get_security_group_members_address_bindings_ips(

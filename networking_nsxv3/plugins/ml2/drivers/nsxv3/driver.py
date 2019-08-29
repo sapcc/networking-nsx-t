@@ -61,7 +61,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.trunk = nsxv3_trunk.NSXv3TrunkDriver.create()
         self.qos = nsxv3_qos.NSXv3QosDriver.create(self.rpc)
 
-        conn = rpc.Connection()
+        conn = rpc.create_connection()
         conn.create_consumer(topics.PLUGIN, 
                              [nsxv3_rpc.NSXv3ServerRpcCallback()], 
                              fanout=False)
