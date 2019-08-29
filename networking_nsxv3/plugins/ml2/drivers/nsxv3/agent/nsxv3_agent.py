@@ -429,7 +429,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.vsphere = vsphere
         self.rpc = None
         self.rpc_plugin = nsxv3_rpc.NSXv3ServerRpcApi(context,
-                                                      topics.PLUGIN,
+                                                      nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
                                                       cfg.CONF.host)
 
     def get_all_devices(self):

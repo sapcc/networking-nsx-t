@@ -121,7 +121,7 @@ class NSXv3ServerRpcApi(object):
     def get_port_revision_tuples(
             self, limit=_LIMIT, created_after=_CREATE_AFTER):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port_revision_tuples', self.host,
+        return cctxt.call(self.context, 'get_port_revision_tuples', host=self.host,
                           limit=limit, created_after=created_after)
 
     @log_helpers.log_method_call
