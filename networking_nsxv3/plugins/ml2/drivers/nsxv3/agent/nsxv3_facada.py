@@ -628,7 +628,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 source_ports=[ANY_PORT])
         elif str(protocol).isdigit():
             service = IPProtocolNSService(protocol_number=int(protocol))
-        elif protocol and hasattr(IP_PROTOCOL_NUMBERS, protocol):
+        elif protocol and protocol in IP_PROTOCOL_NUMBERS:
             ip_protocol = IP_PROTOCOL_NUMBERS.get(protocol)
             service = IPProtocolNSService(protocol_number=int(ip_protocol))
         elif protocol is ANY_PROTOCOL:
