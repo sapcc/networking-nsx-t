@@ -227,7 +227,10 @@ class NSXv3ServerRpcCallback(object):
 
     @log_helpers.log_method_call
     def get_security_group_revision(self, context, security_group_id):
-        return db.get_security_group_revision(context, security_group_id)
+        try:
+            return db.get_security_group_revision(context, security_group_id)
+        except Exception:
+            return None, None
 
     @log_helpers.log_method_call
     def get_security_group_revision_tuples(

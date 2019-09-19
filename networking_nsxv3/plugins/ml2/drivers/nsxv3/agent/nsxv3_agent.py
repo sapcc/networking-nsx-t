@@ -107,6 +107,8 @@ class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
             del_rules = nsx_rules.values()
 
             (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
+            if not sg_id:
+                return
 
             self.nsxv3.update_security_group_rules(
                 sg_id,
