@@ -105,7 +105,7 @@ class NSXv3ServerRpcApi(object):
     changing rpc interfaces, see doc/source/contributor/internals/rpc_api.rst.
     """
 
-    rpc_version=nsxv3_constants.NSXV3_SERVER_RPC_VERSION
+    rpc_version = nsxv3_constants.NSXV3_SERVER_RPC_VERSION
 
     _LIMIT = 100
     _CREATE_AFTER = datetime.utcfromtimestamp(0).isoformat()
@@ -121,8 +121,12 @@ class NSXv3ServerRpcApi(object):
     def get_port_revision_tuples(
             self, limit=_LIMIT, created_after=_CREATE_AFTER):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port_revision_tuples', host=self.host,
-                          limit=limit, created_after=created_after)
+        return cctxt.call(
+            self.context,
+            'get_port_revision_tuples',
+            host=self.host,
+            limit=limit,
+            created_after=created_after)
 
     @log_helpers.log_method_call
     def get_qos_policy_revision_tuples(
@@ -134,14 +138,14 @@ class NSXv3ServerRpcApi(object):
     @log_helpers.log_method_call
     def get_security_group_revision(self, security_group_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group_revision', 
+        return cctxt.call(self.context, 'get_security_group_revision',
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
     def get_security_group_revision_tuples(
-        self, limit=_LIMIT, created_after=_CREATE_AFTER):
+            self, limit=_LIMIT, created_after=_CREATE_AFTER):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group_revision_tuples', 
+        return cctxt.call(self.context, 'get_security_group_revision_tuples',
                           limit=limit, created_after=created_after)
 
     @log_helpers.log_method_call
@@ -196,8 +200,8 @@ class NSXv3ServerRpcApi(object):
     def get_security_group_members_address_bindings_ips(self,
                                                         security_group_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 
-                          'get_security_group_members_address_bindings_ips', 
+        return cctxt.call(self.context,
+                          'get_security_group_members_address_bindings_ips',
                           security_group_id=security_group_id)
 
 
@@ -279,4 +283,3 @@ class NSXv3ServerRpcCallback(object):
                                                         security_group_id):
         return db.get_security_group_members_address_bindings_ips(
             context, security_group_id)
-

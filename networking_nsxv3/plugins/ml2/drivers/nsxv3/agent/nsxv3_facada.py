@@ -520,6 +520,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         path = "/api/v1/firewall/sections/{}/rules".format(sec.id)
 
+        error = False
         revision = int(sec.revision)
         for sdk_obj in add_rules:
             data = nsxv3_utils.get_firewall_rule(sdk_obj)
@@ -532,6 +533,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 # as we are holders of the security group Lock
                 revision += 1
             else:
+                error = True
                 LOG.error("Error post rule {}: {}"
                           .format(sdk_obj.display_name, ret.content))
 
@@ -545,7 +547,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
         ips_spec = IPSet(display_name=security_group_id)
         ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
-        ips.tags = [Tag(scope=rev_scope, tag=str(revision_number))]
+        # Update revision number only if there no errors
+        if not error:
+            ips.tags = [Tag(scope=rev_scope, tag=str(revision_number))]
         self.update(sdk_service=IpSets, sdk_model=ips)
 
     def get_security_group_rule_spec(self, rule):
@@ -598,7 +602,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             target_display_name=security_group_id)
 
         if remote_ip_prefix:
-            remote_ip_prefix = str(ipaddress.ip_network(unicode(remote_ip_prefix), strict=False))
+            remote_ip_prefix = str(
+                ipaddress.ip_network(
+                    unicode(remote_ip_prefix),
+                    strict=False))
 
         if remote_group_id:
             target = ResourceReference(
@@ -651,10 +658,11 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             services=[FirewallService(service=service)] if service else None,
             applied_tos=[applied_to])
 
-    def get_name_revision_dict(self, sdk_model, attr_key=None, attr_val=None):
+    def get_revisions(self, sdk_model, attr_key=None, attr_val=None):
         sdk_type = str(sdk_model.__class__.__name__)
         name_rev = {}
         name_id = {}
+        metadata = {}
         limit = cfg.CONF.NSXV3.nsxv3_max_records_per_query
         limit = limit if limit < 1000 else 1000
         cursor = ""
@@ -679,6 +687,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                         if tag.get("scope") == rev_scope:
                             revision = tag.get("tag")
                             break
+                if 'FirewallRule' in sdk_type:
+                    metadata[name] = {
+                        'FirewallRule.disabled': obj.get("disabled"),
+                    }
 
                 name_rev[name] = revision
                 name_id[name] = obj.get("id")
@@ -686,4 +698,19 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             if len(objs) < limit:
                 break
             cursor = cycle * limit
-        return (name_rev, name_id)
+        return name_rev, name_id, metadata
+
+    def set_tags(self, sdk_service, sdk_model, tags):
+        obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
+        obj.tags = []
+        for scope, tag in tags.items():
+            obj.tags.append(Tag(scope=scope, tag=str(tag)))
+        self.update(sdk_service=sdk_service, sdk_model=obj)
+
+    def get_tags(self, sdk_service, sdk_model):
+        obj = self.get(sdk_service=sdk_service, sdk_model=sdk_model)
+        tags = dict()
+        if obj.tags:
+            for tag in obj.tags:
+                tags[tag.scope] = tag.tag
+        return tags

@@ -29,6 +29,7 @@
         - { section: "AGENT", option: "agent_id", value: "{{ agent_id }}" }
         - { section: "AGENT", option: "sync_pool_size", value: "{{ sync_pool_size }}" }
         - { section: "AGENT", option: "sync_requests_per_second", value: "{{ sync_requests_per_second }}" }
+        - { section: "AGENT", option: "sync_full_schedule", value: "{{ sync_full_schedule }}" }
         - { section: "AGENT", option: "locking_coordinator_url", value: "{{ locking_coordinator_url }}" }
         - { section: "AGENT", option: "polling_interval", value: "{{ polling_interval }}" }
         - { section: "AGENT", option: "quitting_rpc_timeout", value: "{{ quitting_rpc_timeout }}" }

@@ -24,6 +24,7 @@ def _validate_one(result, error):
     else:
         raise Exception(msg.format(error))
 
+
 def _get_datetime(datetime_value):
     if isinstance(datetime_value, datetime):
         return datetime_value
@@ -32,6 +33,7 @@ def _get_datetime(datetime_value):
     else:
         raise Exception(
             "datetime_value object should be datetime or string in isoformat")
+
 
 def get_port_revision_tuples(
         context,
@@ -55,6 +57,7 @@ def get_port_revision_tuples(
         limit
     ).all()
 
+
 def get_qos_policy_revision_tuples(
         context,
         limit,
@@ -73,6 +76,7 @@ def get_qos_policy_revision_tuples(
         limit
     ).all()
 
+
 def get_security_group_revision(context, security_group_id):
     result = context.session.query(
         sg_db.SecurityGroup.id,
@@ -84,6 +88,7 @@ def get_security_group_revision(context, security_group_id):
     ).one_or_none()
     return _validate_one(result,
                          "Security Group ID='{}'".format(security_group_id))
+
 
 def get_security_group_revision_tuples(
         context,
@@ -103,6 +108,7 @@ def get_security_group_revision_tuples(
         limit
     ).all()
 
+
 def get_qos(context, qos_id):
     result = context.session.query(
         QosPolicy.name,
@@ -115,6 +121,7 @@ def get_qos(context, qos_id):
     return _validate_one(result,
                          "QoS Policy ID='{}'".format(qos_id))
 
+
 def get_qos_bwl_rules(context, qos_id):
     return context.session.query(
         QosBandwidthLimitRule.direction,
@@ -124,6 +131,7 @@ def get_qos_bwl_rules(context, qos_id):
         QosBandwidthLimitRule.qos_policy_id == qos_id
     ).all()
 
+
 def get_qos_dscp_rules(context, qos_id):
     return context.session.query(
         QosDscpMarkingRule.qos_policy_id,
@@ -131,6 +139,7 @@ def get_qos_dscp_rules(context, qos_id):
     ).filter(
         QosDscpMarkingRule.qos_policy_id == qos_id
     ).all()
+
 
 def get_port(context, port_id):
     result = context.session.query(
@@ -154,12 +163,14 @@ def get_port(context, port_id):
     return _validate_one(result,
                          "Port ID='{}'".format(port_id))
 
+
 def get_port_security_groups(context, port_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.security_group_id
     ).filter(
         sg_db.SecurityGroupPortBinding.port_id == port_id
     ).all()
+
 
 def get_port_allowed_pairs(context, port_id):
     return context.session.query(
@@ -169,6 +180,7 @@ def get_port_allowed_pairs(context, port_id):
         allowed_address_pair.AllowedAddressPair.port_id == port_id
     ).all()
 
+
 def get_port_addresses(context, port_id):
     return context.session.query(
         IPAllocation.ip_address,
@@ -176,6 +188,7 @@ def get_port_addresses(context, port_id):
     ).filter(
         IPAllocation.port_id == port_id
     ).all()
+
 
 def _query_securitygrouprules(context, ids):
     return context.session.query(
@@ -194,6 +207,7 @@ def _query_securitygrouprules(context, ids):
         sg_db.SecurityGroupRule.id in ids
     ).all()
 
+
 def _query_standardattributes(context, created_at):
     return context.session.query(
         StandardAttribute.id,
@@ -205,6 +219,7 @@ def _query_standardattributes(context, created_at):
     ).filter(
         StandardAttribute.created_at >= created_at
     ).all()
+
 
 def _get_latest_changes(context, resource_type, updated_at):
     return context.session.query(
@@ -234,6 +249,7 @@ def _get_latest_changes(context, resource_type, updated_at):
         StandardAttribute.resource_type == resource_type
     ).all()
 
+
 def get_rules_for_security_groups_id(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroupRule
@@ -241,12 +257,14 @@ def get_rules_for_security_groups_id(context, security_group_id):
         sg_db.SecurityGroupRule.security_group_id == security_group_id
     ).all()
 
+
 def _get_port_id_by_sec_group_id(context, sec_group_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.port_id
     ).filter(
         sg_db.SecurityGroupPortBinding.security_group_id == sec_group_id
     ).all()
+
 
 def get_security_group_members_ips(context, security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
@@ -261,8 +279,9 @@ def get_security_group_members_ips(context, security_group_id):
             security_group_id == group_id
         ).all())
 
-def get_security_group_members_address_bindings_ips(context, 
-                                                     security_group_id):
+
+def get_security_group_members_address_bindings_ips(context,
+                                                    security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
     return list(

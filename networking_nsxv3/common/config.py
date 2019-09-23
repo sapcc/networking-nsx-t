@@ -27,6 +27,11 @@ agent_opts = [
         help='''Objects per second synchronizing OpenStack and NSXv3.'''
     ),
     cfg.IntOpt(
+        'sync_full_schedule',
+        default=24,
+        help='''Full-sync schedule in hours between OpenStack and NSXv3.'''
+    ),
+    cfg.IntOpt(
         'locking_coordinator_url',
         default=None,
         help='Url of the distributed locking coordinator. None for local.'
