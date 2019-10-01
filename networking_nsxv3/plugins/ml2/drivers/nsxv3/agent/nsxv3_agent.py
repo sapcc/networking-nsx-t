@@ -5,6 +5,7 @@ import sys
 
 import netaddr
 import oslo_messaging
+
 from com.vmware.nsx_client import TransportZones
 from com.vmware.nsx.model_client import (FirewallRule,
                                          IPSet,
@@ -46,98 +47,57 @@ def is_migration_enabled():
     return cfg.CONF.AGENT.enable_runtime_migration_from_dvs_driver
 
 
-class NSXv3AgentManagerRpcSecurityGroupCallBackMixin(object):
+class SyncProcessor(object):
 
-    def security_group_member_updated(self, security_group_id):
-        sg_id = str(security_group_id)
-        LOG.debug('Updating members for Security Group ID={}'.format(sg_id))
+    def __init__(self, scheduler, queue_size=10000, workers_count=1):
+        self._queue = eventlet.queue.PriorityQueue(maxsize=queue_size)
+        self._workers = eventlet.greenpool.GreenPool(size=workers_count)
+        self._scheduler = scheduler
+        self._tasks = dict()
+        self._tasks_semaphor = eventlet.semaphore.Semaphore()
 
-        with LockManager.get_lock(sg_id):
-            (ipset, _, _) = self.nsxv3.get_or_create_security_group(sg_id)
+    def submit_task(self, priority, os_ids, sync_fn):
+        try:
+            if priority != 0:
+                with self._tasks_semaphor:
+                    self._tasks[priority] = os_ids
+            for os_id in os_ids:
+                LOG.debug("Synchronization enqueued for '{}'".format(os_id))
+                item = (priority, {"id": os_id, "fn": sync_fn})
+                self._queue.put_nowait(item)
+        except eventlet.queue.Full as err:
+            LOG.error("Synchronization queue is full. Unable to handle '{}'".
+                      format(os_id), err)
 
-            ip1 = self.rpc.get_security_group_members_ips(sg_id)
-            ip2 = self.rpc.get_security_group_members_address_bindings_ips(
-                sg_id)
+    def start(self):
+        eventlet.greenthread.spawn_n(self._start)
 
-            members = [str(ip) for ip in netaddr.IPSet(
-                [str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
-            self.nsxv3.update_security_group_members(sg_id, members)
+    def stop(self):
+        self._workers.waitall()
 
-    def security_group_rule_updated(self, security_group_id):
-        sg_id = str(security_group_id)
-        LOG.debug('Updating rules for Security Group ID={}'
-                  .format(str(sg_id)))
+    def has_task_completed(self, priority):
+        if priority in self._tasks:
+            return len(self._tasks[priority]) == 0
+        return True
 
-        with LockManager.get_lock(sg_id):
-            (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
+    def _start(self):
+        while True:
+            priority, job = self._queue.get(block=True)
+            LOG.debug("Synchronizing object '{}'".format(job["id"]))
+            with self._scheduler:
+                gt = self._workers.spawn(job["fn"], job["id"])
+                if priority != 0:
+                    gt.link(self._update_task, [priority, job["id"]])
 
-            _, revs_ips, _ = self.nsxv3.get_revisions(IPSet())
-            _, revs_fwr, meta_fwr = self.nsxv3.get_revisions(
-                FirewallRule(),
-                attr_key="section_id",
-                attr_val=sec.id)
-
-            neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
-
-            attrs = ["id", "port_range_min", "port_range_max", "protocol",
-                     "ethertype", "direction", "remote_group_id",
-                     "remote_ip_prefix", "security_group_id"]
-
-            add_rules = []
-            for rule in neutron_rules:
-                name = rule["id"]
-                remote_group_id = rule["remote_group_id"]
-
-                fwr = dict()
-                for key in attrs:
-                    fwr[key] = rule[key]
-
-                fwr["local_group_id"] = ipset.id
-                fwr["apply_to"] = nsg.id
-                if remote_group_id in revs_ips:
-                    fwr["remote_group_id"] = revs_ips[remote_group_id]
-
-                if name in revs_fwr:
-                    # If the rule is disabled recreate it
-                    if not meta_fwr.get(name).get("FirewallRule.disabled"):
-                        del revs_fwr[name]
-                        continue
-
-                fwr_spec = self.nsxv3.get_security_group_rule_spec(fwr)
-                if fwr_spec:
-                    add_rules.append(fwr_spec)
-            del_rules = revs_fwr.values()
-
-            (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
-
-            self.nsxv3.update_security_group_rules(
-                sg_id,
-                revision_number=revision,
-                add_rules=add_rules,
-                del_rules=del_rules)
-
-    def security_group_delete(self, security_group_id):
-        with LockManager.get_lock(security_group_id):
-            self.nsxv3.delete_security_group(security_group_id)
-
-    # RPC method
-    def security_groups_member_updated(self, context, **kwargs):
-        o = kwargs["security_groups"]
-        o = o if isinstance(o, list) else [o]
-        for id in o:
-            self.security_group_member_updated(id)
-
-    # RPC method
-    def security_groups_rule_updated(self, context, **kwargs):
-        o = kwargs["security_groups"]
-        o = o if isinstance(o, list) else [o]
-        for id in o:
-            self.security_group_rule_updated(id)
+    def _update_task(self, _, args):
+        priority = args[0]
+        os_id = args[1]
+        with self._tasks_semaphor:
+            if priority in self._tasks and os_id in self._tasks[priority]:
+                self._tasks[priority].remove(os_id)
 
 
-class NSXv3AgentManagerRpcCallBackBase(
-        NSXv3AgentManagerRpcSecurityGroupCallBackMixin,
-        amb.CommonAgentManagerRpcCallBackBase):
+class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     target = oslo_messaging.Target(version=nsxv3_constants.RPC_VERSION)
 
@@ -151,72 +111,167 @@ class NSXv3AgentManagerRpcCallBackBase(
         self.nsxv3 = nsxv3
         self.vsphere = vsphere
         self.rpc = rpc
-        self.pool_jobs = eventlet.greenpool.GreenPool(1)
-        self.pool_workers = eventlet.greenpool.GreenPool(
-            cfg.CONF.AGENT.sync_pool_size)
 
-    def sync_all(self):
-        if self.pool_jobs.running() == 0:
-            self.pool_jobs.spawn_n(self._sync_all)
-        else:
-            LOG.info("IN PROGRESS SYNCHRONIZATION - ACTIVE WORKERS '{}'"
-                     .format(self.pool_workers.running()))
+        scheduler = Scheduler(
+            rate=cfg.CONF.AGENT.sync_requests_per_second, limit=1)
 
-    def _sync_all(self):
-        rate = cfg.CONF.AGENT.sync_requests_per_second
+        self.synchronizer = SyncProcessor(
+            scheduler,
+            queue_size=cfg.CONF.AGENT.sync_queue_size,
+            workers_count=cfg.CONF.AGENT.sync_pool_size)
+        self.synchronizer.start()
 
-        LFS_TAG = "last_full_synchronization"
+    def security_group_member_updated(self, security_group_id):
+        sg_id = str(security_group_id)
+        LOG.debug("Updating Security Group '{}' members".format(sg_id))
+        with LockManager.get_lock(sg_id):
+            self.nsxv3.get_or_create_security_group(sg_id)
+            ip1 = self.rpc.get_security_group_members_ips(sg_id)
+            ip2 = self.rpc.get_security_group_members_address_bindings_ips(
+                sg_id)
+
+            members = [str(ip) for ip in netaddr.IPSet(
+                [str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
+            self.nsxv3.update_security_group_members(sg_id, members)
+
+    def security_group_rule_updated(self, security_group_id):
+        sg_id = str(security_group_id)
+        LOG.debug("Updating Security Group '{}' rules".format(sg_id))
+        with LockManager.get_lock(sg_id):
+            (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
+            _, revs_ips, _ = self.nsxv3.get_revisions(IPSet())
+            _, revs_fwr, meta_fwr = self.nsxv3.get_revisions(
+                FirewallRule(),
+                attr_key="section_id",
+                attr_val=sec.id)
+
+        neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
+
+        attrs = ["id", "port_range_min", "port_range_max", "protocol",
+                 "ethertype", "direction", "remote_group_id",
+                 "remote_ip_prefix", "security_group_id"]
+
+        add_rules = []
+        for rule in neutron_rules:
+            name = rule["id"]
+            remote_group_id = rule["remote_group_id"]
+
+            fwr = dict()
+            for key in attrs:
+                fwr[key] = rule[key]
+
+            fwr["local_group_id"] = ipset.id
+            fwr["apply_to"] = nsg.id
+            if remote_group_id in revs_ips:
+                fwr["remote_group_id"] = revs_ips[remote_group_id]
+
+            if name in revs_fwr:
+                # If the rule is disabled recreate it
+                if not meta_fwr.get(name).get("FirewallRule.disabled"):
+                    del revs_fwr[name]
+                    continue
+
+            fwr_spec = self.nsxv3.get_security_group_rule_spec(fwr)
+            if fwr_spec:
+                add_rules.append(fwr_spec)
+        del_rules = revs_fwr.values()
+
+        (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
+
+        self.nsxv3.update_security_group_rules(
+            sg_id,
+            revision_number=revision,
+            add_rules=add_rules,
+            del_rules=del_rules)
+
+    def security_group_delete(self, security_group_id):
+        with LockManager.get_lock(security_group_id):
+            self.nsxv3.delete_security_group(security_group_id)
+
+    # RPC method
+    def security_groups_member_updated(self, context, **kwargs):
+        o = kwargs["security_groups"]
+        o = o if isinstance(o, list) else [o]
+        self.synchronizer.submit_task(0, o,
+                                      self.security_group_member_updated)
+
+    # RPC method
+    def security_groups_rule_updated(self, context, **kwargs):
+        o = kwargs["security_groups"]
+        o = o if isinstance(o, list) else [o]
+        self.synchronizer.submit_task(0, o,
+                                      self.security_group_rule_updated)
+
+    def _sync_inventory_full(self):
+        LOG.info("Full synchronization started")
+        self.synchronizer.submit_task(
+            1,
+            self.get_revisions(
+                query=self.rpc.get_security_group_revision_tuples).keys(),
+            self.sync_security_group)
+        self.synchronizer.submit_task(
+            2,
+            self.get_revisions(
+                query=self.rpc.get_qos_policy_revision_tuples).keys(),
+            self.sync_qos)
+        self.synchronizer.submit_task(3, self.get_revisions(
+            query=self.rpc.get_port_revision_tuples).keys(), self.sync_port)
+
+    def _sync_inventory_shallow(self):
+        LOG.info("Shallow synchronization started")
+        sg_query = self.rpc.get_security_group_revision_tuples
+        qos_query = self.rpc.get_qos_policy_revision_tuples
+        port_query = self.rpc.get_port_revision_tuples
+
+        outdated_ips, orphaned_ips = self._sync_get_content(
+            sdk_model=IPSet(), os_query=sg_query)
+        outdated_qos, orphaned_qos = self._sync_get_content(
+            sdk_model=QosSwitchingProfile(), os_query=qos_query)
+        outdated_lps, orphaned_lps = self._sync_get_content(
+            sdk_model=LogicalPort(), os_query=port_query)
+
+        # Create all Security Groups before use their references in rules
+        # Creating FirewallSections, IPSets, NSGroups without FirewallRules
+        self.synchronizer.submit_task(
+            1, outdated_ips, self.security_group_member_updated)
+        self.synchronizer.submit_task(
+            2, outdated_ips, self.security_group_rule_updated)
+        self.synchronizer.submit_task(
+            3, orphaned_ips, self.sync_security_group_orphaned)
+        self.synchronizer.submit_task(
+            4, outdated_lps, self.sync_port)
+        self.synchronizer.submit_task(
+            5, outdated_qos, self.sync_qos)
+
+        self._sync_report("Security Groups", outdated_ips, orphaned_ips)
+        self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
+        self._sync_report("Ports", outdated_lps, orphaned_lps)
+
+    def sync_inventory(self):
         msg = "SYNCHRONIZATION CYCLE - {}"
 
-        def get_date(timestamp=None):
-            DATETIME_FORMATTER = "%Y-%m-%d %H:%M:%S"
-            if timestamp is None:
-                return datetime.datetime.now().strftime(DATETIME_FORMATTER)
-            else:
-                return datetime.datetime.strptime(
-                    timestamp, DATETIME_FORMATTER)
-
-        @Scheduler(rate=rate, limit=1)
-        def spawn(func, *args, **kw):
-            self.pool_workers.spawn_n(func, *args, **kw)
-
-        query_sg = self.rpc.get_security_group_revision_tuples
-        query_qos = self.rpc.get_qos_policy_revision_tuples
-        query_port = self.rpc.get_port_revision_tuples
-
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
-            LOG.info(msg.format("STARTED"))
+            completed = True
+            for priority in range(1, 5):
+                completed = completed and \
+                    self.synchronizer.has_task_completed(priority)
 
-            delta = datetime.timedelta(hours=cfg.CONF.AGENT.sync_full_schedule)
+            if not completed:
+                LOG.info(msg.format("IN PROGRESS"))
+                return
 
-            sdk_service = TransportZones
-            sdk_model = TransportZone(display_name=self.nsxv3.tz_name)
+            timestamp = nsxv3_facada.Timestamp(
+                "last_full_synchronization",
+                self.nsxv3, TransportZones,
+                TransportZone(display_name=self.nsxv3.tz_name),
+                cfg.CONF.AGENT.sync_full_schedule)
 
-            tags = self.nsxv3.get_tags(sdk_service, sdk_model)
-            timestamp = tags.get(LFS_TAG)
-
-            # TODO - implement configuration
-
-            if timestamp and get_date(timestamp) + \
-                    delta > datetime.datetime.now():
-                self._sync_security_groups(spawn)
-                self._sync_qoses(spawn)
-                self._sync_ports(spawn)
+            LOG.info(msg.format("STARTING"))
+            if timestamp.has_expired():
+                self._sync_inventory_full()
+                timestamp.update()
             else:
-                for oid in self.get_revisions(
-                        query=query_sg).keys():
-                    spawn(self.sync_security_group, oid)
-                for oid in self.get_revisions(
-                        query=query_qos).keys():
-                    spawn(self.sync_qos, oid)
-                for oid in self.get_revisions(
-                        query=query_port).keys():
-                    spawn(self.sync_port, oid)
-                tags[LFS_TAG] = get_date()
-                self.nsxv3.set_tags(sdk_service, sdk_model, tags)
-
-            self.pool_workers.waitall()
-            LOG.info(msg.format("COMPLETED"))
+                self._sync_inventory_shallow()
 
     def _sync_report(self, object_name, outdated, orphaned):
         report = dict()
@@ -236,43 +291,6 @@ class NSXv3AgentManagerRpcCallBackBase(
 
         orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
         return outdated, orphaned
-
-    def _sync_security_groups(self, spawn):
-        outdated, orphaned = self._sync_get_content(
-            sdk_model=IPSet(),
-            os_query=self.rpc.get_security_group_revision_tuples)
-
-        # Create all Security Groups before use their references in rules
-        # Creating FirewallSections, IPSets, NSGroups without FirewallRules
-        for oid in outdated:
-            spawn(self.sync_security_group, oid, update_rules=False)
-        self.pool_workers.waitall()
-
-        for oid in outdated:
-            spawn(self.sync_security_group, oid)
-        for oid in orphaned:
-            if nsxv3_utils.is_valid_uuid(oid):
-                spawn(self.sync_security_group_orphaned, oid)
-
-        self._sync_report("Security Groups", outdated, orphaned)
-
-    def _sync_qoses(self, spawn):
-        outdated, orphaned = self._sync_get_content(
-            sdk_model=QosSwitchingProfile(),
-            os_query=self.rpc.get_qos_policy_revision_tuples)
-
-        for oid in outdated:
-            spawn(self.sync_qos, oid)
-        self._sync_report("QoS Profiles", outdated, orphaned)
-
-    def _sync_ports(self, spawn):
-        outdated, orphaned = self._sync_get_content(
-            sdk_model=LogicalPort(),
-            os_query=self.rpc.get_port_revision_tuples)
-
-        for oid in outdated:
-            spawn(self.sync_port, oid)
-        self._sync_report("Ports", outdated, orphaned)
 
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
@@ -357,7 +375,7 @@ class NSXv3AgentManagerRpcCallBackBase(
         self.delete_policy(context=None, policy=policy)
 
     def sync_security_group(self, security_group_id, update_rules=True):
-        LOG.debug("Synching security group '{}'.".format(security_group_id))
+        LOG.debug("Synching Security Group '{}'.".format(security_group_id))
         self.security_group_member_updated(security_group_id)
         if update_rules:
             self.security_group_rule_updated(security_group_id)
@@ -494,7 +512,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
 
         if self.rpc:
-            self.rpc.sync_all()
+            self.rpc.sync_inventory()
         return set()
 
     def get_devices_modified_timestamps(self, devices):
