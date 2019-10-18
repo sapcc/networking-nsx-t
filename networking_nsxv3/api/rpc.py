@@ -149,6 +149,14 @@ class NSXv3ServerRpcApi(object):
                           limit=limit, created_after=created_after)
 
     @log_helpers.log_method_call
+    def has_security_group_tag(
+            self, security_group_id, tag_name):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'has_security_group_tag',
+                          security_group_id=security_group_id, 
+                          tag_name=tag_name)
+
+    @log_helpers.log_method_call
     def get_qos(self, qos_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_qos', qos_id=qos_id)
@@ -238,6 +246,12 @@ class NSXv3ServerRpcCallback(object):
             self, context, limit, created_after):
         return db.get_security_group_revision_tuples(
             context, limit, created_after)
+    
+    @log_helpers.log_method_call
+    def has_security_group_tag(
+            self, context, security_group_id, tag_name):
+        return db.has_security_group_tag(
+            context, security_group_id, tag_name)
 
     @log_helpers.log_method_call
     def get_qos(self, context, qos_id):

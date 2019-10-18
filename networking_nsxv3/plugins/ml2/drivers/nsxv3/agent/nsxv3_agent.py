@@ -56,7 +56,8 @@ class SyncProcessor(object):
     ASCENDING_PRIORITY_LEVEL_4 = 4
     ASCENDING_PRIORITY_LEVEL_5 = 5
 
-    def __init__(self, scheduler, queue_size=0, workers_count=1):
+    def __init__(self, scheduler, queue_size=-1, workers_count=1):
+        # if queue_size is < 0, the queue size is infinite.
         self._queue = eventlet.queue.PriorityQueue(maxsize=queue_size)
         self._workers = eventlet.greenpool.GreenPool(size=workers_count)
         self._scheduler = scheduler
@@ -64,17 +65,16 @@ class SyncProcessor(object):
         self._tasks_semaphor = eventlet.semaphore.Semaphore()
 
     def submit_task(self, priority, os_ids, sync_fn):
-        try:
-            if priority != 0:
-                with self._tasks_semaphor:
-                    self._tasks[priority] = os_ids
-            for os_id in os_ids:
+        if priority != 0:
+            with self._tasks_semaphor:
+                self._tasks[priority] = os_ids
+        for os_id in os_ids:
+            try:
                 LOG.debug("Synchronization enqueued for '{}'".format(os_id))
                 item = (priority, {"id": os_id, "fn": sync_fn})
                 self._queue.put_nowait(item)
-        except eventlet.queue.Full as err:
-            LOG.error("Synchronization queue is full. Unable to handle '{}'".
-                      format(os_id), err)
+            except eventlet.queue.Full as err:
+                LOG.error("Synchronization queue is full. Unable to handle '{}'".format(os_id), err)
 
     def start(self):
         eventlet.greenthread.spawn_n(self._start)
@@ -127,6 +127,17 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             queue_size=cfg.CONF.AGENT.sync_queue_size,
             workers_count=cfg.CONF.AGENT.sync_pool_size)
         self.synchronizer.start()
+
+    def security_group_updated(self, security_group_id):
+        sg_id = str(security_group_id)
+        LOG.debug("Updating Security Group '{}'".format(sg_id))
+        with LockManager.get_lock(sg_id):
+            self.nsxv3.get_or_create_security_group(sg_id)
+
+            tcp_strict_enabled = self.rpc.has_security_group_tag(\
+                security_group_id, nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT)
+            self.nsxv3.update_security_group_capabilities(sg_id,
+                                                          [tcp_strict_enabled])
 
     def security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -233,16 +244,19 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         # Security Groups Synchronization
         outdated_ips, orphaned_ips = self._sync_get_content(
             sdk_model=IPSet(), os_query=sg_query)
+        self.synchronizer.submit_task(
+            SyncProcessor.ASCENDING_PRIORITY_LEVEL_1,
+            outdated_ips, self.security_group_updated)
         # Create all Security Groups before use their references in rules
         # Creating FirewallSections, IPSets, NSGroups without FirewallRules
         self.synchronizer.submit_task(
-            SyncProcessor.ASCENDING_PRIORITY_LEVEL_1,
+            SyncProcessor.ASCENDING_PRIORITY_LEVEL_2,
             outdated_ips, self.security_group_member_updated)
         self.synchronizer.submit_task(
-            SyncProcessor.ASCENDING_PRIORITY_LEVEL_2,
+            SyncProcessor.ASCENDING_PRIORITY_LEVEL_3,
             outdated_ips, self.security_group_rule_updated)
         self.synchronizer.submit_task(
-            SyncProcessor.ASCENDING_PRIORITY_LEVEL_3,
+            SyncProcessor.ASCENDING_PRIORITY_LEVEL_4,
             orphaned_ips, self.sync_security_group_orphaned)
 
         # QoS Policies Synchronization
@@ -268,7 +282,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
             completed = True
-            for priority in range(1, 5):
+            for priority in range(
+                SyncProcessor.ASCENDING_PRIORITY_LEVEL_1,
+                SyncProcessor.ASCENDING_PRIORITY_LEVEL_5):
                 completed = completed and \
                     self.synchronizer.has_task_completed(priority)
 
@@ -392,6 +408,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching Security Group '{}'.".format(security_group_id))
+        self.security_group_updated(security_group_id)
         self.security_group_member_updated(security_group_id)
         if update_rules:
             self.security_group_rule_updated(security_group_id)

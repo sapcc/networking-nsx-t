@@ -21,7 +21,7 @@ enable_security_group: "true"
 # AGENT
 agent_id: "nsxm-l-01a.corp.local"
 sync_pool_size: "10"
-sync_queue_size: "10000"
+sync_queue_size: "-1"
 sync_requests_per_second: "10"
 sync_full_schedule: "24"
 locking_coordinator_url: ""

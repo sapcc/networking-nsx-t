@@ -238,7 +238,11 @@ class Timestamp(object):
     def has_expired(self):
         tags = self._client.get_tags(self._service, self._model)
 
-        timestamp = self._get_date(tags.get(self._name)) + \
+        timestamp_str = tags.get(self._name)
+        if not timestamp_str:
+            return True
+
+        timestamp = self._get_date(timestamp_str) + \
             datetime.timedelta(hours=self._timeout)
 
         return timestamp < datetime.datetime.now()
@@ -545,6 +549,16 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
         ips.ip_addresses = member_cidrs
         self.update(sdk_service=IpSets, sdk_model=ips)
+
+    def update_security_group_capabilities(self,
+                                           security_group_id, capabilities):
+        fs_spec = FirewallSection (display_name=security_group_id)
+        fs = self.get(sdk_service=Sections, sdk_model=fs_spec)
+
+        fs.tcp_strict = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT in\
+            capabilities
+
+        self.update(sdk_service=Sections, sdk_model=fs)
 
     def update_security_group_rules(self, security_group_id,
                                     revision_number, add_rules, del_rules):

@@ -23,7 +23,7 @@ agent_opts = [
     ),
     cfg.IntOpt(
         'sync_queue_size',
-        default=0,
+        default=-1,
         help='The size of synchronization queue'
     ),
     cfg.IntOpt(
