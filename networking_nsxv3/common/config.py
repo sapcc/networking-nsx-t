@@ -19,12 +19,7 @@ agent_opts = [
     cfg.IntOpt(
         'sync_pool_size',
         default=10,
-        help='Number of synchronization workers'
-    ),
-    cfg.IntOpt(
-        'sync_queue_size',
-        default=-1,
-        help='The size of synchronization queue'
+        help='Number of threads synchronizing OpenStack and NSXv3.'
     ),
     cfg.IntOpt(
         'sync_requests_per_second',
