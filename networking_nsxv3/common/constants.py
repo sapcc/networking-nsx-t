@@ -20,6 +20,11 @@ NSXV3_MIGRATION_SCOPE = "vswitch_migration_target"
 NSXV3_MIGRATION_TAG_DVS = "dvs"
 NSXV3_MIGRATION_TAG_NVDS = "nvds"
 
+NSXV3_CAPABILITY_TCP_STRICT = "capability_tcp_strict"
+# If TCP strict is enabled on a section and a packet matches rule in it,
+# Will check to see if the SYN flag of the packet is set.
+# If it is not, then it will drop the packet.
+
 # Set RPC API version to 1.0 by default.
 # history
 #   1.1 Support Security Group RPC

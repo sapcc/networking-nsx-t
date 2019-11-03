@@ -2,6 +2,7 @@ from datetime import datetime
 
 from neutron.db.models import securitygroup as sg_db
 from neutron.db.models import allowed_address_pair
+from neutron.db.models import tag as tag_model
 from neutron.db.qos.models import QosPortPolicyBinding
 from neutron.db.qos.models import QosPolicy
 from neutron.db.qos.models import QosBandwidthLimitRule
@@ -107,6 +108,19 @@ def get_security_group_revision_tuples(
     ).limit(
         limit
     ).all()
+
+
+def has_security_group_tag(context, security_group_id, tag_name):
+    result = context.session.query(
+        sg_db.SecurityGroup.id
+    ).join(
+        tag_model.Tag,
+        tag_model.Tag.standard_attr_id == sg_db.SecurityGroup.standard_attr_id
+    ).filter(
+        tag_model.Tag.tag == tag_name,
+        sg_db.SecurityGroup.id == security_group_id
+    ).all()
+    return len(result) != 0
 
 
 def get_qos(context, qos_id):
