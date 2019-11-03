@@ -35,10 +35,12 @@ class Synchronizer(object):
         for os_id in os_ids:
             try:
                 LOG.debug("Synchronization enqueued for '{}'".format(os_id))
-                item = (priority, {"id": os_id, "fn": sync_fn})
+                item = (priority.value, {"id": os_id, "fn": sync_fn})
                 self._queue.put_nowait(item)
             except eventlet.queue.Full as err:
-                LOG.error("Synchronization queue is full. Unable to handle '{}'".format(os_id), err)
+                LOG.error(
+                    "Synchronization queue is full. Unable to handle '{}'"
+                    .format(os_id), err)
 
     def start(self):
         eventlet.greenthread.spawn_n(self._start)
@@ -53,7 +55,8 @@ class Synchronizer(object):
 
     def _start(self):
         while True:
-            priority, job = self._queue.get(block=True)
+            priority_value, job = self._queue.get(block=True)
+            priority = Priority(priority_value)
             LOG.debug("Synchronizing object '{}'".format(job["id"]))
             with self._scheduler:
                 gt = self._workers.spawn(job["fn"], job["id"])
