@@ -28,6 +28,7 @@
         - { section: "securitygroup", option: "firewall_driver", value: "{{ firewall_driver }}" }
         - { section: "AGENT", option: "agent_id", value: "{{ agent_id }}" }
         - { section: "AGENT", option: "sync_pool_size", value: "{{ sync_pool_size }}" }
+        - { section: "AGENT", option: "sync_queue_size", value: "{{ sync_queue_size }}" }
         - { section: "AGENT", option: "sync_requests_per_second", value: "{{ sync_requests_per_second }}" }
         - { section: "AGENT", option: "sync_full_schedule", value: "{{ sync_full_schedule }}" }
         - { section: "AGENT", option: "locking_coordinator_url", value: "{{ locking_coordinator_url }}" }
