@@ -215,6 +215,55 @@ IP_PROTOCOL_NUMBERS = {
     "rohc": 142
 }
 
+VALID_ICMP_RANGES = {
+    'IPv4': {
+        0: [0],  # Echo Reply
+        3: range(16),  # Destination Unreachable
+        4: [0],  # Source Quench (Deprecated)
+        5: [0, 1, 2, 3],  # Redirect
+        6: [0],  # Alternate Host Address (Deprecated)
+        8: [0],  # Echo
+        9: [0, 16],  # Router Advertisement
+        10: [0, 1],  # Router Selection
+        11: [0, 1, 2],  # Time Exceeded
+        12: [0, 1, 2],  # Parameter Problem
+        13: [0],  # Timestamp
+        14: [0],  # Timestamp Reply
+        40: range(6),  # Photuris
+        42: [0],  # Extended Echo Request
+        43: range(5),  # Extended Echo Reply
+    },
+    'IPv6': {
+        1: range(8),  # Destination Unreachable
+        2: [0],  # Packet Too Big
+        3: [0, 1],  # Time Exceeded
+        4: range(5),  # Parameter Problem
+        128: [0],
+        129: [0],
+        130: [0],
+        131: [0],
+        132: [0],
+        133: [0],
+        134: [0],
+        135: [0],
+        136: [0],
+        137: [0],
+        138: [0, 1, 255],
+        139: [0, 1, 2],
+        140: [0, 1, 2],
+        141: [0],
+        142: [0],
+        144: [0],
+        145: [0],
+        146: [0],
+        147: [0],
+        157: range(5),  # Duplicate Address Request Code Suffix
+        158: range(5),  # Duplicate Address Confirmation Code Suffix
+        160: [0],  # Extended Echo Request
+        161: range(5),  # Extended Echo Reply
+    }
+}
+
 
 class Timestamp(object):
 
@@ -653,6 +702,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 target_display_name=security_group_id)
         elif remote_ip_prefix is None or remote_ip_prefix == '0.0.0.0/0':
             target = ANY_TARGET
+        elif '0.0.0.0/' in remote_ip_prefix:
+            # TODO: Due bug in NSX-T API ignore 0.0.0.0 Network definitions that are not ANY_TARGET
+            return None
         else:
             target = ResourceReference(target_type=PROTOCOL_TYPES[ethertype],
                                        target_display_name=remote_ip_prefix,
@@ -662,6 +714,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         if min and max:
             port = "{}-{}".format(min, max) if min != max else str(min)
         if protocol == 'icmp':
+            # Disable ICMP rule generation for invalid ICMP type/code combinations
+            if min not in VALID_ICMP_RANGES[ethertype] or max not in VALID_ICMP_RANGES[ethertype][min]:
+                return None
             service = ICMPTypeNSService(
                 icmp_type=str(min) if min else None,
                 icmp_code=str(max) if max else None,
@@ -678,6 +733,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             service = IPProtocolNSService(protocol_number=int(ip_protocol))
         elif protocol is ANY_PROTOCOL:
             service = ANY_SERVICE
+        elif ethertype == 'IPv6':
+            # TODO: Skip ipv6 for now since bug in nsx-t api, remove if IPv6Address is supported
+            return None
         else:
             LOG.warning("Unsupported protocol '{}' for rule '{}'."
                         .format(protocol, id))
