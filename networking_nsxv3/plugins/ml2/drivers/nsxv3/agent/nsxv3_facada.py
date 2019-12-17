@@ -703,7 +703,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         elif remote_ip_prefix is None or remote_ip_prefix == '0.0.0.0/0':
             target = ANY_TARGET
         elif '0.0.0.0/' in remote_ip_prefix:
-            # TODO: Due bug in NSX-T API ignore 0.0.0.0 Network definitions that are not ANY_TARGET
+            # TODO: Due bug in NSX-T API ignore 0.0.0.0 Network definitions
+            # that are not ANY_TARGET
             return None
         else:
             target = ResourceReference(target_type=PROTOCOL_TYPES[ethertype],
@@ -714,8 +715,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         if min and max:
             port = "{}-{}".format(min, max) if min != max else str(min)
         if protocol == 'icmp':
-            # Disable ICMP rule generation for invalid ICMP type/code combinations
-            if min not in VALID_ICMP_RANGES[ethertype] or max not in VALID_ICMP_RANGES[ethertype][min]:
+            # Disable ICMP rule generation
+            # for invalid ICMP type/code combinations
+            if min not in VALID_ICMP_RANGES[ethertype]\
+                    or max not in VALID_ICMP_RANGES[ethertype][min]:
                 return None
             service = ICMPTypeNSService(
                 icmp_type=str(min) if min else None,
@@ -734,7 +737,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         elif protocol is ANY_PROTOCOL:
             service = ANY_SERVICE
         elif ethertype == 'IPv6':
-            # TODO: Skip ipv6 for now since bug in nsx-t api, remove if IPv6Address is supported
+            # TODO: Skip ipv6 for now since bug in nsx-t api
+            # remove if IPv6Address is supported
             return None
         else:
             LOG.warning("Unsupported protocol '{}' for rule '{}'."
