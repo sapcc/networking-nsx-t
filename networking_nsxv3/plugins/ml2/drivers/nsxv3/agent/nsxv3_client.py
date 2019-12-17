@@ -33,7 +33,7 @@ POLYMORPHIC_TYPES = (
 )
 
 
-class HttpUnsuccessfulExceptoin(Exception):
+class HttpUnsuccessfulException(Exception):
     """Exception raised for errors in the response."""
 
 
@@ -74,7 +74,7 @@ class connection_retry_policy(object):
                         msg = "HTTP Response URL={} Code={} Reason={} \
                             Content={}".format(resp.url, resp.status_code,
                                                resp.reason, resp.content)
-                        raise HttpUnsuccessfulExceptoin(msg)
+                        raise HttpUnsuccessfulException(msg)
                     return resp
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     LOG.error("Unable to connect. Error: {}".format(err))
@@ -231,7 +231,7 @@ class NSXv3ClientImpl(NSXv3Client):
 
         if content.get("result") is None\
                 or content.get("result").get("results") is None:
-            raise HttpUnsuccessfulExceptoin(
+            raise HttpUnsuccessfulException(
                 "Expected 'results' in payload={}".format(resp.content))
 
         return content.get("result").get("results")
