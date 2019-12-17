@@ -44,8 +44,8 @@ class Scheduler(object):
             sleeptime = run_time - self.schedule[offset] + self.limit
             if self.callback:
                 eventlet.spawn(self.callback, sleeptime)
-            eventlet.greenthread.sleep(sleeptime)
             run_time = self.schedule[offset] + self.limit
+            eventlet.greenthread.sleep(sleeptime)
         self.schedule.append(run_time)
         LOG.debug("Executing function at {}".format(time.time()))
         return self
