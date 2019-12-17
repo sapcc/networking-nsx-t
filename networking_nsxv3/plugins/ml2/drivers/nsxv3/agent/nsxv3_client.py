@@ -33,6 +33,10 @@ POLYMORPHIC_TYPES = (
 )
 
 
+class HttpUnsuccessfulExceptoin(Exception):
+    """Exception raised for errors in the response."""
+
+
 # Decorator
 class connection_retry_policy(object):
 
@@ -56,22 +60,34 @@ class connection_retry_policy(object):
                 try:
                     resp = func(self, *args, **kwargs)
                     if "sdk" in driver:
-                        pass
-                    elif 400 < resp.status_code and resp.status_code < 500:
+                        return resp
+
+                    LOG.debug(
+                        "HTTP Response URL={} Method={} Code={} Reason={}"
+                        .format(resp.url, resp.request.method,
+                                resp.status_code, resp.reason))
+
+                    if resp.status_code > 400 and resp.status_code < 500:
                         raise Unauthorized(resp.content)
+
+                    if resp.status_code >= 300:
+                        msg = "HTTP Response URL={} Code={} Reason={} \
+                            Content={}".format(resp.url, resp.status_code,
+                                               resp.reason, resp.content)
+                        raise HttpUnsuccessfulExceptoin(msg)
                     return resp
-                except (HTTPError, ConnectionError, ConnectTimeout) as e:
-                    LOG.error("Unable to connect. Error: {}".format(e))
-                except Unauthorized as e:
-                    error = json.loads(e.messages)
+                except (HTTPError, ConnectionError, ConnectTimeout) as err:
+                    LOG.error("Unable to connect. Error: {}".format(err))
+                except Unauthorized as err:
+                    error = json.loads(err.messages)
                     error_msg = error["error_message"]
                     error_code = int(error["error_code"])
-                    if 400 < error_code and error_code < 500:
+                    if error_code > 400 and error_code < 500:
                         LOG.error("Unauthorized: {}".format(error_msg))
                         self.login()
                     else:
                         LOG.error("Error: {}".format(error_msg))
-                        raise e
+                        raise err
 
                 now += 1
                 msg = pattern.format(now, until, pause, method)
@@ -211,7 +227,14 @@ class NSXv3ClientImpl(NSXv3Client):
                size=50, start=0):
         data = self._get_query(resource_type, key, ands, ors, dsl, size, start)
         resp = self._post(path="/nsxapi/rpc/call/SearchFacade", data=data)
-        return json.loads(resp.content)["result"]["results"]
+        content = json.loads(resp.content)
+
+        if content.get("result") is None\
+                or content.get("result").get("results") is None:
+            raise HttpUnsuccessfulExceptoin(
+                "Expected 'results' in payload={}".format(resp.content))
+
+        return content.get("result").get("results")
 
     @connection_retry_policy(driver="rest")
     def _post(self, path, data, asJson=True):
