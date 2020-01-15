@@ -79,6 +79,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         with LockManager.get_lock(sg_id):
             self.nsxv3.get_or_create_security_group(sg_id)
 
+            tcp_strict_enabled = self.rpc.has_security_group_tag(
+                security_group_id, nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT)
+            self.nsxv3.update_security_group_capabilities(sg_id,
+                                                          [tcp_strict_enabled])
+
     def security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
         LOG.debug("Updating Security Group '{}' members".format(sg_id))
@@ -224,8 +229,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             completed = True
             for priority in sync.Priority:
                 if (priority != sync.Priority.HIGHEST):
-                    completed = completed and \
-                        self.synchronizer.has_task_completed(priority)
+                    current = self.synchronizer.has_task_completed(priority)
+                    if not current:
+                        LOG.debug("Tasks with priority '{}' still enqueued"
+                                  .format(priority.name))
+                    completed = completed and current
 
             if not completed:
                 LOG.info(msg.format("IN PROGRESS"))
