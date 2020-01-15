@@ -144,8 +144,7 @@ class NSXv3ClientImpl(NSXv3Client):
 
         api_requests_per_second = cfg.CONF.NSXV3.nsxv3_requests_per_second
 
-        def limited(until):
-            seconds = until - time.time()
+        def limited(seconds):
             LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'
                         .format(api_requests_per_second, seconds))
 
