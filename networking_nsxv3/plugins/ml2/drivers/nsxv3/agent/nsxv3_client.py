@@ -2,7 +2,6 @@ import time
 import json
 import requests
 import inspect
-import eventlet
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -94,7 +93,7 @@ class connection_retry_policy(object):
                 if now > until:
                     raise Exception("Failed. {}".format(msg))
                 LOG.debug(msg)
-                eventlet.sleep(pause)
+                time.sleep(pause)
             return None
 
         return decorator
@@ -114,7 +113,7 @@ class NSXv3Client(object):
             resp = operation(**kwargs)
             if resp:
                 return resp
-            eventlet.sleep(retry_sleep)
+            time.sleep(retry_sleep)
         return resp
 
     def get(self, sdk_service, sdk_model):
