@@ -26,9 +26,7 @@ class Scheduler(object):
         self.rate = rate
         self.limit = limit
         self.callback = callback
-        self._semaphore = eventlet.semaphore.Semaphore()
-        self._semaphore_limit = eventlet.semaphore.Semaphore(value=self.rate)
-        self._running = 0
+        self._semaphore = eventlet.semaphore.Semaphore(value=self.rate)
 
     def __call__(self, func):
         @functools.wraps(func)
@@ -38,24 +36,22 @@ class Scheduler(object):
         return wrapped
 
     def __enter__(self):
-        with self._semaphore:
-            self._semaphore_limit.acquire(blocking=True, timeout=3)
-            run_time = time.time()
-            offset = len(self.schedule) - self.rate
+        self._semaphore.acquire(blocking=True, timeout=3)
+        run_time = time.time()
+        offset = len(self.schedule) - self.rate
 
-            if offset >= 0 and run_time - self.limit < self.schedule[offset]:
-                if self.callback:
-                    sleeptime = run_time - self.schedule[offset] + self.limit
-                    eventlet.spawn(self.callback, sleeptime)
-                    eventlet.greenthread.sleep(sleeptime)
-                run_time = self.schedule[offset] + self.limit
-            self.schedule.append(run_time)
-            LOG.debug("Executing function at {}".format(time.time()))
-            return self
+        if offset >= 0 and run_time - self.limit < self.schedule[offset]:
+            sleeptime = run_time - self.schedule[offset] + self.limit
+            run_time = self.schedule[offset] + self.limit
+            if self.callback:
+                eventlet.spawn(self.callback, sleeptime)
+            eventlet.greenthread.sleep(sleeptime)
+        self.schedule.append(run_time)
+        LOG.debug("Executing function at {}".format(time.time()))
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        with self._semaphore:
-            self._semaphore_limit.release()
-            now = time.time()
-            while self.schedule and self.schedule[0] < now - self.limit:
-                self.schedule.popleft()
+        self._semaphore.release()
+        now = time.time()
+        while self.schedule and self.schedule[0] < now - self.limit:
+            self.schedule.popleft()

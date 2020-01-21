@@ -3,6 +3,7 @@ from oslo_log import log as logging
 from oslo_config import cfg
 import copy
 import json
+import datetime
 
 from com.vmware.nsx_client import LogicalSwitches
 from com.vmware.nsx_client import TransportZones
@@ -262,6 +263,43 @@ VALID_ICMP_RANGES = {
         161: range(5),  # Extended Echo Reply
     }
 }
+
+
+class Timestamp(object):
+
+    def __init__(
+            self, name, nsx_client, sdk_service, sdk_model, timeout):
+
+        self._client = nsx_client
+        self._service = sdk_service
+        self._model = sdk_model
+        self._timeout = timeout
+        self._name = name
+
+    def _get_date(self, timestamp=None):
+        format = "%Y-%m-%d %H:%M:%S"
+        dt = datetime.datetime
+        if timestamp is None:
+            return dt.now().strftime(format)
+        else:
+            return dt.strptime(timestamp, format)
+
+    def has_expired(self):
+        tags = self._client.get_tags(self._service, self._model)
+
+        timestamp_str = tags.get(self._name)
+        if not timestamp_str:
+            return True
+
+        timestamp = self._get_date(timestamp_str) + \
+            datetime.timedelta(hours=self._timeout)
+
+        return timestamp < datetime.datetime.now()
+
+    def update(self):
+        tags = self._client.get_tags(self._service, self._model)
+        tags[self._name] = self._get_date()
+        self._client.set_tags(self._service, self._model, tags)
 
 
 class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
@@ -703,7 +741,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 source_ports=[ANY_PORT])
         elif str(protocol).isdigit():
             service = IPProtocolNSService(protocol_number=int(protocol))
-        elif protocol and protocol in IP_PROTOCOL_NUMBERS:
+        elif protocol and hasattr(IP_PROTOCOL_NUMBERS, protocol):
             ip_protocol = IP_PROTOCOL_NUMBERS.get(protocol)
             service = IPProtocolNSService(protocol_number=int(ip_protocol))
         elif protocol is ANY_PROTOCOL:
