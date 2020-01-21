@@ -238,19 +238,25 @@ class NSXv3ClientImpl(NSXv3Client):
     @connection_retry_policy(driver="rest")
     def _post(self, path, data, asJson=True):
         with self.api_scheduler:
-            return self.session.post(url=self._get_url(path),
-                                     data=json.dumps(data) if asJson else data)
+            return self.session.post(
+                url=self._get_url(path),
+                data=json.dumps(data) if asJson else data,
+                timeout=cfg.CONF.NSXV3.nsxv3_request_timeout)
 
     @connection_retry_policy(driver="rest")
     def _put(self, path, data):
         with self.api_scheduler:
-            return self.session.put(url=self._get_url(path),
-                                    data=json.dumps(data))
+            return self.session.put(
+                url=self._get_url(path),
+                data=json.dumps(data),
+                timeout=cfg.CONF.NSXV3.nsxv3_request_timeout)
 
     @connection_retry_policy(driver="rest")
     def _delete(self, path):
         with self.api_scheduler:
-            return self.session.delete(url=self._get_url(path))
+            return self.session.delete(
+                url=self._get_url(path),
+                timeout=cfg.CONF.NSXV3.nsxv3_request_timeout)
 
     def _get_object(self, sdk_model, sdk_object):
         o = sdk_object

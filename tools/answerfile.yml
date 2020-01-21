@@ -38,6 +38,7 @@ neutron_qos_policy_id:
 # NSXV3
 nsxv3_connection_retry_count: "10"
 nsxv3_connection_retry_sleep: "5"
+nsxv3_request_timeout: "60"
 nsxv3_operation_retry_count: "3"
 nsxv3_operation_retry_sleep: "5"
 nsxv3_requests_per_second: "90"

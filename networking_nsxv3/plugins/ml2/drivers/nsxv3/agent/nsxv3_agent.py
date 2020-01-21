@@ -533,6 +533,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         return {
             'nsxv3_connection_retry_count': c.nsxv3_connection_retry_count,
             'nsxv3_connection_retry_sleep': c.nsxv3_connection_retry_sleep,
+            'nsxv3_request_timeout': c.nsxv3_request_timeout,
             'nsxv3_host': c.nsxv3_login_hostname,
             'nsxv3_port': c.nsxv3_login_port,
             'nsxv3_user': c.nsxv3_login_user,
