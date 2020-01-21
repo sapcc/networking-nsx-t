@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import sys
-import traceback
 
 import netaddr
 import oslo_messaging
@@ -492,10 +491,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
 
         if self.rpc:
-            try:
-                self.rpc.sync_inventory()
-            except Exception:
-                LOG.error(traceback.format_exc())
+            self.rpc.sync_inventory()
         return set()
 
     def get_devices_modified_timestamps(self, devices):
