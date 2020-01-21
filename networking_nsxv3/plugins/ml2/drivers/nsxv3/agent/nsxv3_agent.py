@@ -177,7 +177,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.get_revisions(
                 query=self.rpc.get_qos_policy_revision_tuples).keys(),
             self.sync_qos)
-        self.synchronizer.submit_task(sync.Priority.MEDIUM, self.get_revisions(
+        self.synchronizer.submit_task(3, self.get_revisions(
             query=self.rpc.get_port_revision_tuples).keys(), self.sync_port)
 
     def _sync_inventory_shallow(self):
