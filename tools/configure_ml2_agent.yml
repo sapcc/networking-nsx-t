@@ -40,6 +40,7 @@
         - { section: "AGENT_CLI", option: "neutron_qos_policy_id", value: "{{ neutron_qos_policy_id }}" }
         - { section: "NSXV3", option: "nsxv3_connection_retry_count", value: "{{ nsxv3_connection_retry_count }}" }
         - { section: "NSXV3", option: "nsxv3_connection_retry_sleep", value: "{{ nsxv3_connection_retry_sleep }}" }
+        - { section: "NSXV3", option: "nsxv3_request_timeout", value: "{{ nsxv3_request_timeout }}" }
         - { section: "NSXV3", option: "nsxv3_operation_retry_count", value: "{{ nsxv3_operation_retry_count }}" }
         - { section: "NSXV3", option: "nsxv3_operation_retry_sleep", value: "{{ nsxv3_operation_retry_sleep }}" }
         - { section: "NSXV3", option: "nsxv3_requests_per_second", value: "{{ nsxv3_requests_per_second }}" }
