@@ -712,7 +712,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 target_display_name=security_group_id)
         elif remote_ip_prefix is None or remote_ip_prefix == '0.0.0.0/0' or remote_ip_prefix == '::/0':
             target = ANY_TARGET
-        elif '0.0.0.0/' in remote_ip_prefix:
+        elif remote_ip_prefix.startswith('0.0.0.0/'):
             # TODO: Due bug in NSX-T API ignore 0.0.0.0 Network definitions
             # that are not ANY_TARGET
             return None
