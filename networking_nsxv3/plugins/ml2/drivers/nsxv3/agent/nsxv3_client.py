@@ -1,4 +1,3 @@
-import time
 import json
 import requests
 import inspect
@@ -22,7 +21,7 @@ from com.vmware.nsx.model_client import SpoofGuardSwitchingProfile
 
 from com.vmware.vapi.std.errors_client import Unauthorized
 
-from networking_nsxv3.common.scheduling import Scheduler
+from networking_nsxv3.common.synchronization import Scheduler
 
 LOG = logging.getLogger(__name__)
 
