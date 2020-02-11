@@ -20,9 +20,6 @@ enable_security_group: "true"
 
 # AGENT
 agent_id: "nsxm-l-01a.corp.local"
-sync_pool_size: "10"
-sync_queue_size: "-1"
-sync_requests_per_second: "10"
 sync_full_schedule: "24"
 locking_coordinator_url: ""
 # 24 hours = 86400 seconds
@@ -42,6 +39,7 @@ nsxv3_request_timeout: "60"
 nsxv3_operation_retry_count: "3"
 nsxv3_operation_retry_sleep: "5"
 nsxv3_requests_per_second: "90"
+nsxv3_concurrent_requests: "40"
 nsxv3_login_user: "admin"
 nsxv3_login_password: "VMware1!"
 nsxv3_login_hostname: "nsxm-l-01a.corp.local"

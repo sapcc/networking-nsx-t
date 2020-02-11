@@ -710,7 +710,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 target_id=remote_group_id,
                 is_valid=True,
                 target_display_name=security_group_id)
-        elif remote_ip_prefix is None or remote_ip_prefix == '0.0.0.0/0' or remote_ip_prefix == '::/0':
+        elif remote_ip_prefix in [None, '0.0.0.0/0', '::/0']:
             target = ANY_TARGET
         elif remote_ip_prefix.startswith('0.0.0.0/'):
             # TODO: Due bug in NSX-T API ignore 0.0.0.0 Network definitions
@@ -741,7 +741,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                 source_ports=[ANY_PORT])
         elif str(protocol).isdigit():
             service = IPProtocolNSService(protocol_number=int(protocol))
-        elif protocol and hasattr(IP_PROTOCOL_NUMBERS, protocol):
+        elif protocol and protocol in IP_PROTOCOL_NUMBERS:
             ip_protocol = IP_PROTOCOL_NUMBERS.get(protocol)
             service = IPProtocolNSService(protocol_number=int(ip_protocol))
         elif protocol is ANY_PROTOCOL:

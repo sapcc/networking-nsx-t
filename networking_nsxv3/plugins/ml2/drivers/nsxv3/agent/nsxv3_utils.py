@@ -59,6 +59,12 @@ def get_service_reference(sdk_model):
     for key, val in vars(sdk_model.service).iteritems():
         if not key.startswith("_"):
             json[key] = val
+
+    svc = sdk_model.service.__class__.__name__
+    if svc == "ICMPTypeNSService":
+        json["resource_type"] = "ICMPTypeNSService"
+    elif svc == "L4PortSetNSService":
+        json["resource_type"] = "L4PortSetNSService"
     return {"service": json}
 
 

@@ -17,21 +17,6 @@ agent_opts = [
         help="NSXv3 Manager ID"
     ),
     cfg.IntOpt(
-        'sync_pool_size',
-        default=10,
-        help='Number of synchronization workers'
-    ),
-    cfg.IntOpt(
-        'sync_queue_size',
-        default=-1,
-        help='The size of synchronization queue'
-    ),
-    cfg.IntOpt(
-        'sync_requests_per_second',
-        default=10,
-        help='''Objects per second synchronizing OpenStack and NSXv3.'''
-    ),
-    cfg.IntOpt(
         'sync_full_schedule',
         default=24,
         help='''Full-sync schedule in hours between OpenStack and NSXv3.'''
@@ -108,6 +93,11 @@ nsxv3_opts = [
         'nsxv3_requests_per_second',
         default=90,
         help='''Requests per second to NSXv3 Manager. NSXv3 limit 100 req/s'''
+    ),
+    cfg.IntOpt(
+        'nsxv3_concurrent_requests',
+        default=40,
+        help='''Concurrent requests to NSXv3 Manager. NSXv3 limit 40'''
     ),
     cfg.StrOpt(
         'nsxv3_login_user',
