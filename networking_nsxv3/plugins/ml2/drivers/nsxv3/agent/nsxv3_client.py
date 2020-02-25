@@ -78,7 +78,14 @@ class connection_retry_policy(object):
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     LOG.error("Unable to connect. Error: {}".format(err))
                 except Unauthorized as err:
-                    error = json.loads(err.messages)
+                    if err.messages:
+                        error = json.loads(err.messages)
+                    else:
+                        error = {
+                            "error_message" : "None",
+                            "error_code": "-1"
+                        }
+
                     error_msg = error["error_message"]
                     error_code = int(error["error_code"])
                     if error_code > 400 and error_code < 500:
