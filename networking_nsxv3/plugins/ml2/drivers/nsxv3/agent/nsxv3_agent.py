@@ -209,6 +209,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.runner.run(
             sync.Priority.LOW,
             outdated_lps, self.sync_port)
+        self.runner.run(
+            sync.Priority.LOW,
+            orphaned_lps, self.sync_port_orphaned)
 
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
         self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
@@ -295,6 +298,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         self.port_update(context=None, port=port,
                          segmentation_id=segmentation_id)
+
+    def sync_port_orphaned(self, port_id):
+        LOG.debug("Removing orphaned ports '{}'.".format(
+            port_id))
+        self.port_delete(context=None, port_id=port_id, sync=True)
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
@@ -424,9 +432,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     @nsxv3_migration.migrator(is_enabled_callback=is_migration_enabled)
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))
-        # Port is deleted by Nova when destroying the instance
-        # with LockManager.get_lock(kwargs["port_id"]):
-        #     self.nsxv3.port_delete(kwargs["port_id"])
+        if kwargs.get("sync"):
+            with LockManager.get_lock(kwargs["port_id"]):
+                self.nsxv3.port_delete(kwargs["port_id"])
+        # Else, a port is deleted by Nova when destroying the instance
 
     def create_policy(self, context, policy):
         LOG.debug("Creating policy={}.".format(policy["name"]))

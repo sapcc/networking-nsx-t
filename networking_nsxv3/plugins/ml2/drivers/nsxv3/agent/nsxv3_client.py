@@ -82,7 +82,7 @@ class connection_retry_policy(object):
                         error = json.loads(err.messages)
                     else:
                         error = {
-                            "error_message" : "None",
+                            "error_message": "None",
                             "error_code": "-1"
                         }
 
