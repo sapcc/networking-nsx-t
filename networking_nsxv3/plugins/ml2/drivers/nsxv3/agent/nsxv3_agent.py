@@ -30,7 +30,6 @@ from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_migration
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import vsphere_client
 from networking_nsxv3.common import synchronization as sync
 
@@ -392,7 +391,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                     }
         return {}
 
-    @nsxv3_migration.migrator(is_enabled_callback=is_migration_enabled)
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
@@ -429,7 +427,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             )
         self.updated_devices.add(port['mac_address'])
 
-    @nsxv3_migration.migrator(is_enabled_callback=is_migration_enabled)
     def port_delete(self, context, **kwargs):
         LOG.debug("Deleting port " + str(kwargs))
         if kwargs.get("sync"):
