@@ -390,6 +390,8 @@ class NSXv3ClientImpl(NSXv3Client):
         with self.api_scheduler:
             if 'cascade' in inspect.getargspec(svc.delete).args:
                 return svc.delete(sdk_id, cascade=True)
+            if 'detach' in inspect.getargspec(svc.delete).args:
+                return svc.delete(sdk_id, detach=True)
             else:
                 return svc.delete(sdk_id)
 
