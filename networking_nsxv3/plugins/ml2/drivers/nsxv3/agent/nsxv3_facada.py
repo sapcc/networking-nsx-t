@@ -318,6 +318,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         self.tz_id = self.get(sdk_service=TransportZones,
                               sdk_model=TransportZone(display_name=self.tz_name
                                                       )).id
+        self.agent_id = cfg.CONF.AGENT.agent_id
 
         ipd_sp_spec = IpDiscoverySwitchingProfile(
             arp_bindings_limit=1,
@@ -401,9 +402,11 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         sg_scope = nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
+        agent_scope = nsxv3_constants.NSXV3_AGENT_SCOPE
 
         lp.tags = [Tag(scope=sg_scope, tag=id) for id in security_groups_ids]
         lp.tags.append(Tag(scope=rev_scope, tag=str(revision)))
+        lp.tags.append(Tag(scope=agent_scope, tag=str(self.agent_id)))
         lp.switching_profile_ids = []
         lp.switching_profile_ids.extend(self.default_switching_profile_ids)
 
@@ -777,6 +780,13 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         key = attr_key
         ands = [attr_val] if attr_val else []
 
+        def is_managed_by(obj):
+            for tag in obj.get("tags"):
+                if tag.get("scope") == nsxv3_constants.NSXV3_AGENT_SCOPE\
+                    and tag.get("tag") == self.agent_id:
+                    return True
+            return False
+
         cycle = 0
         while True:
             objs = self._query(resource_type=sdk_type, key=key, ands=ands,
@@ -785,6 +795,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             for obj in objs:
                 if 'LogicalPort' in sdk_type:
                     name = obj.get("attachment").get("id")
+                    if 'tags' in obj:
+                        # Skip port if not managed by the agent
+                        if not is_managed_by(obj):
+                            continue
                 else:
                     name = obj.get("display_name")
                 revision = ""

@@ -78,7 +78,14 @@ class connection_retry_policy(object):
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     LOG.error("Unable to connect. Error: {}".format(err))
                 except Unauthorized as err:
-                    error = json.loads(err.messages)
+                    if err.messages:
+                        error = json.loads(err.messages)
+                    else:
+                        error = {
+                            "error_message": "None",
+                            "error_code": "-1"
+                        }
+
                     error_msg = error["error_message"]
                     error_code = int(error["error_code"])
                     if error_code > 400 and error_code < 500:
@@ -383,6 +390,8 @@ class NSXv3ClientImpl(NSXv3Client):
         with self.api_scheduler:
             if 'cascade' in inspect.getargspec(svc.delete).args:
                 return svc.delete(sdk_id, cascade=True)
+            if 'detach' in inspect.getargspec(svc.delete).args:
+                return svc.delete(sdk_id, detach=True)
             else:
                 return svc.delete(sdk_id)
 
