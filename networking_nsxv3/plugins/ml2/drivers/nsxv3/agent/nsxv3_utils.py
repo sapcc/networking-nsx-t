@@ -79,3 +79,25 @@ def is_valid_uuid(uuid, version=4):
 
 def get_segmentation_id_lock(segmentation_id):
     return "segmentation_id-{}".format(segmentation_id)
+
+
+def concat_revisions(rev_1, rev_2):
+    """Concatenating using the lowest version"""
+    result = {}
+    for key, val_1 in rev_1.items():
+        val_2 = rev_2.get(key, 0)
+
+        result[key] = val_1 if val_1 < val_2 else val_2
+        if key in rev_2:
+            del rev_2[key]
+
+    return dict(result, **rev_2)
+
+def outdated_revisions(rev_1, rev_2):
+    """Extracts outdated from rev_2 items"""
+    outdated = set()
+
+    for key, rev in rev_1.items():
+        if rev_2.get(key) != rev:
+            outdated.add(key)
+    return outdated

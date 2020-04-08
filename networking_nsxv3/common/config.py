@@ -40,13 +40,18 @@ agent_opts = [
     # ),
     cfg.IntOpt(
         'rpc_max_records_per_query',
-        default=2000,
+        default=1000,
         help="Neutron RPC maximum records per query."
     ),
     cfg.BoolOpt(
         'enable_runtime_migration_from_dvs_driver',
         default=False,
         help="Enable runtime migration from DVS ML2 Driver."
+    ),
+    cfg.BoolOpt(
+        'enable_imperative_security_group_cleanup',
+        default=False,
+        help="Enable NSX-T imperative security group cleanup."
     )
 ]
 
@@ -141,8 +146,8 @@ nsxv3_opts = [
     ),
     cfg.IntOpt(
         'nsxv3_max_records_per_query',
-        default=2000,
-        help="Neutron RPC maximum records per query request."
+        default=1000,
+        help="NSXv3 Managed maximum records per query request."
     )
 ]
 
