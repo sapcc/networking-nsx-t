@@ -1,8 +1,8 @@
 from datetime import datetime
 import oslo_messaging
 from oslo_log import log
-from neutron.common import rpc
-from neutron.common import topics
+from neutron_lib import rpc as n_rpc
+from neutron_lib.agent import topics
 
 from osprofiler.profiler import trace_cls
 
@@ -29,7 +29,7 @@ class NSXv3AgentRpcClient(object):
         )
 
         self.context = context
-        self.rpc = rpc.get_client(target)
+        self.rpc = n_rpc.get_client(target)
 
     def _get_call_context(self, host=None):
         # True - broadcast to all agents
@@ -112,7 +112,7 @@ class NSXv3ServerRpcApi(object):
 
     def __init__(self, context, topic, host):
         target = oslo_messaging.Target(topic=topic, version=self.rpc_version)
-        self.client = rpc.get_client(target)
+        self.client = n_rpc.get_client(target)
         self.context = context
         self.host = host
         self.topic = topic

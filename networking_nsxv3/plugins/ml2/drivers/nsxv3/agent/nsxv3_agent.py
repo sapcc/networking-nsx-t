@@ -16,11 +16,12 @@ from com.vmware.nsx.model_client import (FirewallRule,
                                          QosSwitchingProfile,
                                          TransportZone)
 from neutron.common import config as common_config
-from neutron.common import profiler, topics
+from neutron.common import profiler
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
 from neutron_lib.api.definitions import portbindings
 from neutron_lib import context as neutron_context
+from neutron_lib.agent import topics
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
@@ -89,7 +90,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except:
             # Force recreate all rules
             pass
-        
+
         add_rules = []
         for rule in neutron_rules:
             r = nsxv3_policy.Rule()
@@ -109,18 +110,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
             add_rules.append(r)
             nsxv3_rules.pop(r.identifier, None)
-        
+
         del_rules = []
         for identifier, _ in nsxv3_rules.items():
             r = nsxv3_policy.Rule()
             r.identifier = identifier
-            r.service = nsxv3_policy.Service() 
+            r.service = nsxv3_policy.Service()
             r.service.identifier = r.identifier
             del_rules.append(r)
-        
+
         return add_rules, del_rules
 
-    
+
     def security_group_updated_skip_rules(self, security_group_id):
         self.security_group_updated(security_group_id, skip_rules=True)
 
@@ -133,7 +134,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
             revision_member = self.infra.get_revision(\
                 nsxv3_policy.ResourceContainers.SecurityPolicyGroup, sg_id)
-            
+
             revision_rule = self.infra.get_revision(\
                 nsxv3_policy.ResourceContainers.SecurityPolicy, sg_id)
 
@@ -141,17 +142,17 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             tcp_strict = None
             add_rules = []
             del_rules = []
-            
+
             if revision_member != revision_sg:
                 revision_member = revision_sg
                 cidrs = self._security_group_member_updated(sg_id)
-            
+
             if not skip_rules and revision_rule != revision_sg:
                 revision_rule = revision_sg
                 tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
                 add_rules, del_rules = \
                     self._security_group_rule_updated(sg_id, revision_sg)
-                
+
             self.infra.update_policy(sg_id, tcp_strict=tcp_strict,
                                      revision_member=revision_member,
                                      revision_rule=revision_rule,
@@ -163,7 +164,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             sg_id = str(security_group_id)
             nsxv3_rules = self.infra.get_revisions(\
                 nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
-            
+
             del_rules = []
             for identifier, _ in nsxv3_rules.items():
                 r = nsxv3_policy.Rule()
@@ -486,7 +487,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                     self.nsxv3, LogicalPorts,
                     port,
                     hours)
-                
+
                 if timestamp.has_set():
                     if timestamp.has_expired():
                         self.nsxv3.port_delete(port_id)

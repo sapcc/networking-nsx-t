@@ -56,7 +56,7 @@ def get_resource_reference(sdk_model):
 
 def get_service_reference(sdk_model):
     json = {}
-    for key, val in vars(sdk_model.service).iteritems():
+    for key, val in vars(sdk_model.service).items():
         if not key.startswith("_"):
             json[key] = val
 

@@ -9,7 +9,7 @@ from neutron_lib import context
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.plugins.ml2 import api
 
-from neutron.common import rpc
+from neutron_lib import rpc as n_rpc
 
 
 from networking_nsxv3.common import constants as nsxv3_constants
@@ -60,7 +60,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.trunk = nsxv3_trunk.NSXv3TrunkDriver.create()
         self.qos = nsxv3_qos.NSXv3QosDriver.create(self.rpc)
 
-        conn = rpc.create_connection()
+        conn = n_rpc.Connection()
         conn.create_consumer(nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
                              [nsxv3_rpc.NSXv3ServerRpcCallback()],
                              fanout=False)

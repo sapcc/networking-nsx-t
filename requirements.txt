@@ -23,3 +23,8 @@ datadog
 attrs                           # MIT License
 
 mock
+
+vapi_common
+vapi_runtime
+vapi_common_client
+nsx_python_sdk
