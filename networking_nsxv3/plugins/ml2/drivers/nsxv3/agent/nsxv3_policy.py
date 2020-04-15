@@ -384,7 +384,9 @@ class InfraBuilder:
                 "ip_protocol": PROTOCOLS[rule.ethertype],
                 "direction": DIRECTIONS[rule.direction],
                 "action": "ALLOW",
-                "scope": [ group_ref(rule.security_group_id) ],
+                "scope": [ 
+                    group_ref(AgentIdentifier.build(rule.security_group_id))
+                ],
                 "source_groups": [ group_ref(source_group) ],
                 "destination_groups": [ group_ref(destination_group) ],
                 "services": [ service ],
