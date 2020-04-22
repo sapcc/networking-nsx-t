@@ -144,10 +144,18 @@ class NSXv3Client(object):
 
 class NSXv3ClientImpl(NSXv3Client):
 
-    def __init__(self, api_scheduler):
+    def __init__(self):
         self.session = None
         self.stub_config = None
-        self.api_scheduler = api_scheduler
+
+        api_requests_per_second = cfg.CONF.NSXV3.nsxv3_requests_per_second
+
+        def limited(seconds):
+            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'
+                        .format(api_requests_per_second, seconds))
+
+        self.api_scheduler = Scheduler(rate=api_requests_per_second,
+                                       limit=1, callback=limited)
 
         self.base_url = 'https://{}:{}'.format(
             cfg.CONF.NSXV3.nsxv3_login_hostname,
@@ -279,22 +287,11 @@ class NSXv3ClientImpl(NSXv3Client):
 
         # SDK does not support get object by display_name
         res = self._query(resource_type=sdk_type, key=sdk_key, ands=[sdk_name])
-
-
-        exact_res = None
-        if len(res) > 1: 
-            for resource in res:
-                if resource["display_name"] == sdk_name:
-                    LOG.error("FOUND " + str(resource["display_name"]))
-                    if exact_res is not None:
-                        raise Exception("{} ambiguous.".format(msg))
-                    exact_res = resource
+        if len(res) > 1:
+            raise Exception("{} has failed. Ambiguous ".format(msg))
         if len(res) == 1:
-            exact_res = res.pop()
-
-        if exact_res is not None:
             with self.api_scheduler:
-                sdk_object = svc.get(exact_res["id"])
+                sdk_object = svc.get(res.pop()["id"])
             return self._get_object(sdk_model, sdk_object)
         return None
 

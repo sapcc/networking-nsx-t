@@ -35,6 +35,7 @@ Install dependencies
 ::
 
     # Install NSX-T 2.3 SDK (download SDK from VMware web site)
+    sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_runtime-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common_client-2.9.0-py2.py3-none-any.whl
