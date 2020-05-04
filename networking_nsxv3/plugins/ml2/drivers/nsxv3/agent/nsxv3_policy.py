@@ -11,6 +11,7 @@ from requests.exceptions import ConnectTimeout
 from oslo_log import log as logging
 from oslo_config import cfg
 
+from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.common.synchronization import Scheduler
 from networking_nsxv3.common import constants as nsxv3_constants
 
@@ -27,6 +28,14 @@ class RetryPolicy(object):
 
         def decorator(self, *args, **kwargs):
 
+            requestInfo = ""
+
+            if 'path' in kwargs and 'session/create' in kwargs.get('path'):
+                pass
+            else:
+                requestInfo = "Function {} Argumetns {}".format(func.__name__, 
+                                                                str(kwargs))
+
             until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
             pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
 
@@ -41,20 +50,26 @@ class RetryPolicy(object):
                     response = func(self, *args, **kwargs)
 
                     if 200 <= response.status_code < 300 or \
-                        response.status_code == 404:
+                        response.status_code in [404]:
                         return response
                     
                     last_err = "Error Code={} Message={}"\
                         .format(response.status_code, response.content)
-                    
-                    LOG.error(last_err)
+
+
+                    LOG.error("Request={} Response={}".format(requestInfo,
+                                                              last_err))
 
                     if response.status_code in [401, 403]:
                         self._login()
                         continue
+
+                    # skip retry on the ramaining NSX errors
+                    break                    
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
-                    LOG.error(last_err)
+                    LOG.error("Request={} Response={}".format(requestInfo,
+                                                              last_err))
 
                 msg = pattern.format(attempt, until, pause, method)
 
@@ -77,6 +92,7 @@ class Client:
             cfg.CONF.NSXV3.nsxv3_login_port
         )
 
+        self._login_timestamp = 0
         self._login_path = "/api/session/create"
         self._login_data = {
             "j_username": cfg.CONF.NSXV3.nsxv3_login_user,
@@ -92,14 +108,25 @@ class Client:
         self.api_scheduler = api_scheduler
 
     def _login(self):
-        resp = self.post(path=self._login_path, data=self._login_data)
-        if resp.status_code != requests.codes.ok:
-            resp.raise_for_status()
+        LOG.info("Session token - acquiring")
+        now = int(datetime.datetime.now().strftime("%s"))
+        with LockManager.get_lock(self._base_path):
+            if now > self._login_timestamp:
+                resp = self.post(path=self._login_path, data=self._login_data)
+                if resp.status_code != requests.codes.ok:
+                    resp.raise_for_status()
 
-        self._session.headers["Cookie"] = resp.headers.get("Set-Cookie")
-        self._session.headers["X-XSRF-TOKEN"] = resp.headers.get("X-XSRF-TOKEN")
-        self._session.headers["Accept"] = "application/json"
-        self._session.headers["Content-Type"] = "application/json"
+                self._session.headers["Cookie"] = \
+                    resp.headers.get("Set-Cookie")
+                self._session.headers["X-XSRF-TOKEN"] = \
+                    resp.headers.get("X-XSRF-TOKEN")
+                self._session.headers["Accept"] = "application/json"
+                self._session.headers["Content-Type"] = "application/json"
+
+                self._login_timestamp = \
+                    int(datetime.datetime.now().strftime("%s"))
+
+        LOG.info("Session token - acquired")
     
     def _params(self, **kwargs):
         kwargs["timeout"] = self._timeout
@@ -194,7 +221,7 @@ class InfraBuilder:
         if group.dynamic_members:
             expression.append({
                 "value": "security_group|" + identifier,
-                "member_type": "SegmentPort",
+                "member_type": "LogicalPort",
                 "key": "Tag",
                 "operator": "EQUALS",
                 "resource_type": "Condition"
@@ -410,7 +437,6 @@ class InfraBuilder:
                 "resource_type": "SecurityPolicy",
                 "display_name": identifier,
                 "id": identifier,
-                "scope": [ "ANY" ],
                 "category": "Application",
                 "stateful": True,
                 "children": [],

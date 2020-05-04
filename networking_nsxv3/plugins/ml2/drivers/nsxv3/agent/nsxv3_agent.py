@@ -80,8 +80,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
 
-        nsxv3_rules = self.infra.get_revisions(\
-            nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
+        nsxv3_rules = {}
+
+        try:
+            nsxv3_rules = self.infra.get_revisions(\
+                nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
+        except:
+            # Force recreate all rules
+            pass
         
         add_rules = []
         for rule in neutron_rules:
