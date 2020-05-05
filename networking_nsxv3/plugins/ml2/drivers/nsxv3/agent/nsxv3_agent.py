@@ -9,6 +9,7 @@ import netaddr
 import oslo_messaging
 
 from com.vmware.nsx_client import TransportZones
+from com.vmware.nsx_client import LogicalPorts
 from com.vmware.nsx.model_client import (FirewallRule,
                                          IPSet,
                                          LogicalPort,
@@ -462,10 +463,29 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.updated_devices.add(port['mac_address'])
 
     def port_delete(self, context, **kwargs):
-        LOG.debug("Deleting port " + str(kwargs))
+        port_id = kwargs["port_id"]
+        LOG.debug("Deleting port " + port_id)
         if kwargs.get("sync"):
-            with LockManager.get_lock(kwargs["port_id"]):
-                self.nsxv3.port_delete(kwargs["port_id"])
+            with LockManager.get_lock(port_id):
+                hours = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
+
+                port = self.nsxv3.get_port(\
+                    sdk_service=LogicalPorts,
+                    sdk_model=LogicalPort(attachment={"id": port_id}))
+
+                timestamp = nsxv3_facada.Timestamp(
+                    "marked_for_delete",
+                    self.nsxv3, LogicalPorts,
+                    port,
+                    hours)
+                
+                if timestamp.has_set():
+                    if timestamp.has_expired():
+                        self.nsxv3.port_delete(port_id)
+                else:
+                    timestamp.update()
+                    LOG.info("Port {} marked for deletion after {} hours"\
+                            .format(port_id, hours))
         # Else, a port is deleted by Nova when destroying the instance
 
     def create_policy(self, context, policy):

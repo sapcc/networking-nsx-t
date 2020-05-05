@@ -48,3 +48,4 @@ nsxv3_transport_zone_name: "openstack-tz"
 nsxv3_suppress_ssl_wornings: "True"
 nsxv3_managed_hosts:
 nsxv3_max_records_per_query: "2000"
+nsxv3_remove_orphan_ports_after: "12"

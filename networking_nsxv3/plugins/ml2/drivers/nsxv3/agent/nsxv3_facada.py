@@ -63,6 +63,9 @@ class Timestamp(object):
         else:
             return dt.strptime(timestamp, format)
 
+    def has_set(self):
+        return self._name in self._client.get_tags(self._service, self._model)
+
     def has_expired(self):
         tags = self._client.get_tags(self._service, self._model)
 

@@ -35,7 +35,8 @@ cfg.CONF.register_opts([
     cfg.BoolOpt('nsxv3_enable_spoof_guard', default=False),
     cfg.BoolOpt('nsxv3_suppress_ssl_wornings', default=True),
     cfg.ListOpt('nsxv3_managed_hosts', default=[]),
-    cfg.IntOpt('nsxv3_max_records_per_query', default=1)
+    cfg.IntOpt('nsxv3_max_records_per_query', default=1),
+    cfg.IntOpt('nsxv3_remove_orphan_ports_after', default=12)
 ], "NSXV3")
 
 cfg.CONF.register_opts([

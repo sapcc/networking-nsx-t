@@ -148,6 +148,11 @@ nsxv3_opts = [
         'nsxv3_max_records_per_query',
         default=1000,
         help="NSXv3 Managed maximum records per query request."
+    ),
+    cfg.IntOpt(
+        'nsxv3_remove_orphan_ports_after',
+        default=12,
+        help="Remove NSX-T orphan ports not before configured hours."
     )
 ]
 
