@@ -373,7 +373,7 @@ class InfraBuilder:
                 return
 
         if rule.remote_ip_prefix is not None:
-            remote_cidr = str(ipaddress.ip_network(unicode(rule.remote_ip_prefix)))
+            remote_cidr = str(ipaddress.ip_network(str(rule.remote_ip_prefix)))
             
             if remote_cidr not in [None, '0.0.0.0/0', '::/0']:
 
