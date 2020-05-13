@@ -166,7 +166,7 @@ class InfraServiceTest(testtools.TestCase):
         revisions = InfraService(Client(SchedulerMock()))\
             .get_revisions(ResourceContainers.SecurityPolicy)
 
-        self.assertEquals(len(revisions), 1, "Expected two objects")
+        self.assertEquals(len(revisions), 2, "Expected two objects")
         self.assertEquals(\
             revisions[res_2_id], res_2_rv, "Revision does not match")
 

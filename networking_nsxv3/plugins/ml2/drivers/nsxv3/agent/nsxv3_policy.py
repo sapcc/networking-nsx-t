@@ -160,17 +160,23 @@ class Client:
             return self._session.delete(**self._params(path=path, 
                                                        params=params))
 
-
 class AgentIdentifier:
+    """
+    AgentIdentifier provide control over the NSX-T Policy Objects IDs
+    """
 
     @staticmethod
     def build(identifier):
-        return "{}-{}".format(cfg.CONF.AGENT.agent_id, identifier)
+        return identifier
+        # Uncomment in order to have exclusive IDs per Agent
+        # return "{}-{}".format(cfg.CONF.AGENT.agent_id, identifier)
 
     @staticmethod
     def extract(identifier):
-        tokens = identifier.split(cfg.CONF.AGENT.agent_id + '-')
-        return tokens.pop() if len(tokens) == 2 else None
+        return identifier
+        # Uncomment in order to have exclusive IDs per Agent
+        # tokens = identifier.split(cfg.CONF.AGENT.agent_id + '-')
+        # return tokens.pop() if len(tokens) == 2 else None
 
 
 class InfraBuilder:

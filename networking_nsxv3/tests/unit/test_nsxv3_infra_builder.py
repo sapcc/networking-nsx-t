@@ -4,14 +4,21 @@ import logging
 import uuid
 import sys
 
+from oslo_config import cfg
+
+cfg.CONF.register_opts([
+    cfg.StrOpt('agent_id', default='nsxm-l-01a.corp.local'),
+    cfg.IntOpt(
+        'locking_coordinator_url',
+        default=None,
+        help='Url of the distributed locking coordinator. None for local.')
+], "AGENT")
+
+
 # from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.nsxv3_policy import *
 
 LOG = logging.getLogger(__name__)
-
-cfg.CONF.register_opts([
-    cfg.StrOpt('agent_id', default='nsxm-l-01a.corp.local')
-], "AGENT")
 
 def find(context, resource_type, domain=True):
     container = \
