@@ -161,7 +161,6 @@ def get_port(context, port_id):
         Port.mac_address,
         Port.admin_state_up,
         Port.status,
-        QosPolicy.id,
         StandardAttribute.revision_number,
         PortBinding.host,
         PortBinding.vif_details,
@@ -170,9 +169,6 @@ def get_port(context, port_id):
     ).join(
         StandardAttribute,
         PortBinding,
-    ).outerjoin(
-        QosPortPolicyBinding,
-        QosPolicy
     ).one_or_none()
     return _validate_one(result,
                          "Port ID='{}'".format(port_id))

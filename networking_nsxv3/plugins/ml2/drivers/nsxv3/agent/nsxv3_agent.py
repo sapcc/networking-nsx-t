@@ -296,7 +296,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
 
-        (id, mac, up, status, qos_id, rev,
+        qos_id = None
+        (id, mac, up, status, rev,
          binding_host, vif_details) = self.rpc.get_port(port_id)
         port = {
             "id": id,
