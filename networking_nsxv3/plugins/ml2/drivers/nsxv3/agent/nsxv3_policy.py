@@ -185,6 +185,8 @@ class InfraBuilder:
         self._client = client
         self.context = { 
             "resource_type": "Infra",
+            "connectivity_strategy" : \
+                cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy,
             "children": [
                 {
                     "resource_type": "ChildResourceReference",

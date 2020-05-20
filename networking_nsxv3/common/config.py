@@ -10,6 +10,14 @@ DEFAULT_VLAN_RANGES = []
 DEFAULT_TUNNEL_RANGES = []
 DEFAULT_TUNNEL_TYPES = []
 
+nsxv3_dfw_connectivity_strategy = [
+    "NONE", 
+    "BLACKLIST", 
+    "BLACKLIST_ENABLE_LOGGING", 
+    "WHITELIST", 
+    "WHITELIST_ENABLE_LOGGING"
+]
+
 agent_opts = [
     cfg.StrOpt(
         'agent_id',
@@ -153,7 +161,13 @@ nsxv3_opts = [
         'nsxv3_remove_orphan_ports_after',
         default=12,
         help="Remove NSX-T orphan ports not before configured hours."
-    )
+    ),
+    cfg.StrOpt(
+        'nsxv3_dfw_connectivity_strategy',
+        default='NONE',
+        help="NSXv3 Manager DFW connectivity strategy: {}"\
+            .format(str(nsxv3_dfw_connectivity_strategy))
+    ),
 ]
 
 vsphere_opts = [
