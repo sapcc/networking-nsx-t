@@ -328,9 +328,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         for (sg_id,) in self.rpc.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
+        try:
+            self._port_update(context=None, port=port,
+                            segmentation_id=segmentation_id)
+        except Exception as e:
+            LOG.error(e)
+            eventlet.sleep(10)
+            self.runner.run(sync.Priority.HIGHEST, port_id, self.sync_port)
 
-        self.port_update(context=None, port=port,
-                         segmentation_id=segmentation_id)
 
     def sync_port_orphaned(self, port_id):
         LOG.debug("Removing orphaned ports '{}'.".format(
@@ -428,6 +433,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
+        LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
+                  segmentation_id)
+        self.runner.run(sync.Priority.HIGHEST, port["id"], self.sync_port)
+
+    def _port_update(self, context, port=None, network_type=None,
+                    physical_network=None, segmentation_id=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
         vif_type = port.get(portbindings.VIF_TYPE)
         if not ((vnic_type and vnic_type == portbindings.VNIC_NORMAL) and
@@ -439,9 +450,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 LOG.debug("Skipping Port='%s'. It is not assigned to agent.",
                           str(port))
                 return
-
-        LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
-                  segmentation_id)
 
         address_bindings = []
 

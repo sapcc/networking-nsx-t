@@ -179,8 +179,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                            sdk_model=LogicalPort(attachment=attachment))
 
         if not lp:
-            raise Exception("Not found. Unable to update port '{}'"
-                            .format(attachment_id))
+            msg = "Not found. Unable to update port '{}'".format(attachment_id)
+            LOG.error(msg)
+            raise Exception(msg)
 
         sg_scope = nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
