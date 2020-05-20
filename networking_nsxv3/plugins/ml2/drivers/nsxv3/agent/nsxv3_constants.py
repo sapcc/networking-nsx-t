@@ -77,7 +77,7 @@ IP_PROTOCOL_NUMBERS = {
     "ipv6-frag": 44,
     "idrp": 45,
     "rsvp": 46,
-    "gres": 47,
+    "gre": 47,
     "dsr": 48,
     "bna": 49,
     "esp": 50,
