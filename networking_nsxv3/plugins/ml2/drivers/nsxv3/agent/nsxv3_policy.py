@@ -511,7 +511,12 @@ class InfraService:
     def _get_revisions(self, resource_container, cursor):
         path = "{}{}".format(INFRA, resource_container)
         params = { "page_size": self._page_size, "cursor": cursor }
-        response = self._client.get(path=path, params=params)
+
+        try:
+            response = self._client.get(path=path, params=params)
+        except Exception as e:
+            LOG.error("Unable to get path={} ERROR={}".format(path,e))
+            return ("", {})
         
         content = json.loads(response.content)
         cursor = content.get("cursor", None)
@@ -520,8 +525,16 @@ class InfraService:
             identifier = AgentIdentifier.extract(resource["id"])
             if identifier:
                 tags = self._get_tags(resource)
-                revisions[identifier] = tags\
-                    .get(nsxv3_constants.NSXV3_REVISION_SCOPE, "0")
+
+                agent_id = tags.get(nsxv3_constants.NSXV3_AGENT_SCOPE, None)
+                revision = tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, None)
+
+                if agent_id != cfg.CONF.AGENT.agent_id or revision == None:
+                    # Process only Agent objects
+                    # An agent object always has agent_id and revision_number
+                    continue
+
+                revisions[identifier] = revision
         return (cursor, revisions)
 
 
