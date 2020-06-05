@@ -284,7 +284,8 @@ class NSXv3ClientImpl(NSXv3Client):
         exact_res = None
         if len(res) > 1: 
             for resource in res:
-                if resource["display_name"] == sdk_name:
+                # Skip nsx_policy created objects
+                if resource["display_name"] == sdk_name and resource["_create_user"] == 'admin':
                     LOG.error("FOUND " + str(resource["display_name"]))
                     if exact_res is not None:
                         raise Exception("{} ambiguous.".format(msg))
