@@ -334,7 +334,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except Exception as e:
             LOG.error(e)
             eventlet.sleep(10)
-            self.runner.run(sync.Priority.HIGHEST, port_id, self.sync_port)
+            self.runner.run(sync.Priority.HIGHEST, [port_id], self.sync_port)
 
 
     def sync_port_orphaned(self, port_id):
