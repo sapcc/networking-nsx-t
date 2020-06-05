@@ -56,13 +56,12 @@ class RetryPolicy(object):
                     last_err = "Error Code={} Message={}"\
                         .format(response.status_code, response.content)
 
-
-                    LOG.error("Request={} Response={}".format(requestInfo,
-                                                              last_err))
-
                     if response.status_code in [401, 403]:
                         self._login()
                         continue
+
+                    LOG.error("Request={} Response={}".format(requestInfo,
+                                                              last_err))
 
                     # skip retry on the ramaining NSX errors
                     break                    
