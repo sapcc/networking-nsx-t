@@ -514,7 +514,7 @@ class InfraService:
         try:
             response = self._client.get(path=path, params=params)
         except Exception as e:
-            LOG.error("Unable to get path={} ERROR={}".format(path,e))
+            LOG.warning("Unable to get path={} ERROR={}".format(path,e))
             return ("", {})
         
         content = json.loads(response.content)
@@ -560,7 +560,7 @@ class InfraService:
         if 200 <= response.status_code < 300:
             resource = json.loads(response.content)
             tags = self._get_tags(resource)
-            return tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "0")
+            return int(tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "0"))
         else:
             return 0
     
