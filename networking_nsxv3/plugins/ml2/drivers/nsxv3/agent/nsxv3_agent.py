@@ -126,11 +126,16 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def security_group_updated(self, security_group_id, skip_rules=False):
         sg_id = str(security_group_id)
-        scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
-        LOG.debug("Updating Security Group '{}'".format(sg_id))
-        with LockManager.get_lock(sg_id):
+        try:
             _, revision_sg = self.rpc.get_security_group_revision(sg_id)
+        except Exception as e:
+            if "'{}' not found in Neutron".format(sg_id) in e.message:
+                pass
+            raise e
 
+        scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
+        LOG.info("Updating Security Group '{}'".format(sg_id))
+        with LockManager.get_lock(sg_id):
             revision_member = self.infra.get_revision(\
                 nsxv3_policy.ResourceContainers.SecurityPolicyGroup, sg_id)
             
@@ -159,6 +164,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                                      add_rules=add_rules, del_rules=del_rules)
 
     def security_group_delete(self, security_group_id):
+        LOG.info("Deleting Security Group '{}'".format(security_group_id))
         with LockManager.get_lock(security_group_id):
             sg_id = str(security_group_id)
             nsxv3_rules = self.infra.get_revisions(\
