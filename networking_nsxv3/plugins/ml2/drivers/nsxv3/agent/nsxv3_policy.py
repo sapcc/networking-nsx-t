@@ -4,6 +4,7 @@ import copy
 import json
 import datetime
 import requests
+import re
 from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
@@ -22,6 +23,10 @@ LOG = logging.getLogger(__name__)
 INFRA = "/policy/api/v1/infra"
 
 
+def is_not_found(response):
+    return re.search("The path.*is invalid", response.content)
+
+
 class RetryPolicy(object):
 
     def __call__(self, func):
@@ -33,14 +38,14 @@ class RetryPolicy(object):
             if 'path' in kwargs and 'session/create' in kwargs.get('path'):
                 pass
             else:
-                requestInfo = "Function {} Argumetns {}".format(func.__name__, 
+                requestInfo = "Function {} Argumetns {}".format(func.__name__,
                                                                 str(kwargs))
 
             until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
             pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
 
             method = "{}.{}".format(self.__class__.__name__, func.__name__)
-            
+
             pattern = "Retrying connection ({}/{}) with timeout {}s for {}"
             msg = None
             last_err = None
@@ -52,19 +57,27 @@ class RetryPolicy(object):
                     if 200 <= response.status_code < 300 or \
                         response.status_code in [404]:
                         return response
-                    
+
                     last_err = "Error Code={} Message={}"\
                         .format(response.status_code, response.content)
+                    log_msg = "Request={} Response={}".format(requestInfo,
+                                                              last_err)
+
+                    # Handle resource not found gently
+                    if is_not_found(response):
+                        LOG.info("Unable to find Resource={}"\
+                            .format(kwargs["path"]))
+                        LOG.debug(log_msg)
+                        return response
+
+                    LOG.error(log_msg)
 
                     if response.status_code in [401, 403]:
                         self._login()
                         continue
 
-                    LOG.error("Request={} Response={}".format(requestInfo,
-                                                              last_err))
-
                     # skip retry on the ramaining NSX errors
-                    break                    
+                    break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
                     LOG.error("Request={} Response={}".format(requestInfo,
@@ -76,7 +89,7 @@ class RetryPolicy(object):
                 eventlet.sleep(pause)
 
             raise Exception(msg, last_err)
-        
+
         return decorator
 
 
@@ -99,7 +112,7 @@ class Client:
         }
 
         self._session = requests.session()
-        
+
         if cfg.CONF.NSXV3.nsxv3_suppress_ssl_wornings:
             self._session.verify = False
             requests.packages.urllib3.disable_warnings()
@@ -126,7 +139,7 @@ class Client:
                     int(datetime.datetime.now().strftime("%s"))
 
         LOG.info("Session token - acquired")
-    
+
     def _params(self, **kwargs):
         kwargs["timeout"] = self._timeout
         kwargs["url"] = "{}{}".format(self._base_path, kwargs["path"])
@@ -156,7 +169,7 @@ class Client:
     @RetryPolicy()
     def delete(self, path, params):
         with self.api_scheduler:
-            return self._session.delete(**self._params(path=path, 
+            return self._session.delete(**self._params(path=path,
                                                        params=params))
 
 class AgentIdentifier:
@@ -182,7 +195,7 @@ class InfraBuilder:
 
     def __init__(self, client, transport_zone_id=None):
         self._client = client
-        self.context = { 
+        self.context = {
             "resource_type": "Infra",
             "connectivity_strategy" : \
                 cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy,
@@ -197,28 +210,28 @@ class InfraBuilder:
         }
 
         self.transport_zone_id = transport_zone_id
-    
+
     def build(self):
         self._client.patch(path=INFRA, data=json.dumps(self.context))
 
     def _add_domain_children(self, children):
         self.context["children"][0]["children"] += children
-    
+
     def _add_children(self, children):
         self.context["children"] += children
-    
+
     def _get_tags(self, infra_object=None):
         tags = [{
             "scope": nsxv3_constants.NSXV3_AGENT_SCOPE,
             "tag": cfg.CONF.AGENT.agent_id
         }]
-        
-        if infra_object is not None and infra_object.revision:
+
+        if infra_object is not None:
             tags.append({
                 "scope": nsxv3_constants.NSXV3_REVISION_SCOPE,
                 "tag": infra_object.revision
             })
-        
+
         return tags
 
     def with_group(self, group, delete=False):
@@ -267,7 +280,7 @@ class InfraBuilder:
 
         def is_valid_icmp(protocol):
             return protocol == 'icmp'
-            
+
         def is_valid_icmp_range(min, max):
             return \
                 min in VALID_ICMP_RANGES[ethertype] and \
@@ -317,7 +330,7 @@ class InfraBuilder:
 
         if not delete and is_valid_any(protocol):
             return self
-        
+
         if delete or service_entry["resource_type"]:
             self._add_children([{
                 "resource_type": "ChildService",
@@ -336,7 +349,7 @@ class InfraBuilder:
                 service.port_range_min, service.port_range_max))
 
         return self
-    
+
     def with_rule(self, section, rule, delete=False):
         identifier = AgentIdentifier.build(rule.identifier)
 
@@ -347,7 +360,7 @@ class InfraBuilder:
         def group_ref(group_id):
             return group_id if group_id == "ANY" else \
                 "/infra/domains/default/groups/" + group_id
-        
+
         def service_ref(service_id):
             return "/infra/services/" + service_id
 
@@ -355,7 +368,7 @@ class InfraBuilder:
         destination = "ANY"
         service = "ANY"
 
-        if rule.service.protocol is not None:
+        if rule.service is not None and rule.service.protocol is not None:
             self.with_service(rule.service, delete=delete)
 
             # Skip rule creation in case service cannot be matched
@@ -373,11 +386,11 @@ class InfraBuilder:
 
         if rule.remote_ip_prefix is not None:
             remote_cidr = str(ipaddress.ip_network(unicode(rule.remote_ip_prefix)))
-            
+
             if remote_cidr not in [None, '0.0.0.0/0', '::/0']:
 
                 if remote_cidr.startswith("0.0.0.0/"):
-                    # \: Due bug in NSX-T API ignore 0.0.0.0 
+                    # \: Due bug in NSX-T API ignore 0.0.0.0
                     # Network definitions that are not ANY
                     return
 
@@ -418,7 +431,7 @@ class InfraBuilder:
                 "ip_protocol": PROTOCOLS[rule.ethertype],
                 "direction": DIRECTIONS[rule.direction],
                 "action": "ALLOW",
-                "scope": [ 
+                "scope": [
                     group_ref(AgentIdentifier.build(rule.security_group_id))
                 ],
                 "source_groups": [ group_ref(source_group) ],
@@ -433,7 +446,7 @@ class InfraBuilder:
             "Rule": dict(infra_rule, **infra_rule_extension)
         }]
         return self
-    
+
     def with_policy(self, policy, delete=False):
         identifier = AgentIdentifier.build(policy.identifier)
 
@@ -463,7 +476,7 @@ class InfraBuilder:
 
         self._add_domain_children([section])
         return self
-    
+
     def with_segment(self, segment, delete=False):
         identifier = AgentIdentifier.build(segment.identifier)
         path = \
@@ -511,12 +524,11 @@ class InfraService:
         path = "{}{}".format(INFRA, resource_container)
         params = { "page_size": self._page_size, "cursor": cursor }
 
-        try:
-            response = self._client.get(path=path, params=params)
-        except Exception as e:
-            LOG.warning("Unable to get path={} ERROR={}".format(path,e))
+        response = self._client.get(path=path, params=params)
+        if is_not_found(response):
             return ("", {})
-        
+
+
         content = json.loads(response.content)
         cursor = content.get("cursor", None)
         revisions = {}
@@ -563,7 +575,7 @@ class InfraService:
             return int(tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "0"))
         else:
             return 0
-    
+
     def update_policy(self, identifier,
                               revision_rule=None, revision_member=None,
                               tcp_strict=None, cidrs=[],
@@ -572,24 +584,24 @@ class InfraService:
 
         builder = self.get_builder()
 
-        if revision_rule is not None:
+        if revision_rule is not None or delete:
             policy = Policy()
             policy.identifier = identifier
             policy.revision = revision_rule
             policy.tcp_strict = tcp_strict
             policy.rules_to_add = add_rules
             policy.rules_to_remove = del_rules
-            builder.with_policy(policy)
-        
-        if revision_member is not None:
+            builder.with_policy(policy, delete)
+
+        if revision_member is not None or delete:
             group = Group()
             group.identifier = identifier
             group.revision = revision_member
             group.dynamic_members = True
-            builder.with_group(group)
+            builder.with_group(group, delete)
 
         builder.build()
-    
+
     def get_builder(self):
         return InfraBuilder(self._client)
 
@@ -608,7 +620,7 @@ class ResourceContainers:
 
 class Revisionable:
     identifier = None
-    revision = None
+    revision = 0
 
 class Service(Revisionable):
     port_range_min = None
