@@ -34,6 +34,7 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_policy
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import vsphere_client
 from networking_nsxv3.common import synchronization as sync
+from networking_nsxv3.prometheus import exporter
 
 
 # Eventlet Best Practices
@@ -58,16 +59,15 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, agent, sg_agent, nsxv3, nsxv3_infra, vsphere, rpc):
+    def __init__(self, context, agent, sg_agent, nsxv3, nsxv3_infra, vsphere,
+                 rpc, runner):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
             context, agent, sg_agent)
         self.nsxv3 = nsxv3
         self.infra = nsxv3_infra
         self.vsphere = vsphere
         self.rpc = rpc
-        self.runner = sync.Runner(
-            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
-        self.runner.start()
+        self.runner = runner
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -538,6 +538,11 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.rpc_plugin = nsxv3_rpc.NSXv3ServerRpcApi(
             context, nsxv3_constants.NSXV3_SERVER_RPC_TOPIC, cfg.CONF.host)
         self.last_sync_time = 0
+        self.runner = sync.Runner(
+            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
+        self.runner.start()
+        eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, self.runner)
+
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -633,7 +638,8 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
                 nsxv3=self.nsxv3,
                 nsxv3_infra = self.infra,
                 vsphere=self.vsphere,
-                rpc=self.rpc_plugin)
+                rpc=self.rpc_plugin,
+                runner=self.runner)
         return self.rpc
 
     def get_agent_api(self, **kwargs):

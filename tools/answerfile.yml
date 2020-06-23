@@ -26,6 +26,7 @@ locking_coordinator_url: ""
 polling_interval: "86400"
 quitting_rpc_timeout: "5"
 rpc_max_records_per_query: "2000"
+agent_prometheus_exporter_port: "8000"
 
 # AGENT_CLI
 neutron_security_group_id:

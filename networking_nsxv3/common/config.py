@@ -60,6 +60,11 @@ agent_opts = [
         'enable_imperative_security_group_cleanup',
         default=False,
         help="Enable NSX-T imperative security group cleanup."
+    ),
+    cfg.IntOpt(
+        'agent_prometheus_exporter_port',
+        default='8000',
+        help="Prometheus exporter port"
     )
 ]
 
