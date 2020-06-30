@@ -93,6 +93,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agent_alive = agent.get('alive', False)
         agent_type = agent['agent_type']
         host = agent.get('host', None)
+        networks = cfg.CONF.AGENT.agent_physical_networks
 
         if not device.startswith('compute'):
             LOG.warn(
@@ -114,6 +115,11 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         if not host == context.current['binding:host_id']:
             LOG.warn("Not supported host. Host=" + str(host))
+            return False
+
+        if segment['physical_network'] not in networks:
+            LOG.warn("Not supported network. Network=" +\
+                str(segment['physical_network']))
             return False
 
         response = self.rpc.get_network_bridge(

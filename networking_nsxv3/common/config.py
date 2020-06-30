@@ -65,6 +65,10 @@ agent_opts = [
         'agent_prometheus_exporter_port',
         default='8000',
         help="Prometheus exporter port"
+    ),
+    cfg.MultiStrOpt('agent_physical_networks',
+        default=[],
+        help="List of physical networks that the Agent can bind"
     )
 ]
 
