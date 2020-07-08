@@ -623,9 +623,21 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         error = False
         revision = int(sec.revision)
         for sdk_obj in add_rules:
+
+            # related to NSX 0.0.0.0/x rule issue
+            data_ipset = nsxv3_utils.get_firewall_rule_ipset(sdk_obj)
+            if data_ipset:
+                self._post(path="/api/v1/ip-sets", data=data_ipset)
+                data_ipset_spec = \
+                    IPSet(display_name=data_ipset.get('display_name'))
+                data_ipset = self.get(sdk_service=IpSets,
+                                      sdk_model=data_ipset_spec)
+                nsxv3_utils.set_firewall_rule_ipset(sdk_obj, data_ipset.id)
+
             data = nsxv3_utils.get_firewall_rule(sdk_obj)
             data["_revision"] = revision
             LOG.debug("Creating Firewall Rule %s", json.dumps(data))
+
             ret = self._post(path=path, data=data)
             if ret.status_code == 200:
                 # Optimization
@@ -639,7 +651,13 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         for rule_id in del_rules:
             LOG.debug("Removing Firewall Rule %s", rule_id)
+            # Remove source/destination associated IPSet
+            # Part of the workaround for handling 0.0.0.0/x
+            rule = self._get(path="{}/{}".format(path, rule_id))
             self._delete(path="{}/{}".format(path, rule_id))
+            if rule.status_code == 200:
+                ipset_id = nsxv3_utils.get_firewall_rule_ipset_id(rule.json())
+                self._delete(path="{}/{}".format("/api/v1/ip-sets", ipset_id))
 
         # Update Security Group (IP Set) revision_number when everythings is
         # updated. In case of falure above the revision will not be updated
@@ -679,8 +697,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         }
 
         target = None
-        # For future use. Any type maps to None as value
-        # ANY_TARGET = None
         port = ANY_PORT = '1-65535'
         service = ANY_SERVICE = None
         ANY_PROTOCOL = None
@@ -716,9 +732,15 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         elif remote_ip_prefix in [None, '0.0.0.0/0', '::/0']:
             target = ANY_TARGET
         elif remote_ip_prefix.startswith('0.0.0.0/'):
-            # TODO: Due bug in NSX-T API ignore 0.0.0.0 Network definitions
-            # that are not ANY_TARGET
-            return None
+            # Workaround NSX bug related to 0.0.0.0/x rule creation failures
+            # The target_id will be supplied later
+            target = ResourceReference(target_type="IPSet",
+                                       target_display_name=id,
+                                       target_id=None)
+            setattr(target, '__ipset', {
+                "display_name": id,
+                "ip_addresses": [remote_ip_prefix],
+            })
         else:
             target = ResourceReference(target_type=PROTOCOL_TYPES[ethertype],
                                        target_display_name=remote_ip_prefix,
@@ -807,6 +829,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                         if tag.get("scope") == rev_scope:
                             revision = tag.get("tag")
                             break
+                # Skip Firewall Rule IPSets as they are immutable
+                if 'IPSet' in sdk_type and not obj.get("tags"):
+                    continue
                 if 'FirewallRule' in sdk_type:
                     metadata[name] = {
                         'FirewallRule.disabled': obj.get("disabled"),
