@@ -13,3 +13,8 @@ networking_nsx_t.egg-info
 *.egg-info
 *.pyc
 venv*
+bin/
+include/
+lib/
+.Python
+pyvenv.cfg

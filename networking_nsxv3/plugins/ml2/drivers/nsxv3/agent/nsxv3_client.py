@@ -66,6 +66,9 @@ class connection_retry_policy(object):
                         .format(resp.url, resp.request.method,
                                 resp.status_code, resp.reason))
 
+                    if resp.status_code == 404:
+                        return resp
+
                     if resp.status_code > 400 and resp.status_code < 500:
                         raise Unauthorized(resp.content)
 
@@ -240,6 +243,13 @@ class NSXv3ClientImpl(NSXv3Client):
                 "Expected 'results' in payload={}".format(resp.content))
 
         return content.get("result").get("results")
+
+    @connection_retry_policy(driver="rest")
+    def _get(self, path):
+        with self.api_scheduler:
+            return self.session.get(
+                url=self._get_url(path),
+                timeout=cfg.CONF.NSXV3.nsxv3_request_timeout)
 
     @connection_retry_policy(driver="rest")
     def _post(self, path, data, asJson=True):

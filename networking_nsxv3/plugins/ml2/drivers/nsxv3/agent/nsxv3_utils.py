@@ -18,6 +18,33 @@
 # use: POST /api/v1/firewall/sections/<section-id>/rules
 from uuid import UUID
 
+# The method is related to NSX 0.0.0.0/x rule issue
+def get_firewall_rule_ipset(sdk_model):
+    if sdk_model.sources and hasattr(sdk_model.sources[0], '__ipset'):
+        return sdk_model.sources[0].__ipset
+    if sdk_model.destinations and "__ipset" in sdk_model.destinations[0]:
+        return sdk_model.destinations[0].__ipset
+
+# The method is related to NSX 0.0.0.0/x rule issue
+def set_firewall_rule_ipset(sdk_model, ipset_id):
+    if sdk_model.sources and hasattr(sdk_model.sources[0], '__ipset'):
+        sdk_model.sources[0].target_id = ipset_id
+        return
+    if sdk_model.destinations and hasattr(sdk_model.destinations[0], '__ipset'):
+        sdk_model.destinations[0].target_id = ipset_id
+        return
+
+def get_firewall_rule_ipset_id(ipset):
+    targets = []
+    if ipset.get("sources", None):
+        targets += ipset.get("sources")
+    if ipset.get("destinations", None):
+        targets += ipset.get("destinations")
+
+    for target in targets:
+        if target.get("target_type") == "IPSet" and \
+            target.get("target_display_name") == ipset.get("display_name"):
+            return target.get("target_id")
 
 def get_firewall_rule(sdk_model):
     rule = {}
