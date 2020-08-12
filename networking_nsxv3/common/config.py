@@ -66,6 +66,16 @@ agent_opts = [
         default='8000',
         help="Prometheus exporter port"
     ),
+    cfg.StrOpt(
+        'logging_socket',
+        default='/var/run/redis/socket/redis.sock',
+        help="Redis unix socket"
+    ),
+    cfg.IntOpt(
+        'logging_expire',
+        default=1,
+        help="Redis key expiration time in days"
+    ),
     cfg.IntOpt(
         'retry_on_failure_max',
         default=0,

@@ -97,6 +97,34 @@ class NSXv3AgentRpcClient(object):
                 policy=policy
             )
 
+    def create_log(self, context, log_obj):
+        self._get_call_context()\
+            .cast(self.context, 'create_log', log_obj=log_obj)
+
+    def create_log_precommit(self, context, log_obj):
+        self._get_call_context()\
+            .cast(self.context, 'create_log_precommit', log_obj=log_obj)
+
+    def update_log(self, context, log_obj):
+        self._get_call_context()\
+            .cast(self.context, 'update_log', log_obj=log_obj)
+
+    def update_log_precommit(self, context, log_obj):
+        self._get_call_context()\
+            .cast(self.context, 'update_log_precommit', log_obj=log_obj)
+
+    def delete_log(self, context, log_obj):
+        self._get_call_context()\
+            .cast(self.context, 'delete_log', log_obj=log_obj)
+
+    def delete_log_precommit(self, context, log_obj):
+        self._get_call_context()\
+            .cast(self.context, 'delete_log_precommit', log_obj=log_obj)
+
+    def resource_update(self, context, log_objs):
+        self._get_call_context()\
+            .cast(self.context, 'resource_update', log_objs=log_objs)
+
 
 class NSXv3ServerRpcApi(object):
     """Agent-side RPC (stub) for agent-to-plugin interaction.
@@ -212,6 +240,17 @@ class NSXv3ServerRpcApi(object):
                           'get_security_group_members_address_bindings_ips',
                           security_group_id=security_group_id)
 
+    @log_helpers.log_method_call
+    def get_port_logging(self, port_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_port_logging', port_id=port_id)
+
+    @log_helpers.log_method_call
+    def has_security_group_logging(self, security_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'has_security_group_logging', 
+                          security_group_id=security_group_id)
+
 
 class NSXv3ServerRpcCallback(object):
     """Plugin-side RPC (implementation) for agent-to-plugin interaction.
@@ -292,4 +331,12 @@ class NSXv3ServerRpcCallback(object):
     def get_security_group_members_address_bindings_ips(self, context,
                                                         security_group_id):
         return db.get_security_group_members_address_bindings_ips(
-            context, security_group_id)
+            context, security_group_id)\
+
+    @log_helpers.log_method_call
+    def get_port_logging(self, context, port_id):
+        return db.get_port_logging(context, port_id)
+
+    @log_helpers.log_method_call
+    def has_security_group_logging(self, context, security_group_id):
+        return db.has_security_group_logging(context, security_group_id)

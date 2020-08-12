@@ -16,6 +16,7 @@ from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
+from networking_nsxv3.services.logapi.drivers.nsxv3 import driver as nsxv3_logging
 
 LOG = log.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.rpc = nsxv3_rpc.NSXv3AgentRpcClient(self.context)
         self.trunk = nsxv3_trunk.NSXv3TrunkDriver.create()
         self.qos = nsxv3_qos.NSXv3QosDriver.create(self.rpc)
+        self.logging = nsxv3_logging.NSXv3LogDriver.create(self.rpc)
 
         conn = rpc.create_connection()
         conn.create_consumer(nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,

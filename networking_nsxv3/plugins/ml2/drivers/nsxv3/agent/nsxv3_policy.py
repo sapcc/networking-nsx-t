@@ -359,7 +359,7 @@ class InfraBuilder:
 
         return self
 
-    def with_rule(self, section, rule, delete=False):
+    def with_rule(self, section, rule, delete=False, logged=False):
         identifier = AgentIdentifier.build(rule.identifier)
 
         DIRECTIONS = {'ingress': 'IN', 'egress': 'OUT'}
@@ -431,7 +431,7 @@ class InfraBuilder:
             infra_rule_extension = {
                 "display_name": identifier,
                 "disabled": False,
-                "logged": False,
+                "logged": logged,
                 "profiles": [ "ANY" ],
                 "ip_protocol": PROTOCOLS[rule.ethertype],
                 "direction": DIRECTIONS[rule.direction],
@@ -442,7 +442,8 @@ class InfraBuilder:
                 "source_groups": [ group_ref(source_group) ],
                 "destination_groups": [ group_ref(destination_group) ],
                 "services": [ service ],
-                "tags": self._get_tags(rule)
+                "tags": self._get_tags(rule),
+                "tag": identifier # log label, limit to the size of a UUID
             }
 
         section["children"] += [{
@@ -452,7 +453,7 @@ class InfraBuilder:
         }]
         return self
 
-    def with_policy(self, policy, delete=False):
+    def with_policy(self, policy, delete=False, logged=False):
         identifier = AgentIdentifier.build(policy.identifier)
 
         section = {
@@ -474,7 +475,8 @@ class InfraBuilder:
 
         if not delete:
             for rule in policy.rules_to_add:
-                self.with_rule(section["SecurityPolicy"], rule, delete=False)
+                self.with_rule(section["SecurityPolicy"], rule, 
+                               delete=False, logged=logged)
 
         for rule in policy.rules_to_remove:
             self.with_rule(section["SecurityPolicy"], rule, delete=True)
@@ -584,11 +586,12 @@ class InfraService:
         else:
             return -1
 
-    def update_policy(self, identifier,
-                              revision_rule=None, revision_member=None,
-                              tcp_strict=None, cidrs=[],
-                              add_rules=[], del_rules=[],
-                              delete=False):
+    def update_policy(self, identifier, 
+                      revision_rule=None, revision_member=None,
+                      tcp_strict=None, cidrs=[],
+                      add_rules=[], del_rules=[],
+                      delete=False,
+                      logged=False):
 
         builder = self.get_builder()
 
@@ -599,7 +602,7 @@ class InfraService:
             policy.tcp_strict = tcp_strict
             policy.rules_to_add = add_rules
             policy.rules_to_remove = del_rules
-            builder.with_policy(policy, delete)
+            builder.with_policy(policy, delete, logged)
 
         if revision_member is not None or delete:
             group = Group()

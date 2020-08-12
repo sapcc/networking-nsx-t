@@ -37,6 +37,7 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import vsphere_client
 from networking_nsxv3.common import synchronization as sync
 from networking_nsxv3.prometheus import exporter
+from networking_nsxv3.redis.logging import LoggingMetadata
 
 
 # Eventlet Best Practices
@@ -70,6 +71,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.vsphere = vsphere
         self.rpc = rpc
         self.runner = runner
+        self.logging_metadata = LoggingMetadata()
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -129,12 +131,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def security_group_updated(self, security_group_id, skip_rules=False):
         sg_id = str(security_group_id)
+        sg_logged = False
         try:
             _, revision_sg = self.rpc.get_security_group_revision(sg_id)
         except Exception as e:
             if "'{}' not found in Neutron".format(sg_id) in e.message:
                 return
             raise e
+
+        try:
+            sg_logged = self.rpc.has_security_group_logging(sg_id)
+        except Exception as e:
+            LOG.error("Unable to fetch security group logging info", e)
 
         scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
         LOG.info("Updating Security Group '{}'".format(sg_id))
@@ -149,7 +157,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             tcp_strict = None
             add_rules = []
             del_rules = []
-            
+
             if revision_member != revision_sg:
                 revision_member = revision_sg
                 cidrs = self._security_group_member_updated(sg_id)
@@ -164,7 +172,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                                      revision_member=revision_member,
                                      revision_rule=revision_rule,
                                      cidrs=cidrs,
-                                     add_rules=add_rules, del_rules=del_rules)
+                                     add_rules=add_rules, del_rules=del_rules,
+                                     logged=sg_logged)
+            if sg_logged:
+                self.logging_metadata.set_security_group(add_rules)
 
     def security_group_delete(self, security_group_id):
         LOG.info("Deleting Security Group '{}'".format(security_group_id))
@@ -561,6 +572,23 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.nsxv3.port_update(port, vif_details, address_bindings)
         self.updated_devices.add(port['mac_address'])
 
+        # NSX-T DWF debug log contains only the last 8 characters from the VIF
+        # attachment ID which is the OpenStack Port ID
+        logged_port_id = port["id"][-8:]
+        logged_prj_id, logged_enabled = None, None
+        try:
+            logged_prj_id, _, logged_enabled = self.rpc.get_port_logging(port["id"])
+        except Exception as e:
+            LOG.error("Unable to fetch port logging info", e)
+
+        if logged_enabled:
+            self.logging_metadata.set_port(
+                logged_port_id,
+                port["id"],
+                logged_prj_id)
+        else:
+            self.logging_metadata.remove(logged_port_id)
+
     def port_delete(self, context, **kwargs):
         port_id = kwargs["port_id"]
         LOG.debug("Deleting port " + port_id)
@@ -608,6 +636,40 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def validate_policy(self, context, policy):
         LOG.debug("Validating policy={}.".format(policy["name"]))
         self.nsxv3.validate_switch_profile_qos(policy["rules"])
+
+    def _update_log(self, log_obj):
+        LOG.info("Debug log for Security Group={} Port={} Enable={}",
+                 log_obj["target_id"], 
+                 log_obj["resource_id"], 
+                 log_obj["enabled"])
+
+        self.runner.run(sync.Priority.HIGHEST,
+                        [log_obj["resource_id"]],
+                        self.security_group_updated)
+        self.runner.run(sync.Priority.HIGHEST,
+                        [log_obj["target_id"]],
+                        self.sync_port)
+    
+    def create_log(self, context, log_obj):
+        self._update_log(log_obj)
+
+    def create_log_precommit(self, context, log_obj):
+        pass
+
+    def update_log(self, context, log_obj):
+        self._update_log(log_obj)
+
+    def update_log_precommit(self, context, log_obj):
+        pass
+
+    def delete_log(self, context, log_obj):
+        self._update_log(log_obj)
+
+    def delete_log_precommit(self, context, log_obj):
+        pass
+
+    def resource_update(self, context, log_objs):
+        pass
 
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
