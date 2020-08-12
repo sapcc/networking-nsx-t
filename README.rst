@@ -194,3 +194,35 @@ The agent exports the following metrics.
     # HELP nsxv3_agent_passive_queue_size Passive synchronization queue size
     # TYPE nsxv3_agent_passive_queue_size gauge
     nsxv3_agent_passive_queue_size{nsxv3_manager_hostname="nsxm-l-01a.corp.local"} 72.0
+
+NSX-T ML2 Selective Logging
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Control over the debug log of NSX-T DWF Rules
+
+Use
+::
+
+    openstack network log create \
+        --target <port name/id> \
+        --resource <security group name / id> \
+        --resource-type security_group \
+        <name>
+    openstack network log set <name> [--enable | --disable]
+    openstack network log delete <name>
+
+Configuration:
+    - logging_socket - Redis Cache unix socket, defaults to /var/run/redis/socket/redis.sock
+    - logging_expire - Redis key expiration time in days, defaults to 1 day
+    
+Flow:
+    - On log create event or log enable event
+        - all rules for the resource security group will be updated to start logging
+        - every rule will use the OpenStack Rule ID as log label
+        - Redis cache will be updated (with default time out of 24h)
+                - update rules cache
+                - update ports cache
+    - On log delete event or log disable event
+        - all rules for the resource security group will be updated to stop logging
+        - Redis cache will be updated (with default time out of 24h)
+                - remove ports cache
+                - rules cache will expire automatically in 24h
