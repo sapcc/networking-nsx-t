@@ -25,7 +25,7 @@ class LoggingMetadata(object):
         project_id (string): the OpenStack project ID
         """
         try:
-            self._client.hset(vif, {
+            self._client.hset(vif, mapping={
                 "port": port_id,
                 "project": project_id
             })
