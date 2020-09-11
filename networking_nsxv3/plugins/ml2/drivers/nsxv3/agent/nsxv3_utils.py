@@ -22,7 +22,7 @@ from uuid import UUID
 def get_firewall_rule_ipset(sdk_model):
     if sdk_model.sources and hasattr(sdk_model.sources[0], '__ipset'):
         return sdk_model.sources[0].__ipset
-    if sdk_model.destinations and "__ipset" in sdk_model.destinations[0]:
+    if sdk_model.destinations and hasattr(sdk_model.destinations[0], '__ipset'):
         return sdk_model.destinations[0].__ipset
 
 # The method is related to NSX 0.0.0.0/x rule issue
