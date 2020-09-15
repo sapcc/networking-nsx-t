@@ -234,7 +234,11 @@ class InfraBuilder:
 
         return tags
 
-    def with_group(self, group, delete=False):
+    def with_group(self, group, delete=False, is_rule_group=False):
+        """
+        is_rule_group - set to True means that the group is not used
+        as Security Group but as a Rule source/destination CIDR
+        """
         identifier = AgentIdentifier.build(group.identifier)
         expression = []
 
@@ -266,7 +270,7 @@ class InfraBuilder:
                 "id": identifier,
                 "display_name": identifier,
                 "expression": expression,
-                "tags": self._get_tags(group)
+                "tags": self._get_tags(None if is_rule_group else group)
             }
         }])
         return self
@@ -385,22 +389,18 @@ class InfraBuilder:
                 return
 
         if rule.remote_ip_prefix is not None:
-            remote_cidr = str(ipaddress.ip_network(unicode(rule.remote_ip_prefix)))
+            remote_cidr = str(ipaddress.ip_network(
+                unicode(rule.remote_ip_prefix),
+                strict=False))
 
             if remote_cidr not in [None, '0.0.0.0/0', '::/0']:
-
-                if remote_cidr.startswith("0.0.0.0/"):
-                    # \: Due bug in NSX-T API ignore 0.0.0.0
-                    # Network definitions that are not ANY
-                    return
-
                 destination = identifier
                 # Create CIDR group for the firewall rule
                 cidr_group = Group()
                 cidr_group.identifier = rule.identifier
                 cidr_group.cidrs = [remote_cidr]
                 cidr_group.dynamic_members = False
-                self.with_group(cidr_group, delete=delete)
+                self.with_group(cidr_group, delete=delete, is_rule_group=True)
 
         if rule.remote_group_id:
             destination = AgentIdentifier.build(rule.remote_group_id)

@@ -738,10 +738,10 @@ def cli_sync():
 
 
 def main():
-    LOG.info("VMware NSXv3 Agent initializing ...")
     common_config.init(sys.argv[1:])
     common_config.setup_logging()
     profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
+    LOG.info("VMware NSXv3 Agent initializing ...")
 
     # Enable DEBUG Logging
     try:
