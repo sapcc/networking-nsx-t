@@ -181,9 +181,11 @@ class NSXv3ClientImpl(NSXv3Client):
         self.session.headers["Accept"] = "application/json"
         self.session.headers["Content-Type"] = "application/json"
 
+        timeout = cfg.CONF.NSXV3.nsxv3_request_timeout
         conr = connect.get_requests_connector(session=self.session,
                                               msg_protocol='rest',
-                                              url=self.base_url)
+                                              url=self.base_url,
+                                              timeout=timeout)
         self.stub_config = StubConfigurationFactory.new_std_configuration(conr)
         LOG.info("NSXv3 session context initalized.")
 
