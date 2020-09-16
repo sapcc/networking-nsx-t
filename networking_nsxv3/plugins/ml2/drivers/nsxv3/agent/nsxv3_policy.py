@@ -242,21 +242,31 @@ class InfraBuilder:
         identifier = AgentIdentifier.build(group.identifier)
         expression = []
 
+        conjunction = {
+            "resource_type": "ConjunctionOperator",
+            "conjunction_operator": "OR"
+        }
+
         if group.dynamic_members:
-            expression.append({
+            condition = {
                 "value": "security_group|" + identifier,
-                "member_type": "LogicalPort",
                 "key": "Tag",
                 "operator": "EQUALS",
                 "resource_type": "Condition"
-            })
+            }
+            lp = {"member_type": "LogicalPort"}
+            lp.update(condition)
+            expression.append(lp)
+
+            expression.append(conjunction)
+
+            sp = {"member_type": "SegmentPort"}
+            sp.update(condition)
+            expression.append(sp)
 
         if group.cidrs:
             if group.dynamic_members:
-                expression.append({
-                    "resource_type": "ConjunctionOperator",
-                    "conjunction_operator": "OR"
-                })
+                expression.append(conjunction)
             expression.append({
                 "resource_type": "IPAddressExpression",
                 "ip_addresses": group.cidrs
