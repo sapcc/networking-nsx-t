@@ -399,11 +399,11 @@ class NSXv3ClientImpl(NSXv3Client):
             if sdk_obj and sdk_obj.id:
                 sdk_id = sdk_obj.id
             else:
-                LOG.warning("{} failed. Object not found ".format(msg))
+                LOG.warning("{} failed. Object not found".format(msg))
                 return sdk_model
 
         # Not all services have cascade property
-        with self.api_scheduler:
+        with self.api_scheduler:    
             if 'cascade' in inspect.getargspec(svc.delete).args:
                 return svc.delete(sdk_id, cascade=True)
             if 'detach' in inspect.getargspec(svc.delete).args:

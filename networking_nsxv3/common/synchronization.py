@@ -151,7 +151,6 @@ class Scheduler(object):
             eventlet.greenthread.sleep(sleeptime)
             run_time = self.schedule[offset] + self.limit
         self.schedule.append(run_time)
-        LOG.debug("Executing function at {}".format(time.time()))
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

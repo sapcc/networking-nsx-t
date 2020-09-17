@@ -248,21 +248,15 @@ class InfraBuilder:
         }
 
         if group.dynamic_members:
-            condition = {
+            # NSX-T treats Segment Ports and Logical Ports the same way when
+            # specified at member_type
+            expression.append({
                 "value": "security_group|" + identifier,
+                "member_type": "SegmentPort",
                 "key": "Tag",
                 "operator": "EQUALS",
                 "resource_type": "Condition"
-            }
-            lp = {"member_type": "LogicalPort"}
-            lp.update(condition)
-            expression.append(lp)
-
-            expression.append(conjunction)
-
-            sp = {"member_type": "SegmentPort"}
-            sp.update(condition)
-            expression.append(sp)
+            })
 
         if group.cidrs:
             if group.dynamic_members:

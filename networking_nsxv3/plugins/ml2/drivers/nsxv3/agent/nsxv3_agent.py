@@ -12,6 +12,7 @@ from com.vmware.nsx_client import TransportZones
 from com.vmware.nsx_client import LogicalPorts
 from com.vmware.nsx.model_client import (FirewallRule,
                                          IPSet,
+                                         NSGroup,
                                          LogicalPort,
                                          QosSwitchingProfile,
                                          TransportZone)
@@ -178,9 +179,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
             self.infra.update_policy(security_group_id,
                                      del_rules=del_rules, delete=True)
-            if cfg.CONF.AGENT.enable_imperative_security_group_cleanup:
-                # TODO - remove after cleanup completed
-                self.nsxv3.delete_security_group(security_group_id)
 
     # RPC method
     def security_groups_member_updated(self, context, **kwargs):
@@ -247,6 +245,13 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             sync.Priority.LOW,
             orphaned_lps, self.sync_port_orphaned)
 
+        # TODO - remove after migration completes
+        # Clean up the migrated Security Groups from Management to Policy API
+        orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api()
+        self.runner.run(
+            sync.Priority.LOW,
+            orphan_sgs, self.nsxv3.delete_security_group)
+
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
         self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
         self._sync_report("Ports", outdated_lps, orphaned_lps)
@@ -297,6 +302,30 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
         orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
         return outdated, orphaned
+    
+    # TODO - remove after migration to the Policy API
+    def _sync_get_orphan_security_groups_mgmt_api(self):
+        rc = nsxv3_policy.ResourceContainers
+        pl = nsxv3_utils.concat_revisions(\
+            self.infra.get_revisions(rc.SecurityPolicy),
+            self.infra.get_revisions(rc.SecurityPolicyGroup))
+        mg_nsgroup, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
+        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
+
+        # Get all security group IDs 
+        # regardless of the fact they could be partially implemented
+        # Section object is excluded as it cannot be assigned with tags.
+        # Though, the cleanup will try to remove the three objects for each ID
+        mg = {}
+        mg.update(mg_nsgroup)
+        mg.update(mg_ipset)
+
+        result = []
+        for k,v in mg.items():
+            if k in pl and v.isdigit() and pl.get(k).isdigit() and \
+                int(pl.get(k)) >= int(v):
+                result.append(k)
+        return result
 
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
