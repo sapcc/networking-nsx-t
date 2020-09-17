@@ -252,6 +252,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             sync.Priority.LOW,
             orphan_sgs, self.nsxv3.delete_security_group)
 
+        self._sync_report("Security Groups Management API", 0, orphan_sgs)
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
         self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
         self._sync_report("Ports", outdated_lps, orphaned_lps)
@@ -321,10 +322,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         mg.update(mg_ipset)
 
         result = []
-        for k,v in mg.items():
-            if k in pl and v.isdigit() and pl.get(k).isdigit() and \
-                int(pl.get(k)) >= int(v):
-                result.append(k)
+        for k,_ in mg.items():
+            if k in pl and pl.get(k).isdigit():
+                v1 = int(mg_nsgroup.get(k)) if mg_nsgroup.get(k).isdigit() else 0
+                v2 = int(mg_ipset.get(k)) if mg_ipset.get(k).isdigit() else 0
+                if max(v1,v2) <= int(pl.get(k)):
+                    result.append(k)
         return result
 
     def sync_port(self, port_id):

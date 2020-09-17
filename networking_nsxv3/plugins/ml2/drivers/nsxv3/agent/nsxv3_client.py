@@ -294,16 +294,12 @@ class NSXv3ClientImpl(NSXv3Client):
 
 
         exact_res = None
-        if len(res) > 1: 
-            for resource in res:
-                # Skip nsx_policy created objects
-                if resource["display_name"] == sdk_name and resource["_create_user"] == 'admin':
-                    LOG.error("FOUND " + str(resource["display_name"]))
-                    if exact_res is not None:
-                        raise Exception("{} ambiguous.".format(msg))
-                    exact_res = resource
-        if len(res) == 1:
-            exact_res = res.pop()
+        for resource in res:
+            # Skip nsx_policy created objects
+            if resource["display_name"] == sdk_name and resource["_create_user"] != 'nsx_policy':
+                if exact_res is not None:
+                    raise Exception("{} ambiguous.".format(msg))
+                exact_res = resource
 
         if exact_res is not None:
             with self.api_scheduler:
