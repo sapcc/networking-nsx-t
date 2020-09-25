@@ -1,15 +1,15 @@
 networking-nsxv3
 ================
 
-Openstack L2 network components for VMware NSX-T (NSXv3)
+OpenStack L2 network components for VMware NSX-T (NSXv3)
 
-This project allowes an OpenStack region to implement complex L2 network topology distributed accross many VMware NSX-T managers, where at the same time all these managers will share the same security context.
+This project allows an OpenStack region to implement complex L2 network topology distributed across many VMware NSX-T managers, where at the same time all these managers will share the same security context.
 
 
-NSX-T ML2 Mechanism Dirver
+NSX-T ML2 Mechanism Driver
 --------------------------
 
-NSX-T ML2 Mechanism Dirver is an extension to the Modular Layer 2 (ml2) plugin framework. This driver enables OpenStack Neutron to simultaneously utilize NSX-T network technology in combination with other technologies to reach the goal of Hierarchical Port Binding.
+NSX-T ML2 Mechanism Driver is an extension to the Modular Layer 2 (ml2) plugin framework. This driver enables OpenStack Neutron to simultaneously utilize NSX-T network technology in combination with other technologies to reach the goal of Hierarchical Port Binding.
 
 
 NSX-T L2 Agent
@@ -146,7 +146,7 @@ Ansible Playbook - Install ML2 Driver & ML2 Agent
 
 Workload Migration from DVS ML2 driver
 -------------------------------------------------
-The driver supports migration of worklods from DVS ML2 driver to NSXv3 ML2 driver.
+The driver supports migration of workloads from DVS ML2 driver to NSXv3 ML2 driver.
 
 Migration Prerequisites
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -169,7 +169,7 @@ NSX-T ML2 Driver Behaviour
 
 - Once both drivers are enabled the OpenStack networking will behave as follow:
     - network operations related to the existing virtual machines assigned with NSX-T tag = "dvs" will be skipped by NSX-T driver and handled by the DVS driver
-    - network operations related to the new virtual machines will be handled by the NSX-T dirver
+    - network operations related to the new virtual machines will be handled by the NSX-T driver
 - Migrate DVS managed virtual machine to NSX-T:
     - change the NSX-T tag:
         ::
