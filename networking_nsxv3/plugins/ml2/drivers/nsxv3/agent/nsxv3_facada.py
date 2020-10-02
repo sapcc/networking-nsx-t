@@ -557,7 +557,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ips_spec = IPSet(
             display_name=security_group_id,
             ip_addresses=[],
-            resource_type='IPSet'
+            resource_type='IPSet',
+            tags=[Tag(scope=nsxv3_constants.NSXV3_REVISION_SCOPE, tag="-1")]
         )
         nsg_spec = NSGroup(
             display_name=security_group_id,
@@ -596,12 +597,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         self.delete(sdk_service=NsGroups, sdk_model=nsg_spec)
         return True
 
-    def update_security_group_members(self, security_group_id, member_cidrs):
-        ips_spec = IPSet(display_name=security_group_id)
-        ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
-        ips.ip_addresses = member_cidrs
-        self.update(sdk_service=IpSets, sdk_model=ips)
-
     def update_security_group_capabilities(self,
                                            security_group_id, capabilities):
         fs_spec = FirewallSection(display_name=security_group_id)
@@ -611,6 +606,29 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             capabilities
 
         self.update(sdk_service=Sections, sdk_model=fs)
+
+    def update_security_group_revision_number(self, sdk_model):
+        """
+        Sets default revision_number if such is not already set
+        """
+        default_tag = Tag(scope=nsxv3_constants.NSXV3_REVISION_SCOPE, tag="-1")
+
+        sdk_model.tags = sdk_model.tags if sdk_model.tags else []
+        revision = None
+        for tag in sdk_model.tags:
+            if tag.scope == default_tag.scope:
+                revision = tag.tag
+                break
+        if revision is None or not sdk_model.tags:
+            sdk_model.tags.append(default_tag)
+            sdk_model = self.update(sdk_service=IpSets, sdk_model=sdk_model)
+        return sdk_model
+
+    def update_security_group_members(self, security_group_id, member_cidrs):
+        ips_spec = IPSet(display_name=security_group_id)
+        ips = self.get(sdk_service=IpSets, sdk_model=ips_spec)
+        ips.ip_addresses = member_cidrs
+        self.update(sdk_service=IpSets, sdk_model=ips)
 
     def update_security_group_rules(self, security_group_id,
                                     revision_number, add_rules, del_rules):
