@@ -193,7 +193,7 @@ class AgentIdentifier:
 
 class InfraBuilder:
 
-    def __init__(self, client, transport_zone_id=None):
+    def __init__(self, client):
         self._client = client
         self.context = {
             "resource_type": "Infra",
@@ -208,8 +208,6 @@ class InfraBuilder:
                 }
             ]
         }
-
-        self.transport_zone_id = transport_zone_id
 
     def build(self):
         self._client.patch(path=INFRA, data=json.dumps(self.context))
@@ -481,33 +479,16 @@ class InfraBuilder:
         self._add_domain_children([section])
         return self
 
-    def with_segment(self, segment, delete=False):
-        identifier = AgentIdentifier.build(segment.identifier)
-        path = \
-            "/infra/sites/default/enforcement-points/default/transport-zones/"
-        self._add_domain_children([{
-            "resource_type": "ChildSegment ",
-            "marked_for_delete": delete,
-            "Segment ": {
-                "resource_type": "Segment",
-                "id": identifier,
-                "display_name": identifier,
-                "vlan_ids": [segment.vlan],
-                "transport_zone_path": path + self.transport_zone_id,
-                "advanced_config": {
-                    "address_pool_paths": []
-                },
-                "tags": self._get_tags(segment)
-            }
-        }])
-        return self
-
 class InfraService:
 
     def __init__(self, client):
         self._client = client
         self._page_size = cfg.CONF.NSXV3.nsxv3_max_records_per_query
-        self._transport_zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        self._tz = {
+            "name": cfg.CONF.NSXV3.nsxv3_transport_zone_name,
+            "id": self._lookup_transport_zone(\
+                cfg.CONF.NSXV3.nsxv3_transport_zone_name)
+        }
 
     def _get_tags(self, resource):
         tags = {}
@@ -518,8 +499,9 @@ class InfraService:
     def _lookup_transport_zone(self, name):
         path = "{}{}".format(INFRA, ResourceContainers.TransportZone)
         response = self._client.get(path=path)
+        content = json.loads(response.content)
         for resource in content.get("results", []):
-            if resource["name"] == name:
+            if resource["display_name"] == name:
                 return resource["id"]
         raise Exception("Unable to find TransportZone={}".format(name))
 
@@ -531,7 +513,6 @@ class InfraService:
         response = self._client.get(path=path, params=params)
         if is_not_found(response):
             return ("", {})
-
 
         content = json.loads(response.content)
         cursor = content.get("cursor", None)
@@ -608,6 +589,40 @@ class InfraService:
 
     def get_builder(self):
         return InfraBuilder(self._client)
+    
+    def update_segment(self, vlan):
+        """
+        Create or get segment for a VLAN
+        """
+        tz = "/infra/sites/default/enforcement-points/default/transport-zones/"
+
+        identifier = "{}-{}".format(self._tz.get("name"), vlan)
+        path = "/policy/api/v1/infra/segments/{}".format(vlan)
+
+        data={
+            "resource_type": "Segment",
+            "id": identifier,
+            "display_name": identifier,
+            "vlan_ids": [vlan],
+            "transport_zone_path": tz + self._tz.get("id"),
+            "admin_state": "UP",
+            "replication_mode": "MTEP",
+            "advanced_config": {
+                "address_pool_paths": []
+            },
+            "tags": [{
+                "scope": "agent_id",
+                "tag": "nsx-l-01a.corp.local"
+            }]
+        }
+
+        with LockManager.get_lock(identifier):
+            # Patch method does not return the object
+            content = json.loads(self._client.get(path=path).content)
+            if content.get("unique_id") is None:
+                content = json.loads(self._client.put(\
+                    path=path, data=json.dumps(data)).content)
+            return content
 
 class ResourceContainers:
     TransportZone = "/sites/default/enforcement-points/default/transport-zones"

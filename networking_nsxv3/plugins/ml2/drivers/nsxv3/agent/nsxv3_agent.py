@@ -462,7 +462,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                           .format(seg_id))
                 lock_id = nsxv3_utils.get_segmentation_id_lock(seg_id)
                 with LockManager.get_lock(lock_id):
-                    id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
+                    id = self.infra.update_segment(seg_id).get("unique_id")
                     return {
                         'nsx-logical-switch-id': id,
                         'segmentation_id': seg_id
