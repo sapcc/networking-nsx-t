@@ -93,7 +93,6 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agent_alive = agent.get('alive', False)
         agent_type = agent['agent_type']
         host = agent.get('host', None)
-        networks = cfg.CONF.AGENT.agent_physical_networks
 
         if not device.startswith('compute'):
             LOG.warn(
@@ -117,11 +116,6 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.warn("Not supported host. Host=" + str(host))
             return False
 
-        if segment['physical_network'] not in networks:
-            LOG.warn("Not supported network. Network=" +\
-                str(segment['physical_network']))
-            return False
-
         response = self.rpc.get_network_bridge(
             context.current, [segment], context.network.current, context.host
         )
@@ -133,7 +127,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         vif_details['segmentation_id'] = response.get('segmentation_id')
 
         if not vif_details['nsx-logical-switch-id']:
-            LOG.error("Agent={} did not provide nsx-logical-switch-id."
+            LOG.warn("Agent={} did not provide nsx-logical-switch-id."
                       .format(agent_type))
             return False
         else:

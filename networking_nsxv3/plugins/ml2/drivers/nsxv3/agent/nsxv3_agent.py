@@ -455,7 +455,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             network_segments,
             network_current):
         LOG.debug("Trying to map network bridge for networks ...")
+
+        networks = cfg.CONF.AGENT.agent_physical_networks
+
         for ns in network_segments:
+            if ns['physical_network'] not in networks:
+                continue
             seg_id = ns.get("segmentation_id")
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
