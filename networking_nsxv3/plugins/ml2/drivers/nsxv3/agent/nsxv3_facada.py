@@ -614,15 +614,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         default_tag = Tag(scope=nsxv3_constants.NSXV3_REVISION_SCOPE, tag="-1")
 
         sdk_model.tags = sdk_model.tags if sdk_model.tags else []
-        revision = None
-        for tag in sdk_model.tags:
-            if tag.scope == default_tag.scope:
-                revision = tag.tag
-                break
-        if revision is None or not sdk_model.tags:
-            sdk_model.tags.append(default_tag)
-            sdk_model = self.update(sdk_service=IpSets, sdk_model=sdk_model)
-        return sdk_model
+        if default_tag.scope in (t.scope for t in sdk_model.tags):
+            return sdk_model
+        sdk_model.tags.append(default_tag)
+        return self.update(sdk_service=IpSets, sdk_model=sdk_model)
 
     def update_security_group_members(self, security_group_id, member_cidrs):
         ips_spec = IPSet(display_name=security_group_id)
