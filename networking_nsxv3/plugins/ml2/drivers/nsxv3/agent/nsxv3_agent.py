@@ -70,7 +70,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         sg_id = str(security_group_id)
         LOG.debug("Updating Security Group '{}'".format(sg_id))
         with LockManager.get_lock(sg_id):
-            self.nsxv3.get_or_create_security_group(sg_id)
+            (ipset, _, _) = self.nsxv3.get_or_create_security_group(sg_id)
+
+            self.nsxv3.update_security_group_revision_number(ipset)
 
             tcp_strict_enabled = self.rpc.has_security_group_tag(
                 security_group_id, nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT)
