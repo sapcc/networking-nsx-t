@@ -171,15 +171,26 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
         return self.retry_until_result(self.get_by_attr, kwargs=kwargs)
 
-    def port_update(self, attachment_id, revision, security_groups_ids,
-                    address_bindings, qos_name=None):
-        # TODO - Port trunking branch will be hooked here
-        attachment = {"id": attachment_id}
-        lp = self.get_port(sdk_service=LogicalPorts,
-                           sdk_model=LogicalPort(attachment=attachment))
+    def port_update(self, port, vif_details, address_bindings):
+        qos_name=port.get("qos_policy_id")
+
+        lp = self.get_port(\
+            sdk_service=LogicalPorts, 
+            sdk_model=LogicalPort(attachment={"id": port["id"]}))
+
+        # Child port is created here as it is not created by Nova
+        if  not lp and port["parent_id"] is not None:
+            lp = LogicalPort(
+                logical_switch_id=vif_details.get("nsx-logical-switch-id"),
+                attachment={
+                    "attachment_type":"VIF",
+                    "id": port["id"]
+                },
+                admin_state="UP"
+            )
 
         if not lp:
-            msg = "Not found. Unable to update port '{}'".format(attachment_id)
+            msg = "Not found. Unable to update port '{}'".format(port["id"])
             LOG.error(msg)
             raise Exception(msg)
 
@@ -187,11 +198,26 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
         agent_scope = nsxv3_constants.NSXV3_AGENT_SCOPE
 
-        lp.tags = [Tag(scope=sg_scope, tag=id) for id in security_groups_ids]
-        lp.tags.append(Tag(scope=rev_scope, tag=str(revision)))
+        lp.tags = [
+            Tag(scope=sg_scope, tag=id) for id in port["security_groups"]
+        ]
+        lp.tags.append(Tag(scope=rev_scope, tag=str(port["revision_number"])))
         lp.tags.append(Tag(scope=agent_scope, tag=str(self.agent_id)))
         lp.switching_profile_ids = []
         lp.switching_profile_ids.extend(self.default_switching_profile_ids)
+
+        if port["parent_id"] is None:
+            lp.context = {
+                "resource_type": "VifAttachmentContext",
+                "vif_type": "PARENT"
+            }
+        else:
+            lp.context = {
+                "resource_type": "VifAttachmentContext",
+                "parent_vif_id": port["parent_id"],
+                "traffic_tag": vif_details.get("segmentation_id"),
+                "vif_type": "CHILD"
+            }
 
         if qos_name:
             qos = self.get(
@@ -208,7 +234,8 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             pc = PacketAddressClassifier(ip_address=ip, mac_address=mac)
             lp.address_bindings.append(pc)
 
-        return self.update(sdk_service=LogicalPorts, sdk_model=lp)
+        return (self.create if lp.id is None else self.update)\
+            (sdk_service=LogicalPorts, sdk_model=lp)
 
     def port_delete(self, attachment_id):
         attachment = {"id": attachment_id}

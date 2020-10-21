@@ -334,9 +334,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         LOG.debug("Synching port '{}'.".format(port_id))
 
         (id, mac, up, status, qos_id, rev,
-         binding_host, vif_details) = self.rpc.get_port(port_id)
+         binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
         port = {
             "id": id,
+            "parent_id": parent_id,
             "mac_address": mac,
             "admin_state_up": up,
             "status": status,
@@ -349,8 +350,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
             portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
         }
-
-        segmentation_id = json.loads(vif_details).get("segmentation_id")
 
         for ip, subnet in self.rpc.get_port_addresses(port_id):
             port["fixed_ips"].append(
@@ -367,8 +366,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         for (sg_id,) in self.rpc.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
         try:
-            self._port_update(context=None, port=port,
-                            segmentation_id=segmentation_id)
+            self._port_update(\
+                context=None, port=port, vif_details=json.loads(vif_details))
         except Exception as e:
             LOG.error(e)
             eventlet.sleep(10)
@@ -476,7 +475,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.runner.run(sync.Priority.HIGHEST, [port["id"]], self.sync_port)
 
     def _port_update(self, context, port=None, network_type=None,
-                    physical_network=None, segmentation_id=None):
+                    physical_network=None, vif_details=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
         vif_type = port.get(portbindings.VIF_TYPE)
         if not ((vnic_type and vnic_type == portbindings.VNIC_NORMAL) and
@@ -498,14 +497,13 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         for addr in port["allowed_address_pairs"]:
             address_bindings.append((addr["ip_address"], addr["mac_address"]))
 
-        with LockManager.get_lock(port["id"]):
-            self.nsxv3.port_update(
-                port["id"],
-                port["revision_number"],
-                port["security_groups"],
-                address_bindings,
-                qos_name=port.get("qos_policy_id")
-            )
+        if port["parent_id"] is None:
+            lock = port["id"]
+        else:
+            lock = port["parent_id"]
+
+        with LockManager.get_lock(lock):
+            self.nsxv3.port_update(port, vif_details, address_bindings)
         self.updated_devices.add(port['mac_address'])
 
     def port_delete(self, context, **kwargs):
