@@ -336,7 +336,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except Exception as e:
             LOG.error(e)
             eventlet.sleep(10)
-            self.runner.run(sync.Priority.HIGHEST, port_id, self.sync_port)
+            self.runner.run(sync.Priority.HIGHEST, [port_id], self.sync_port)
 
 
     def sync_port_orphaned(self, port_id):
@@ -437,7 +437,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                     physical_network=None, segmentation_id=None):
         LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
                   segmentation_id)
-        self.runner.run(sync.Priority.HIGHEST, port["id"], self.sync_port)
+        self.runner.run(sync.Priority.HIGHEST, [port["id"]], self.sync_port)
 
     def _port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
