@@ -77,6 +77,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.rpc.get_security_group_members_address_bindings_ips(sg_id)
         return cidrs
 
+
     def _security_group_rule_updated(self, security_group_id, revision):
         sg_id = str(security_group_id)
 
