@@ -9,8 +9,10 @@ import netaddr
 import oslo_messaging
 
 from com.vmware.nsx_client import TransportZones
+from com.vmware.nsx_client import LogicalPorts
 from com.vmware.nsx.model_client import (FirewallRule,
                                          IPSet,
+                                         NSGroup,
                                          LogicalPort,
                                          QosSwitchingProfile,
                                          TransportZone)
@@ -29,9 +31,12 @@ from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_facada
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_policy
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import vsphere_client
 from networking_nsxv3.common import synchronization as sync
+from networking_nsxv3.prometheus import exporter
+
 
 # Eventlet Best Practices
 # https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
@@ -42,7 +47,6 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 LOG = logging.getLogger(__name__)
 
 AGENT_SYNCHRONIZATION_LOCK = "AGENT_SYNCHRONIZATION_LOCK"
-
 
 def is_migration_enabled():
     return cfg.CONF.AGENT.enable_runtime_migration_from_dvs_driver
@@ -56,109 +60,140 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, agent, sg_agent, nsxv3, vsphere, rpc):
+    def __init__(self, context, agent, sg_agent, nsxv3, nsxv3_infra, vsphere,
+                 rpc, runner):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
             context, agent, sg_agent)
         self.nsxv3 = nsxv3
+        self.infra = nsxv3_infra
         self.vsphere = vsphere
         self.rpc = rpc
-        self.runner = sync.Runner(
-            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
-        self.runner.start()
+        self.runner = runner
 
-    def security_group_updated(self, security_group_id):
+    def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
-        LOG.debug("Updating Security Group '{}'".format(sg_id))
-        with LockManager.get_lock(sg_id):
-            (ipset, _, _) = self.nsxv3.get_or_create_security_group(sg_id)
+        cidrs = \
+            self.rpc.get_security_group_members_ips(sg_id) + \
+            self.rpc.get_security_group_members_address_bindings_ips(sg_id)
+        return cidrs
 
-            self.nsxv3.update_security_group_revision_number(ipset)
 
-            tcp_strict_enabled = self.rpc.has_security_group_tag(
-                security_group_id, nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT)
-            self.nsxv3.update_security_group_capabilities(sg_id,
-                                                          [tcp_strict_enabled])
-
-    def security_group_member_updated(self, security_group_id):
+    def _security_group_rule_updated(self, security_group_id, revision):
         sg_id = str(security_group_id)
-        LOG.debug("Updating Security Group '{}' members".format(sg_id))
-        with LockManager.get_lock(sg_id):
-            self.nsxv3.get_or_create_security_group(sg_id)
-            ip1 = self.rpc.get_security_group_members_ips(sg_id)
-            ip2 = self.rpc.get_security_group_members_address_bindings_ips(
-                sg_id)
 
-            members = [str(ip) for ip in netaddr.IPSet(
-                [str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
-            self.nsxv3.update_security_group_members(sg_id, members)
+        neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
 
-    def security_group_rule_updated(self, security_group_id):
+        nsxv3_rules = {}
+
+        try:
+            nsxv3_rules = self.infra.get_revisions(\
+                nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
+        except:
+            # Force recreate all rules
+            pass
+        
+        add_rules = []
+        for rule in neutron_rules:
+            r = nsxv3_policy.Rule()
+            r.identifier = rule["id"]
+            r.ethertype = rule["ethertype"]
+            r.direction = rule["direction"]
+            r.remote_group_id = rule["remote_group_id"]
+            r.remote_ip_prefix = rule["remote_ip_prefix"]
+            r.security_group_id = rule["security_group_id"]
+            r.service = nsxv3_policy.Service()
+
+            r.service.identifier = r.identifier
+            r.service.port_range_min = rule["port_range_min"]
+            r.service.port_range_max = rule["port_range_max"]
+            r.service.protocol = rule["protocol"]
+            r.service.ethertype = r.ethertype
+
+            add_rules.append(r)
+            nsxv3_rules.pop(r.identifier, None)
+        
+        del_rules = []
+        for identifier, _ in nsxv3_rules.items():
+            r = nsxv3_policy.Rule()
+            r.identifier = identifier
+            r.service = nsxv3_policy.Service() 
+            r.service.identifier = r.identifier
+            del_rules.append(r)
+        
+        return add_rules, del_rules
+
+    
+    def security_group_updated_skip_rules(self, security_group_id):
+        self.security_group_updated(security_group_id, skip_rules=True)
+
+    def security_group_updated(self, security_group_id, skip_rules=False):
         sg_id = str(security_group_id)
-        LOG.debug("Updating Security Group '{}' rules".format(sg_id))
+        try:
+            _, revision_sg = self.rpc.get_security_group_revision(sg_id)
+        except Exception as e:
+            if "'{}' not found in Neutron".format(sg_id) in e.message:
+                pass
+            raise e
+
+        scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
+        LOG.info("Updating Security Group '{}'".format(sg_id))
         with LockManager.get_lock(sg_id):
-            (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
-            _, revs_ips, _ = self.nsxv3.get_revisions(IPSet())
-            _, revs_fwr, meta_fwr = self.nsxv3.get_revisions(
-                FirewallRule(),
-                attr_key="section_id",
-                attr_val=sec.id)
+            revision_member = self.infra.get_revision(\
+                nsxv3_policy.ResourceContainers.SecurityPolicyGroup, sg_id)
+            
+            revision_rule = self.infra.get_revision(\
+                nsxv3_policy.ResourceContainers.SecurityPolicy, sg_id)
 
-            neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
-
-            attrs = ["id", "port_range_min", "port_range_max", "protocol",
-                     "ethertype", "direction", "remote_group_id",
-                     "remote_ip_prefix", "security_group_id"]
-
+            cidrs = []
+            tcp_strict = None
             add_rules = []
-            for rule in neutron_rules:
-                name = rule["id"]
-                remote_group_id = rule["remote_group_id"]
-
-                fwr = dict()
-                for key in attrs:
-                    fwr[key] = rule[key]
-
-                fwr["local_group_id"] = ipset.id
-                fwr["apply_to"] = nsg.id
-                if remote_group_id in revs_ips:
-                    fwr["remote_group_id"] = revs_ips[remote_group_id]
-
-                if name in revs_fwr:
-                    # If the rule is disabled recreate it
-                    if not meta_fwr.get(name).get("FirewallRule.disabled"):
-                        del revs_fwr[name]
-                        continue
-
-                fwr_spec = self.nsxv3.get_security_group_rule_spec(fwr)
-                if fwr_spec:
-                    add_rules.append(fwr_spec)
-            del_rules = revs_fwr.values()
-
-            (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
-
-            self.nsxv3.update_security_group_rules(
-                sg_id,
-                revision_number=revision,
-                add_rules=add_rules,
-                del_rules=del_rules)
+            del_rules = []
+            
+            if revision_member != revision_sg:
+                revision_member = revision_sg
+                cidrs = self._security_group_member_updated(sg_id)
+            
+            if not skip_rules and revision_rule != revision_sg:
+                revision_rule = revision_sg
+                tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
+                add_rules, del_rules = \
+                    self._security_group_rule_updated(sg_id, revision_sg)
+                
+            self.infra.update_policy(sg_id, tcp_strict=tcp_strict,
+                                     revision_member=revision_member,
+                                     revision_rule=revision_rule,
+                                     cidrs=cidrs,
+                                     add_rules=add_rules, del_rules=del_rules)
 
     def security_group_delete(self, security_group_id):
+        LOG.info("Deleting Security Group '{}'".format(security_group_id))
         with LockManager.get_lock(security_group_id):
-            self.nsxv3.delete_security_group(security_group_id)
+            sg_id = str(security_group_id)
+            nsxv3_rules = self.infra.get_revisions(\
+                nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
+            
+            del_rules = []
+            for identifier, _ in nsxv3_rules.items():
+                r = nsxv3_policy.Rule()
+                r.identifier = identifier
+                del_rules.append(r)
+
+            self.infra.update_policy(security_group_id,
+                                     del_rules=del_rules, delete=True)
 
     # RPC method
     def security_groups_member_updated(self, context, **kwargs):
         o = kwargs["security_groups"]
         self.runner.run(sync.Priority.HIGHEST,
                         o if isinstance(o, list) else [o],
-                        self.security_group_member_updated)
+                        self.security_group_updated)
 
     # RPC method
     def security_groups_rule_updated(self, context, **kwargs):
         o = kwargs["security_groups"]
         self.runner.run(sync.Priority.HIGHEST,
                         o if isinstance(o, list) else [o],
-                        self.security_group_rule_updated)
+                        self.security_group_updated)
 
     def _sync_inventory_full(self):
         self.runner.run(
@@ -182,17 +217,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         # Security Groups Synchronization
         outdated_ips, orphaned_ips = self._sync_get_content(
             sdk_model=IPSet(), os_query=sg_query)
-        self.runner.run(
-            sync.Priority.HIGHER,
-            outdated_ips, self.security_group_updated)
-        # Create all Security Groups before use their references in rules
-        # Creating FirewallSections, IPSets, NSGroups without FirewallRules
+        # All Groups need to be created before rule creation begins duo to
+        # remote group references
         self.runner.run(
             sync.Priority.HIGH,
-            outdated_ips, self.security_group_member_updated)
+            outdated_ips, self.security_group_updated_skip_rules)
         self.runner.run(
             sync.Priority.MEDIUM,
-            outdated_ips, self.security_group_rule_updated)
+            outdated_ips, self.security_group_updated)
         self.runner.run(
             sync.Priority.LOW,
             orphaned_ips, self.sync_security_group_orphaned)
@@ -214,6 +246,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             sync.Priority.LOW,
             orphaned_lps, self.sync_port_orphaned)
 
+        # TODO - remove after migration completes
+        # Clean up the migrated Security Groups from Management to Policy API
+        orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api()
+        self.runner.run(
+            sync.Priority.LOW,
+            orphan_sgs, self.nsxv3.delete_security_group)
+
+        self._sync_report("Security Groups Management API", 0, orphan_sgs)
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
         self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
         self._sync_report("Ports", outdated_lps, orphaned_lps)
@@ -249,24 +289,56 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def _sync_get_content(self, sdk_model, os_query):
         revs_os = self.get_revisions(query=os_query)
-        revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
+        revs_nsx = None
 
-        outdated = set()
+        # Policy API
+        if isinstance(sdk_model, IPSet):
+            rc = nsxv3_policy.ResourceContainers
+            revs_nsx = nsxv3_utils.concat_revisions(\
+                self.infra.get_revisions(rc.SecurityPolicy),
+                self.infra.get_revisions(rc.SecurityPolicyGroup))
+        # TODO - imperative API - replace with policy
+        else:
+            revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
 
-        for key, rev in revs_os.items():
-            if revs_nsx.get(key) != rev:
-                outdated.add(key)
-
+        outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
         orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
         return outdated, orphaned
+    
+    # TODO - remove after migration to the Policy API
+    def _sync_get_orphan_security_groups_mgmt_api(self):
+        rc = nsxv3_policy.ResourceContainers
+        pl = nsxv3_utils.concat_revisions(\
+            self.infra.get_revisions(rc.SecurityPolicy),
+            self.infra.get_revisions(rc.SecurityPolicyGroup))
+        mg_nsgroup, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
+        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
+
+        # Get all security group IDs 
+        # regardless of the fact they could be partially implemented
+        # Section object is excluded as it cannot be assigned with tags.
+        # Though, the cleanup will try to remove the three objects for each ID
+        mg = {}
+        mg.update(mg_nsgroup)
+        mg.update(mg_ipset)
+
+        result = []
+        for k,_ in mg.items():
+            if k in pl and pl.get(k).isdigit():
+                v1 = int(mg_nsgroup.get(k)) if mg_nsgroup.get(k).isdigit() else 0
+                v2 = int(mg_ipset.get(k)) if mg_ipset.get(k).isdigit() else 0
+                if max(v1,v2) <= int(pl.get(k)):
+                    result.append(k)
+        return result
 
     def sync_port(self, port_id):
         LOG.debug("Synching port '{}'.".format(port_id))
 
         (id, mac, up, status, qos_id, rev,
-         binding_host, vif_details) = self.rpc.get_port(port_id)
+         binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
         port = {
             "id": id,
+            "parent_id": parent_id,
             "mac_address": mac,
             "admin_state_up": up,
             "status": status,
@@ -279,8 +351,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
             portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
         }
-
-        segmentation_id = json.loads(vif_details).get("segmentation_id")
 
         for ip, subnet in self.rpc.get_port_addresses(port_id):
             port["fixed_ips"].append(
@@ -296,9 +366,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         for (sg_id,) in self.rpc.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
+        try:
+            self._port_update(\
+                context=None, port=port, vif_details=json.loads(vif_details))
+        except Exception as e:
+            LOG.error(e)
+            eventlet.sleep(10)
+            self.runner.run(sync.Priority.HIGHEST, [port_id], self.sync_port)
 
-        self.port_update(context=None, port=port,
-                         segmentation_id=segmentation_id)
 
     def sync_port_orphaned(self, port_id):
         LOG.debug("Removing orphaned ports '{}'.".format(
@@ -349,10 +424,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching Security Group '{}'.".format(security_group_id))
-        self.security_group_updated(security_group_id)
-        self.security_group_member_updated(security_group_id)
-        if update_rules:
-            self.security_group_rule_updated(security_group_id)
+        self.security_group_updated(security_group_id,
+                                    skip_rules=not update_rules)
+        if cfg.CONF.AGENT.enable_imperative_security_group_cleanup:
+            # TODO - remove after cleanup completed
+            self.nsxv3.delete_security_group(security_group_id)
 
     def sync_security_group_orphaned(self, security_group_id):
         LOG.debug("Removing orphaned security group '{}'.".format(
@@ -395,6 +471,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def port_update(self, context, port=None, network_type=None,
                     physical_network=None, segmentation_id=None):
+        LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
+                  segmentation_id)
+        self.runner.run(sync.Priority.HIGHEST, [port["id"]], self.sync_port)
+
+    def _port_update(self, context, port=None, network_type=None,
+                    physical_network=None, vif_details=None):
         vnic_type = port.get(portbindings.VNIC_TYPE)
         vif_type = port.get(portbindings.VIF_TYPE)
         if not ((vnic_type and vnic_type == portbindings.VNIC_NORMAL) and
@@ -407,9 +489,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                           str(port))
                 return
 
-        LOG.debug("Updating Port='%s' with Segment='%s'", str(port),
-                  segmentation_id)
-
         address_bindings = []
 
         for addr in port["fixed_ips"]:
@@ -419,21 +498,39 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         for addr in port["allowed_address_pairs"]:
             address_bindings.append((addr["ip_address"], addr["mac_address"]))
 
-        with LockManager.get_lock(port["id"]):
-            self.nsxv3.port_update(
-                port["id"],
-                port["revision_number"],
-                port["security_groups"],
-                address_bindings,
-                qos_name=port.get("qos_policy_id")
-            )
+        if port["parent_id"] is None:
+            lock = port["id"]
+        else:
+            lock = port["parent_id"]
+
+        with LockManager.get_lock(lock):
+            self.nsxv3.port_update(port, vif_details, address_bindings)
         self.updated_devices.add(port['mac_address'])
 
     def port_delete(self, context, **kwargs):
-        LOG.debug("Deleting port " + str(kwargs))
+        port_id = kwargs["port_id"]
+        LOG.debug("Deleting port " + port_id)
         if kwargs.get("sync"):
-            with LockManager.get_lock(kwargs["port_id"]):
-                self.nsxv3.port_delete(kwargs["port_id"])
+            with LockManager.get_lock(port_id):
+                hours = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
+
+                port = self.nsxv3.get_port(\
+                    sdk_service=LogicalPorts,
+                    sdk_model=LogicalPort(attachment={"id": port_id}))
+
+                timestamp = nsxv3_facada.Timestamp(
+                    "marked_for_delete",
+                    self.nsxv3, LogicalPorts,
+                    port,
+                    hours)
+                
+                if timestamp.has_set():
+                    if timestamp.has_expired():
+                        self.nsxv3.port_delete(port_id)
+                else:
+                    timestamp.update()
+                    LOG.info("Port {} marked for deletion after {} hours"\
+                            .format(port_id, hours))
         # Else, a port is deleted by Nova when destroying the instance
 
     def create_policy(self, context, policy):
@@ -452,8 +549,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def delete_policy(self, context, policy):
         LOG.debug("Deleting policy={}.".format(policy["name"]))
         with LockManager.get_lock(policy["id"]):
-            pass
-            # TODO self.nsxv3.delete_switch_profile_qos(policy["id"])
+            self.nsxv3.delete_switch_profile_qos(policy["id"])
 
     def validate_policy(self, context, policy):
         LOG.debug("Validating policy={}.".format(policy["name"]))
@@ -462,16 +558,22 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
 
-    def __init__(self, nsxv3=None, vsphere=None):
+    def __init__(self, nsxv3=None, nsxv3_infra=None, vsphere=None):
         super(NSXv3Manager, self).__init__()
         context = neutron_context.get_admin_context()
 
         self.nsxv3 = nsxv3
+        self.infra = nsxv3_infra
         self.vsphere = vsphere
         self.rpc = None
         self.rpc_plugin = nsxv3_rpc.NSXv3ServerRpcApi(
             context, nsxv3_constants.NSXV3_SERVER_RPC_TOPIC, cfg.CONF.host)
         self.last_sync_time = 0
+        self.runner = sync.Runner(
+            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
+        self.runner.start()
+        eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, self.runner)
+
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -565,8 +667,10 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
                 agent=agent,
                 sg_agent=sg_agent,
                 nsxv3=self.nsxv3,
+                nsxv3_infra = self.infra,
                 vsphere=self.vsphere,
-                rpc=self.rpc_plugin)
+                rpc=self.rpc_plugin,
+                runner=self.runner)
         return self.rpc
 
     def get_agent_api(self, **kwargs):
@@ -627,7 +731,10 @@ def cli_sync():
     pt_ids = cfg.CONF.AGENT_CLI.neutron_port_id
     qs_ids = cfg.CONF.AGENT_CLI.neutron_qos_policy_id
 
-    nsxv3 = nsxv3_facada.NSXv3Facada()
+    # TODO - update with policy client
+    api_scheduler = sync.Scheduler(\
+        rate=cfg.CONF.NSXV3.nsxv3_requests_per_second, limit=1)
+    nsxv3 = nsxv3_facada.NSXv3Facada(api_scheduler=api_scheduler)
     # Force login as NSXv3Manager will not be started as daemon.
     nsxv3.login()
     manager = NSXv3Manager(nsxv3=nsxv3)
@@ -662,10 +769,10 @@ def cli_sync():
 
 
 def main():
-    LOG.info("VMware NSXv3 Agent initializing ...")
     common_config.init(sys.argv[1:])
     common_config.setup_logging()
     profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
+    LOG.info("VMware NSXv3 Agent initializing ...")
 
     # Enable DEBUG Logging
     try:
@@ -675,12 +782,18 @@ def main():
     except (ValueError, TypeError):
         LOG.error("VMware NSXv3 Agent setting DEBUG configuration has failed.")
 
-    nsxv3 = nsxv3_facada.NSXv3Facada()
+    api_scheduler = sync.Scheduler(rate=cfg.CONF.NSXV3.nsxv3_requests_per_second,
+                              limit=1)
+
+    nsxv3_client = nsxv3_policy.Client(api_scheduler=api_scheduler)
+    nsxv3_infra = nsxv3_policy.InfraService(nsxv3_client)
+
+    nsxv3 = nsxv3_facada.NSXv3Facada(api_scheduler=api_scheduler)
     nsxv3.setup()
     vsphere = vsphere_client.VSphereClient()
 
     agent = ca.CommonAgentLoop(
-        NSXv3Manager(nsxv3=nsxv3, vsphere=vsphere),
+        NSXv3Manager(nsxv3=nsxv3, nsxv3_infra=nsxv3_infra, vsphere=vsphere),
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,

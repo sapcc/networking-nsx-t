@@ -110,10 +110,9 @@ class Scheduler(object):
         Keyword arguments:
         rate -- the rate of execution
         limit -- the limit of execution
-        callback -- a callback reporting the limit was hit
     """
 
-    def __init__(self, rate=1, limit=1.0, callback=None):
+    def __init__(self, rate=1, limit=1.0):
 
         if limit <= 0:
             raise ValueError('Schedule limit "{}" not positive'.format(limit))
@@ -124,6 +123,12 @@ class Scheduler(object):
 
         self.rate = rate
         self.limit = limit
+
+        # Callback reporting the limit was hit
+        def callback(seconds):
+            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'
+                        .format(limit, seconds))
+
         self.callback = callback
         self._semaphore = eventlet.semaphore.Semaphore(value=self.rate)
 
@@ -146,7 +151,6 @@ class Scheduler(object):
             eventlet.greenthread.sleep(sleeptime)
             run_time = self.schedule[offset] + self.limit
         self.schedule.append(run_time)
-        LOG.debug("Executing function at {}".format(time.time()))
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
