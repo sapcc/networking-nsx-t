@@ -326,8 +326,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         result = []
         for k,_ in mg.items():
             if k in pl and pl.get(k).isdigit():
-                v1 = int(mg_nsgroup.get(k)) if mg_nsgroup.get(k).isdigit() else 0
-                v2 = int(mg_ipset.get(k)) if mg_ipset.get(k).isdigit() else 0
+                v1 = int(mg_nsgroup.get(k)) if mg_nsgroup.get(k, '').isdigit() else 0
+                v2 = int(mg_ipset.get(k)) if mg_ipset.get(k, '').isdigit() else 0
                 # Only clean up older entries for now
                 if max(v1,v2) < int(pl.get(k)):
                     result.append(k)
