@@ -132,7 +132,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             _, revision_sg = self.rpc.get_security_group_revision(sg_id)
         except Exception as e:
             if "'{}' not found in Neutron".format(sg_id) in e.message:
-                pass
+                return
             raise e
 
         scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
@@ -294,9 +294,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         # Policy API
         if isinstance(sdk_model, IPSet):
             rc = nsxv3_policy.ResourceContainers
-            revs_nsx = nsxv3_utils.concat_revisions(\
+            revs_nsx = nsxv3_utils.concat_revisions(
                 self.infra.get_revisions(rc.SecurityPolicy),
-                self.infra.get_revisions(rc.SecurityPolicyGroup))
+                self.infra.get_revisions(rc.SecurityPolicyGroup)
+            )
         # TODO - imperative API - replace with policy
         else:
             revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
@@ -312,7 +313,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.infra.get_revisions(rc.SecurityPolicy),
             self.infra.get_revisions(rc.SecurityPolicyGroup))
         mg_nsgroup, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
-        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
+        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=IPSet())
 
         # Get all security group IDs 
         # regardless of the fact they could be partially implemented

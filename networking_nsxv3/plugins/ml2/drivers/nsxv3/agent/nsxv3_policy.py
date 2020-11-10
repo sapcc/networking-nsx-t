@@ -70,11 +70,11 @@ class RetryPolicy(object):
                         LOG.debug(log_msg)
                         return response
 
-                    LOG.error(log_msg)
-
                     if response.status_code in [401, 403]:
                         self._login()
                         continue
+
+                    LOG.error(log_msg)
 
                     # skip retry on the ramaining NSX errors
                     break
