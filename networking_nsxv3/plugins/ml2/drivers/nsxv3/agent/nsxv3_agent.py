@@ -138,10 +138,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
         LOG.info("Updating Security Group '{}'".format(sg_id))
         with LockManager.get_lock(sg_id):
-            revision_member = self.infra.get_revision(\
+            revision_member = self.infra.get_revision(
                 nsxv3_policy.ResourceContainers.SecurityPolicyGroup, sg_id)
             
-            revision_rule = self.infra.get_revision(\
+            revision_rule = self.infra.get_revision(
                 nsxv3_policy.ResourceContainers.SecurityPolicy, sg_id)
 
             cidrs = []
@@ -334,6 +334,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return result
 
     def sync_port(self, port_id):
+        retry_count = 0
+        if port_id.startswith('retry-'):
+            retry_count = int(port_id[6:7])
+            port_id = port_id[8:]
         LOG.debug("Synching port '{}'.".format(port_id))
 
         (id, mac, up, status, qos_id, rev,
@@ -369,12 +373,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         for (sg_id,) in self.rpc.get_port_security_groups(port_id):
             port["security_groups"].append(sg_id)
         try:
-            self._port_update(\
-                context=None, port=port, vif_details=json.loads(vif_details))
+            self._port_update(context=None, port=port, vif_details=json.loads(vif_details))
         except Exception as e:
             LOG.error(e)
             eventlet.sleep(10)
-            self.runner.run(sync.Priority.HIGHEST, [port_id], self.sync_port)
+            if retry_count <= 3:
+                self.runner.run(sync.Priority.HIGHEST, ["retry-{}-{}".format(retry_count + 1, port_id)], self.sync_port)
 
 
     def sync_port_orphaned(self, port_id):

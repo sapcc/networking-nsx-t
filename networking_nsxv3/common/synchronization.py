@@ -13,7 +13,7 @@ if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
 
 LOG = logging.getLogger(__name__)
 
-MESSAGE = "Synchronization for object with id='{}' and priority '{}' {}"
+MESSAGE = "{} for object with id='{}' and priority '{}' {}"
 INFINITY = -1
 TIMEOUT = 10
 
@@ -62,14 +62,14 @@ class Runner(object):
         """
         for jid in ids:
             try:
-                LOG.info(MESSAGE.format(jid, priority, "enqueued"))
+                LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
                 item = (priority.value, {"id": jid, "fn": fn})
                 if priority.value == Priority.HIGHEST:
                     self._active.put_nowait(item)
                 else:
                     self._passive.put_nowait(item)
             except eventlet.queue.Full as err:
-                LOG.error(MESSAGE.format(jid, priority, err))
+                LOG.error(MESSAGE.format(fn.__name__, jid, priority, err))
 
     def _start(self):
         while True:
@@ -78,7 +78,7 @@ class Runner(object):
                     self._active.put_nowait(self._passive.get_nowait())
                 priority_value, job = self._active.get(block=True,
                                                        timeout=TIMEOUT)
-                LOG.debug(MESSAGE.format(job["id"], priority_value, "started"))
+                LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
                 self._workers.spawn_n(job["fn"], job["id"])
             except eventlet.queue.Empty:
                 LOG.info("No activity for the last {} seconds".format(TIMEOUT))

@@ -576,9 +576,9 @@ class InfraService:
         if 200 <= response.status_code < 300:
             resource = json.loads(response.content)
             tags = self._get_tags(resource)
-            return int(tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "0"))
+            return int(tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "-1"))
         else:
-            return 0
+            return -1
 
     def update_policy(self, identifier,
                               revision_rule=None, revision_member=None,
