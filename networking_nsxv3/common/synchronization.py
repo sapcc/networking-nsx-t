@@ -76,12 +76,16 @@ class Runner(object):
             try:
                 if self.active() < self._idle and self.passive() > 0:
                     self._active.put_nowait(self._passive.get_nowait())
+                    self._passive.task_done()
                 priority_value, job = self._active.get(block=True,
                                                        timeout=TIMEOUT)
                 LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
                 self._workers.spawn_n(job["fn"], job["id"])
+                self._active.task_done()
             except eventlet.queue.Empty:
-                LOG.info("No activity for the last {} seconds".format(TIMEOUT))
+                LOG.info("No activity for the last {} seconds.".format(TIMEOUT))
+                LOG.info("Active Queue Size={}, Passive Queue Size={}, Active Jobs={}".format(
+                    self._active.qsize(), self._passive.qsize(), self._workers.running()))
             except Exception as err:
                 # Continue on error. Otherwise the agent operation will stop
                 LOG.error(err)
@@ -100,6 +104,8 @@ class Runner(object):
 
     def stop(self):
         """ Gracefully terminates the runner instance """
+        self._active.join()
+        self._passive.join()
         self._workers.waitall()
 
 

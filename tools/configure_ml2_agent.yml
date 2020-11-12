@@ -53,6 +53,7 @@
         - { section: "NSXV3", option: "nsxv3_max_records_per_query", value: "{{ nsxv3_max_records_per_query }}" }
         - { section: "NSXV3", option: "nsxv3_remove_orphan_ports_after", value: "{{ nsxv3_remove_orphan_ports_after }}" }
         - { section: "NSXV3", option: "nsxv3_dfw_connectivity_strategy", value: "{{ nsxv3_dfw_connectivity_strategy }}" }
+        - { section: "NSXV3", option: "nsxv3_groups_disconnect", value: "{{ nsxv3_groups_disconnect }}" }
     - name: Start agent as daemon
       shell: screen -dmS neutron-nsxv3-agent /usr/local/bin/neutron-nsxv3-agent --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini
       become: yes

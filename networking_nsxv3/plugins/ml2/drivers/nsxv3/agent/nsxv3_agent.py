@@ -195,19 +195,28 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                         o if isinstance(o, list) else [o],
                         self.security_group_updated)
 
-    def _sync_inventory_full(self):
+    def sync_security_groups(self):
         self.runner.run(
             sync.Priority.HIGHER,
             self.get_revisions(
                 query=self.rpc.get_security_group_revision_tuples).keys(),
             self.sync_security_group)
+
+    def sync_qos_policies(self):
         self.runner.run(
             sync.Priority.HIGH,
             self.get_revisions(
                 query=self.rpc.get_qos_policy_revision_tuples).keys(),
             self.sync_qos)
+
+    def sync_ports(self):
         self.runner.run(sync.Priority.MEDIUM, self.get_revisions(
             query=self.rpc.get_port_revision_tuples).keys(), self.sync_port)
+
+    def _sync_inventory_full(self):
+        self.sync_security_groups()
+        self.sync_qos_policies()
+        self.sync_ports()
 
     def _sync_inventory_shallow(self):
         sg_query = self.rpc.get_security_group_revision_tuples
@@ -564,7 +573,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
 
-    def __init__(self, nsxv3=None, nsxv3_infra=None, vsphere=None):
+    def __init__(self, nsxv3=None, nsxv3_infra=None, vsphere=None, monitoring=True):
         super(NSXv3Manager, self).__init__()
         context = neutron_context.get_admin_context()
 
@@ -578,8 +587,13 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.runner = sync.Runner(
             workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
-        eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, self.runner)
+        if monitoring:
+            eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 
+                                       self.runner)
 
+    def shutdown_gracefully(self):
+
+        self.runner.stop()
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -737,41 +751,24 @@ def cli_sync():
     pt_ids = cfg.CONF.AGENT_CLI.neutron_port_id
     qs_ids = cfg.CONF.AGENT_CLI.neutron_qos_policy_id
 
-    # TODO - update with policy client
-    api_scheduler = sync.Scheduler(\
-        rate=cfg.CONF.NSXV3.nsxv3_requests_per_second, limit=1)
+    api_scheduler = sync.Scheduler(rate=cfg.CONF.NSXV3.nsxv3_requests_per_second,
+                                   limit=1)
+    nsxv3_client = nsxv3_policy.Client(api_scheduler=api_scheduler)
+    nsxv3_infra = nsxv3_policy.InfraService(nsxv3_client)
     nsxv3 = nsxv3_facada.NSXv3Facada(api_scheduler=api_scheduler)
-    # Force login as NSXv3Manager will not be started as daemon.
     nsxv3.login()
-    manager = NSXv3Manager(nsxv3=nsxv3)
+    vsphere = vsphere_client.VSphereClient()
+    manager = NSXv3Manager(nsxv3=nsxv3, nsxv3_infra=nsxv3_infra,
+                           vsphere=vsphere, monitoring=False)
     rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
 
-    def execute(callback, ids):
-        status = {}
-        error = False
-        for id in ids:
-            try:
-                callback(id)
-                status[id] = "Success"
-            except Exception as e:
-                error = True
-                status[id] = "Error: {}".format(str(e))
-                LOG.exception(e)
-        return (status, error)
+    def execute(sync_single, sync_all, ids):
+        sync_all() if '*' in ids else (sync_single(id) for id in ids)
 
-    (pt_status, pt_error) = execute(rpc.sync_port, pt_ids)
-    (sg_status, sg_error) = execute(rpc.sync_security_group, sg_ids)
-    (qs_status, qs_error) = execute(rpc.sync_qos, qs_ids)
-
-    result = {
-        "security_groups": sg_status,
-        "ports": pt_status,
-        "qos_policies": qs_status
-    }
-
-    LOG.info(json.dumps(result))
-
-    return 1 if pt_error or sg_error or qs_error else 0
+    execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
+    execute(rpc.sync_port, rpc.sync_ports, pt_ids)
+    execute(rpc.sync_qos, rpc.sync_qos, qs_ids)
+    manager.shutdown_gracefully()
 
 
 def main():
