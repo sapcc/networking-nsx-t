@@ -193,7 +193,8 @@ class AgentIdentifier:
 
 class InfraBuilder:
 
-    def __init__(self, client, transport_zone_id=None):
+    def __init__(self, client, transport_zone_id=None, options=None):
+        self._options = options if options else {}
         self._client = client
         self.context = {
             "resource_type": "Infra",
@@ -247,7 +248,7 @@ class InfraBuilder:
             "conjunction_operator": "OR"
         }
 
-        if group.dynamic_members:
+        if not self._options.get('groups_dynamic_members_off') and group.dynamic_members:
             # NSX-T treats Segment Ports and Logical Ports the same way when
             # specified at member_type
             expression.append({
@@ -508,6 +509,9 @@ class InfraService:
         self._client = client
         self._page_size = cfg.CONF.NSXV3.nsxv3_max_records_per_query
         self._transport_zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        self._infra_options = {
+            "groups_dynamic_members_off": bool(cfg.CONF.NSXV3.nsxv3_groups_disconnect)
+        }
 
     def _get_tags(self, resource):
         tags = {}
@@ -607,7 +611,7 @@ class InfraService:
         builder.build()
 
     def get_builder(self):
-        return InfraBuilder(self._client)
+        return InfraBuilder(self._client, options=self._infra_options)
 
 class ResourceContainers:
     TransportZone = "/sites/default/enforcement-points/default/transport-zones"
