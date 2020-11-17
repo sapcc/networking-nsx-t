@@ -104,9 +104,9 @@ class Runner(object):
 
     def stop(self):
         """ Gracefully terminates the runner instance """
+        self._workers.waitall()
         self._active.join()
         self._passive.join()
-        self._workers.waitall()
 
 
 class Scheduler(object):

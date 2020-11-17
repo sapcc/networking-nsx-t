@@ -770,6 +770,15 @@ def cli_sync():
     execute(rpc.sync_qos, rpc.sync_qos, qs_ids)
     manager.shutdown_gracefully()
 
+    uninitialized = -1
+    while uninitialized:
+        res = nsxv3.get_uninitalized_policies()
+        if res.ok:
+            uninitialized = res.json().get('result_count', -1)
+
+        LOG.info("Waiting for %d uninitalized Policies", uninitialized)
+        eventlet.sleep(10)
+
 
 def main():
     common_config.init(sys.argv[1:])
