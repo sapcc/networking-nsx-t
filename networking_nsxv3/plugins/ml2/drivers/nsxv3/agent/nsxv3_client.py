@@ -215,7 +215,7 @@ class NSXv3ClientImpl(NSXv3Client):
         elif ors:
             q.append(pattern("OR", key, ors))
 
-        pivot = "( {} ) AND _exists_:resource_type"
+        pivot = "( {} ) AND _exists_:resource_type AND !_exists_:nsx_id AND !_create_user:nsx_policy"
 
         return {
             "method": "search",
