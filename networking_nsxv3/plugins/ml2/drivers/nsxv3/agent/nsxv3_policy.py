@@ -253,7 +253,7 @@ class InfraBuilder:
             # specified at member_type
             expression.append({
                 "value": "security_group|" + identifier,
-                "member_type": "SegmentPort",
+                "member_type": "LogicalPort",
                 "key": "Tag",
                 "operator": "EQUALS",
                 "resource_type": "Condition"
