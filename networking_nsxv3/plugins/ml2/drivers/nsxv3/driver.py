@@ -127,7 +127,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         vif_details['segmentation_id'] = response.get('segmentation_id')
 
         if not vif_details['nsx-logical-switch-id']:
-            LOG.error("Agent={} did not provide nsx-logical-switch-id."
+            LOG.warn("Agent={} did not provide nsx-logical-switch-id."
                       .format(agent_type))
             return False
         else:

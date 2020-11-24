@@ -461,14 +461,19 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             network_segments,
             network_current):
         LOG.debug("Trying to map network bridge for networks ...")
+
+        networks = cfg.CONF.AGENT.agent_physical_networks
+
         for ns in network_segments:
+            if ns['physical_network'] not in networks:
+                continue
             seg_id = ns.get("segmentation_id")
             if seg_id:
                 LOG.debug("Retrieving bridge for segmentation_id={}"
                           .format(seg_id))
                 lock_id = nsxv3_utils.get_segmentation_id_lock(seg_id)
                 with LockManager.get_lock(lock_id):
-                    id = self.nsxv3.get_switch_id_for_segmentation_id(seg_id)
+                    id = self.infra.update_segment(seg_id).get("unique_id")
                     return {
                         'nsx-logical-switch-id': id,
                         'segmentation_id': seg_id
