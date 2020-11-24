@@ -33,6 +33,8 @@
         - { section: "AGENT", option: "quitting_rpc_timeout", value: "{{ quitting_rpc_timeout }}" }
         - { section: "AGENT", option: "rpc_max_records_per_query", value: "{{ rpc_max_records_per_query }}" }
         - { section: "AGENT", option: "agent_prometheus_exporter_port", value: "{{ agent_prometheus_exporter_port }}" }
+        - { section: "AGENT", option: "retry_on_failure_max", value: "{{ retry_on_failure_max }}" }
+        - { section: "AGENT", option: "retry_on_failure_delay", value: "{{ retry_on_failure_delay }}" }
         - { section: "AGENT_CLI", option: "neutron_security_group_id", value: "{{ neutron_security_group_id }}" }
         - { section: "AGENT_CLI", option: "neutron_port_id", value: "{{ neutron_port_id }}" }
         - { section: "AGENT_CLI", option: "neutron_qos_policy_id", value: "{{ neutron_qos_policy_id }}" }

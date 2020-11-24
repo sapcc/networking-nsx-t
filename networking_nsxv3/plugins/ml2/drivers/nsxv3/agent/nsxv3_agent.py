@@ -343,11 +343,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return result
 
     def sync_port(self, port_id):
-        retry_count = 0
-        if port_id.startswith('retry-'):
-            retry_count = int(port_id[6:7])
-            port_id = port_id[8:]
         LOG.debug("Synching port '{}'.".format(port_id))
+
+        id_options = sync.Identifier.decode(port_id)
+        port_id = id_options.identifier
+        
 
         (id, mac, up, status, qos_id, rev,
          binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
@@ -385,9 +385,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self._port_update(context=None, port=port, vif_details=json.loads(vif_details))
         except Exception as e:
             LOG.error(e)
-            eventlet.sleep(10)
-            if retry_count <= 3:
-                self.runner.run(sync.Priority.HIGHEST, ["retry-{}-{}".format(retry_count + 1, port_id)], self.sync_port)
+            if id_options.retry_next():
+                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                                self.sync_port)
 
 
     def sync_port_orphaned(self, port_id):
@@ -397,6 +397,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
+        id_options = sync.Identifier.decode(qos_id)
+        qos_id = id_options.identifier
+
         (qos_name, qos_revision_number) = self.rpc.get_qos(qos_id)
         bwls_rules = self.rpc.get_qos_bwl_rules(qos_id)
         dscp_rules = self.rpc.get_qos_dscp_rules(qos_id)
@@ -424,10 +427,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except Exception as e:
             if "Object exists" not in str(e):
                 LOG.error("Unable to create policy '{}'".format(qos_id))
-        # try:
-        self.update_policy(context=None, policy=policy)
-        # except Exception as e:
-        #     LOG.error("Unable to update policy '{}'".format(e))
+        
+        try:
+            self.update_policy(context=None, policy=policy)
+        except Exception as e:
+            LOG.error(e)
+            if id_options.retry_next():
+                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                                self.sync_qos)
 
     def sync_qos_orphaned(self, qos_id):
         LOG.debug("Removing orphaned QoS Policy '{}'.".format(qos_id))
@@ -439,8 +446,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching Security Group '{}'.".format(security_group_id))
-        self.security_group_updated(security_group_id,
-                                    skip_rules=not update_rules)
+
+        id_options = sync.Identifier.decode(security_group_id)
+
+        try:
+            self.security_group_updated(id_options.identifier,
+                                        skip_rules=not update_rules)
+        except Exception as e:
+            LOG.error(e)
+            if id_options.retry_next():
+                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                                self.sync_security_group)
+        
         if cfg.CONF.AGENT.enable_imperative_security_group_cleanup:
             # TODO - remove after cleanup completed
             self.nsxv3.delete_security_group(security_group_id)
@@ -767,7 +784,7 @@ def cli_sync():
 
     execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
     execute(rpc.sync_port, rpc.sync_ports, pt_ids)
-    execute(rpc.sync_qos, rpc.sync_qos, qs_ids)
+    execute(rpc.sync_qos, rpc.sync_qos_policies, qs_ids)
     manager.shutdown_gracefully()
 
     uninitialized = -1

@@ -65,6 +65,16 @@ agent_opts = [
         'agent_prometheus_exporter_port',
         default='8000',
         help="Prometheus exporter port"
+    ),
+    cfg.IntOpt(
+        'retry_on_failure_max',
+        default=0,
+        help="Maximum retries of a failed object synchronization"
+    ),
+    cfg.IntOpt(
+        'retry_on_failure_delay',
+        default=10,
+        help="Delay between retries of a failed object synchronization in seconds"
     )
 ]
 

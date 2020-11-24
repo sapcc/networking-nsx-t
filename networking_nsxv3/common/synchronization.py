@@ -5,8 +5,10 @@ import os
 import time
 import functools
 import collections
+import json
 from enum import Enum
 from oslo_log import log as logging
+from oslo_config import cfg
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
@@ -28,6 +30,37 @@ class Priority(Enum):
     LOWER = 5
     LOWEST = 6
 
+
+class Identifier(object):
+
+    def __init__(self, identifier):
+        self.identifier = identifier
+        self.retry = 0
+        self._retry_max = cfg.CONF.AGENT.retry_on_failure_max
+        self._retry_delay = cfg.CONF.AGENT.retry_on_failure_delay
+    
+    def encode(self):
+        return json.dumps({
+            "id": self.identifier,
+            "retry": self.retry
+        })
+    
+    @staticmethod
+    def decode(identifier):
+        try:
+            options = json.loads(identifier)
+        except ValueError as e:
+            return Identifier(identifier)
+        obj = Identifier(options["id"])
+        obj.retry = options["retry"]
+        return obj
+    
+    def retry_next(self):
+        if self.retry <= self._retry_max:
+            self.retry += 1
+            eventlet.sleep(self._retry_delay)
+            return True
+        return False
 
 class Runner(object):
     """ Synchronization.Runner.class runs jobs with priorities.
