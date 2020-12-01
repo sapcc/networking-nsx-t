@@ -1,7 +1,9 @@
 from oslo_config import cfg
 from oslo_log import log as logging
 
-from neutron.services.trunk import constants as trunk_consts
+from neutron_lib.callbacks import resources
+from neutron_lib.services.trunk import constants as trunk_consts
+
 from neutron.services.trunk.drivers import base
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.api.definitions import port
@@ -34,7 +36,7 @@ class NSXv3TrunkDriver(base.DriverBase):
     @classmethod
     def create(cls):
         SUPPORTED_INTERFACES = (portbindings.VIF_TYPE_OVS,)
-        SUPPORTED_SEGMENTATION_TYPES = (trunk_consts.VLAN,)
+        SUPPORTED_SEGMENTATION_TYPES = (trunk_consts.SEGMENTATION_TYPE_VLAN,)
         return cls(
             nsxv3_constants.NSXV3,
             SUPPORTED_INTERFACES,
@@ -43,7 +45,7 @@ class NSXv3TrunkDriver(base.DriverBase):
             can_trunk_bound_port=True
         )
 
-    @registry.receives(trunk_consts.TRUNK_PLUGIN, [events.AFTER_INIT])
+    @registry.receives(resources.TRUNK_PLUGIN, [events.AFTER_INIT])
     def register(self, resource, event, trigger, payload=None):
         LOG.info("NSXv3 trunk driver initializing ...")
         super(

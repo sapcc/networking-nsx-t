@@ -92,7 +92,7 @@ def get_resource_reference(sdk_model):
 
 def get_service_reference(sdk_model):
     json = {}
-    for key, val in vars(sdk_model.service).iteritems():
+    for key, val in vars(sdk_model.service).items():
         if not key.startswith("_"):
             json[key] = val
 
@@ -120,7 +120,7 @@ def get_segmentation_id_lock(segmentation_id):
 def concat_revisions(rev_1, rev_2):
     """Concatenating using the lowest version, using -1 to force-sync missing keys"""
     return {key: str(min(int(rev_1.get(key, u'-1')), int(rev_2.get(key, u'-1'))))
-            for key in set(rev_1.keys() + rev_2.keys())}
+            for key in set(list(rev_1.keys()) + list(rev_2.keys()))}
 
 def outdated_revisions(rev_1, rev_2):
     """Extracts outdated from rev_2 items"""

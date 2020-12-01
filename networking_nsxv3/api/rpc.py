@@ -1,8 +1,8 @@
 from datetime import datetime
 import oslo_messaging
 from oslo_log import log
-from neutron.common import rpc
-from neutron.common import topics
+from neutron_lib import rpc
+from neutron_lib.agent import topics
 
 from osprofiler.profiler import trace_cls
 

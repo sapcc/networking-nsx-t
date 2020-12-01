@@ -39,13 +39,13 @@ class Identifier(object):
         self.retry = 0
         self._retry_max = cfg.CONF.AGENT.retry_on_failure_max
         self._retry_delay = cfg.CONF.AGENT.retry_on_failure_delay
-    
+
     def encode(self):
         return json.dumps({
             "id": self.identifier,
             "retry": self.retry
         })
-    
+
     @staticmethod
     def decode(identifier):
         try:
@@ -55,7 +55,7 @@ class Identifier(object):
         obj = Identifier(options["id"])
         obj.retry = options["retry"]
         return obj
-    
+
     def retry_next(self):
         if self.retry <= self._retry_max:
             self.retry += 1
@@ -144,8 +144,6 @@ class Runner(object):
             try:
                 LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
 
-                job = Runnable(jid, fn, priority.value)
-
                 job = (priority.value, {"id": jid, "fn": fn})
                 if priority.value == Priority.HIGHEST:
                     self._active.put_nowait(job)
@@ -160,8 +158,8 @@ class Runner(object):
                 if self.active() < self._idle and self.passive() > 0:
                     self._active.put_nowait(self._passive.get_nowait())
                     self._passive.task_done()
-                priority_value, job = self._active.get(block=True,
-                                                       timeout=TIMEOUT)
+                priority_value, _, job = self._active.get(block=True,
+                                                          timeout=TIMEOUT)
                 LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
                 self._workers.spawn_n(job["fn"], job["id"])
                 self._active.task_done()
@@ -190,7 +188,7 @@ class Runner(object):
         self._workers.waitall()
         self._active.join()
         self._passive.join()
-    
+
     def wait_active_jobs_completion(self):
         self._active.join()
 

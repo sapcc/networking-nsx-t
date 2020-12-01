@@ -21,11 +21,12 @@ from com.vmware.nsx.model_client import (FirewallRule,
                                          QosSwitchingProfile,
                                          TransportZone)
 from neutron.common import config as common_config
-from neutron.common import profiler, topics
+from neutron.common import profiler
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
 from neutron_lib.api.definitions import portbindings
 from neutron_lib import context as neutron_context
+from neutron_lib.agent import topics
 from neutron_lib import exceptions
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -136,7 +137,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             revision_number=revision,
             add_rules=add_rules,
             del_rules=del_rules)
-    
+
     def _security_group_member_updated_mgmt_api(self, security_group_id):
         sg_id = str(security_group_id)
         LOG.debug("Updating Security Group '{}' members".format(sg_id))
@@ -279,13 +280,13 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def sync_qos_policies(self):
         self.runner.run(
             sync.Priority.HIGH,
-            self.get_revisions(
-                query=self.rpc.get_qos_policy_revision_tuples).keys(),
+            list(self.get_revisions(
+                query=self.rpc.get_qos_policy_revision_tuples)),
             self.sync_qos)
 
     def sync_ports(self):
-        self.runner.run(sync.Priority.MEDIUM, self.get_revisions(
-            query=self.rpc.get_port_revision_tuples).keys(), self.sync_port)
+        self.runner.run(sync.Priority.MEDIUM, list(self.get_revisions(
+            query=self.rpc.get_port_revision_tuples).keys()), self.sync_port)
 
     def _sync_inventory_full(self):
         self.sync_security_groups()
@@ -425,8 +426,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
 
         outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
-        missing = set(revs_os.keys()).difference(revs_nsx.keys())
-        orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
+        missing = set(list(revs_os.keys())).difference(list(revs_nsx.keys()))
+        orphaned = set(list(revs_nsx.keys())).difference(list(revs_os.keys()))
         return missing, outdated, orphaned
 
     # TODO - remove after all nsx-t managers > 2.4
@@ -484,7 +485,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         id_options = sync.Identifier.decode(port_id)
         port_id = id_options.identifier
-        
+
         try:
             (id, mac, up, status, qos_id, rev, binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
         except oslo_messaging.RemoteError as err:
@@ -567,7 +568,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except Exception as e:
             if "Object exists" not in str(e):
                 LOG.error("Unable to create policy '{}'".format(qos_id))
-        
+
         try:
             self.update_policy(context=None, policy=policy)
         except Exception as e:
@@ -776,7 +777,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
 
         self.runner.start()
         if monitoring:
-            eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 
+            eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter,
                                        self.runner)
 
     def shutdown_gracefully(self):

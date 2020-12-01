@@ -26,7 +26,7 @@ INFRA = "/policy/api/v1/infra"
 
 
 def is_not_found(response):
-    return re.search("The path.*is invalid", response.content)
+    return re.search("The path.*is invalid", str(response.content))
 
 def is_atomic_request_error(response):
     return response.status_code == 400 and re.search("The object AtomicRequest", response.content)
@@ -427,7 +427,7 @@ class InfraBuilder:
 
         if rule.remote_ip_prefix is not None:
             remote_cidr = str(ipaddress.ip_network(
-                unicode(rule.remote_ip_prefix),
+                str(rule.remote_ip_prefix),
                 strict=False))
 
             if remote_cidr not in [None, '0.0.0.0/0', '::/0']:
