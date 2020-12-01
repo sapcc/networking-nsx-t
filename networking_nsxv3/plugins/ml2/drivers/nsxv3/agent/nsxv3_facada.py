@@ -543,7 +543,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         if remote_ip_prefix:
             remote_ip_prefix = str(
                 ipaddress.ip_network(
-                    unicode(remote_ip_prefix),
+                    str(remote_ip_prefix),
                     strict=False))
 
         if remote_group_id:

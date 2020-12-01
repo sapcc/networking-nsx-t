@@ -17,11 +17,12 @@ from com.vmware.nsx.model_client import (FirewallRule,
                                          QosSwitchingProfile,
                                          TransportZone)
 from neutron.common import config as common_config
-from neutron.common import profiler, topics
+from neutron.common import profiler
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
 from neutron_lib.api.definitions import portbindings
 from neutron_lib import context as neutron_context
+from neutron_lib.agent import topics
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
@@ -198,16 +199,16 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def _sync_inventory_full(self):
         self.runner.run(
             sync.Priority.HIGHER,
-            self.get_revisions(
-                query=self.rpc.get_security_group_revision_tuples).keys(),
+            list(self.get_revisions(
+                query=self.rpc.get_security_group_revision_tuples)),
             self.sync_security_group)
         self.runner.run(
             sync.Priority.HIGH,
-            self.get_revisions(
-                query=self.rpc.get_qos_policy_revision_tuples).keys(),
+            list(self.get_revisions(
+                query=self.rpc.get_qos_policy_revision_tuples)),
             self.sync_qos)
-        self.runner.run(sync.Priority.MEDIUM, self.get_revisions(
-            query=self.rpc.get_port_revision_tuples).keys(), self.sync_port)
+        self.runner.run(sync.Priority.MEDIUM, list(self.get_revisions(
+            query=self.rpc.get_port_revision_tuples)), self.sync_port)
 
     def _sync_inventory_shallow(self):
         sg_query = self.rpc.get_security_group_revision_tuples
@@ -303,7 +304,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
 
         outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
-        orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
+        orphaned = set(list(revs_nsx)).difference(list(revs_os))
         return outdated, orphaned
     
     # TODO - remove after migration to the Policy API

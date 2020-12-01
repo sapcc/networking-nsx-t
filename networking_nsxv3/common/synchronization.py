@@ -63,7 +63,8 @@ class Runner(object):
         for jid in ids:
             try:
                 LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
-                item = (priority.value, {"id": jid, "fn": fn})
+                item_value = {"id": jid, "fn": fn}
+                item = (priority.value, id(item_value), item_value)
                 if priority.value == Priority.HIGHEST:
                     self._active.put_nowait(item)
                 else:
@@ -76,8 +77,8 @@ class Runner(object):
             try:
                 if self.active() < self._idle and self.passive() > 0:
                     self._active.put_nowait(self._passive.get_nowait())
-                priority_value, job = self._active.get(block=True,
-                                                       timeout=TIMEOUT)
+                priority_value, _, job = self._active.get(block=True,
+                                                          timeout=TIMEOUT)
                 LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
                 self._workers.spawn_n(job["fn"], job["id"])
             except eventlet.queue.Empty:

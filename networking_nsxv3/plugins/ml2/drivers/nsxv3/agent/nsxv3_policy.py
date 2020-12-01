@@ -24,7 +24,7 @@ INFRA = "/policy/api/v1/infra"
 
 
 def is_not_found(response):
-    return re.search("The path.*is invalid", response.content)
+    return re.search("The path.*is invalid", str(response.content))
 
 
 class RetryPolicy(object):
@@ -252,7 +252,7 @@ class InfraBuilder:
             # specified at member_type
             expression.append({
                 "value": "security_group|" + identifier,
-                "member_type": "SegmentPort",
+                "member_type": "LogicalPort",
                 "key": "Tag",
                 "operator": "EQUALS",
                 "resource_type": "Condition"
@@ -394,7 +394,7 @@ class InfraBuilder:
 
         if rule.remote_ip_prefix is not None:
             remote_cidr = str(ipaddress.ip_network(
-                unicode(rule.remote_ip_prefix),
+                str(rule.remote_ip_prefix),
                 strict=False))
 
             if remote_cidr not in [None, '0.0.0.0/0', '::/0']:

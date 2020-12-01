@@ -30,7 +30,7 @@ def _validate_one(result, error):
 def _get_datetime(datetime_value):
     if isinstance(datetime_value, datetime):
         return datetime_value
-    elif isinstance(datetime_value, basestring):
+    elif isinstance(datetime_value, str):
         return datetime.strptime(datetime_value, '%Y-%m-%dT%H:%M:%S.%f')
     else:
         raise Exception(
@@ -167,6 +167,8 @@ def get_port(context, port_id):
         PortBinding.host,
         PortBinding.vif_details,
         trunk_model.Trunk.port_id
+    ).select_from(
+        Port
     ).filter(
         Port.id == port_id
     ).join(
