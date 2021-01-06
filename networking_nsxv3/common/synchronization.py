@@ -5,15 +5,17 @@ import os
 import time
 import functools
 import collections
+import json
 from enum import Enum
 from oslo_log import log as logging
+from oslo_config import cfg
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
 
 LOG = logging.getLogger(__name__)
 
-MESSAGE = "Synchronization for object with id='{}' and priority '{}' {}"
+MESSAGE = "{} for object with id='{}' and priority '{}' {}"
 INFINITY = -1
 TIMEOUT = 10
 
@@ -28,6 +30,37 @@ class Priority(Enum):
     LOWER = 5
     LOWEST = 6
 
+
+class Identifier(object):
+
+    def __init__(self, identifier):
+        self.identifier = identifier
+        self.retry = 0
+        self._retry_max = cfg.CONF.AGENT.retry_on_failure_max
+        self._retry_delay = cfg.CONF.AGENT.retry_on_failure_delay
+    
+    def encode(self):
+        return json.dumps({
+            "id": self.identifier,
+            "retry": self.retry
+        })
+    
+    @staticmethod
+    def decode(identifier):
+        try:
+            options = json.loads(identifier)
+        except ValueError as e:
+            return Identifier(identifier)
+        obj = Identifier(options["id"])
+        obj.retry = options["retry"]
+        return obj
+    
+    def retry_next(self):
+        if self.retry <= self._retry_max:
+            self.retry += 1
+            eventlet.sleep(self._retry_delay)
+            return True
+        return False
 
 class Runner(object):
     """ Synchronization.Runner.class runs jobs with priorities.
@@ -62,26 +95,30 @@ class Runner(object):
         """
         for jid in ids:
             try:
-                LOG.info(MESSAGE.format(jid, priority, "enqueued"))
+                LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
                 item = (priority.value, {"id": jid, "fn": fn})
                 if priority.value == Priority.HIGHEST:
                     self._active.put_nowait(item)
                 else:
                     self._passive.put_nowait(item)
             except eventlet.queue.Full as err:
-                LOG.error(MESSAGE.format(jid, priority, err))
+                LOG.error(MESSAGE.format(fn.__name__, jid, priority, err))
 
     def _start(self):
         while True:
             try:
                 if self.active() < self._idle and self.passive() > 0:
                     self._active.put_nowait(self._passive.get_nowait())
+                    self._passive.task_done()
                 priority_value, job = self._active.get(block=True,
                                                        timeout=TIMEOUT)
-                LOG.debug(MESSAGE.format(job["id"], priority_value, "started"))
+                LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
                 self._workers.spawn_n(job["fn"], job["id"])
+                self._active.task_done()
             except eventlet.queue.Empty:
-                LOG.info("No activity for the last {} seconds".format(TIMEOUT))
+                LOG.info("No activity for the last {} seconds.".format(TIMEOUT))
+                LOG.info("Active Queue Size={}, Passive Queue Size={}, Active Jobs={}".format(
+                    self._active.qsize(), self._passive.qsize(), self._workers.running()))
             except Exception as err:
                 # Continue on error. Otherwise the agent operation will stop
                 LOG.error(err)
@@ -101,6 +138,8 @@ class Runner(object):
     def stop(self):
         """ Gracefully terminates the runner instance """
         self._workers.waitall()
+        self._active.join()
+        self._passive.join()
 
 
 class Scheduler(object):
@@ -110,10 +149,9 @@ class Scheduler(object):
         Keyword arguments:
         rate -- the rate of execution
         limit -- the limit of execution
-        callback -- a callback reporting the limit was hit
     """
 
-    def __init__(self, rate=1, limit=1.0, callback=None):
+    def __init__(self, rate=1, limit=1.0):
 
         if limit <= 0:
             raise ValueError('Schedule limit "{}" not positive'.format(limit))
@@ -124,6 +162,12 @@ class Scheduler(object):
 
         self.rate = rate
         self.limit = limit
+
+        # Callback reporting the limit was hit
+        def callback(seconds):
+            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'
+                        .format(limit, seconds))
+
         self.callback = callback
         self._semaphore = eventlet.semaphore.Semaphore(value=self.rate)
 
@@ -146,7 +190,6 @@ class Scheduler(object):
             eventlet.greenthread.sleep(sleeptime)
             run_time = self.schedule[offset] + self.limit
         self.schedule.append(run_time)
-        LOG.debug("Executing function at {}".format(time.time()))
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

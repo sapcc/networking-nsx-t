@@ -12,6 +12,7 @@ from neutron.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBindingLevel
 from neutron.db.models_v2 import IPAllocation
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
+from neutron.services.trunk import models as trunk_model
 
 from neutron.plugins.ml2.models import PortBinding
 
@@ -165,6 +166,7 @@ def get_port(context, port_id):
         StandardAttribute.revision_number,
         PortBinding.host,
         PortBinding.vif_details,
+        trunk_model.Trunk.port_id
     ).filter(
         Port.id == port_id
     ).join(
@@ -173,6 +175,11 @@ def get_port(context, port_id):
     ).outerjoin(
         QosPortPolicyBinding,
         QosPolicy
+    ).outerjoin(
+        trunk_model.SubPort,
+        trunk_model.SubPort.port_id == port_id
+    ).outerjoin(
+        trunk_model.Trunk
     ).one_or_none()
     return _validate_one(result,
                          "Port ID='{}'".format(port_id))

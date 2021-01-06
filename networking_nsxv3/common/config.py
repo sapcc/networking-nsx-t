@@ -10,6 +10,14 @@ DEFAULT_VLAN_RANGES = []
 DEFAULT_TUNNEL_RANGES = []
 DEFAULT_TUNNEL_TYPES = []
 
+nsxv3_dfw_connectivity_strategy = [
+    "NONE", 
+    "BLACKLIST", 
+    "BLACKLIST_ENABLE_LOGGING", 
+    "WHITELIST", 
+    "WHITELIST_ENABLE_LOGGING"
+]
+
 agent_opts = [
     cfg.StrOpt(
         'agent_id',
@@ -40,27 +48,47 @@ agent_opts = [
     # ),
     cfg.IntOpt(
         'rpc_max_records_per_query',
-        default=2000,
+        default=1000,
         help="Neutron RPC maximum records per query."
     ),
     cfg.BoolOpt(
         'enable_runtime_migration_from_dvs_driver',
         default=False,
         help="Enable runtime migration from DVS ML2 Driver."
+    ),
+    cfg.BoolOpt(
+        'enable_imperative_security_group_cleanup',
+        default=False,
+        help="Enable NSX-T imperative security group cleanup."
+    ),
+    cfg.IntOpt(
+        'agent_prometheus_exporter_port',
+        default='8000',
+        help="Prometheus exporter port"
+    ),
+    cfg.IntOpt(
+        'retry_on_failure_max',
+        default=0,
+        help="Maximum retries of a failed object synchronization"
+    ),
+    cfg.IntOpt(
+        'retry_on_failure_delay',
+        default=10,
+        help="Delay between retries of a failed object synchronization in seconds"
     )
 ]
 
 agent_cli_opts = [
     cfg.MultiStrOpt('neutron_security_group_id',
                     default=[],
-                    help="Neutron Security Group IDs synchronization targets."
+                    help="Neutron Security Group IDs synchronization targets. Use '*' to match all."
                     ),
     cfg.MultiStrOpt('neutron_port_id',
                     default=[],
-                    help="Neutron Port IDs synchronization targets."),
+                    help="Neutron Port IDs synchronization targets. Use '*' to match all."),
     cfg.MultiStrOpt('neutron_qos_policy_id',
                     default=[],
-                    help="Neutron QoS Policy IDs synchronization targets.")
+                    help="Neutron QoS Policy IDs synchronization targets. Use '*' to match all.")
 ]
 
 nsxv3_opts = [
@@ -141,8 +169,24 @@ nsxv3_opts = [
     ),
     cfg.IntOpt(
         'nsxv3_max_records_per_query',
-        default=2000,
-        help="Neutron RPC maximum records per query request."
+        default=1000,
+        help="NSXv3 Managed maximum records per query request."
+    ),
+    cfg.IntOpt(
+        'nsxv3_remove_orphan_ports_after',
+        default=12,
+        help="Remove NSX-T orphan ports not before configured hours."
+    ),
+    cfg.StrOpt(
+        'nsxv3_dfw_connectivity_strategy',
+        default='NONE',
+        help="NSXv3 Manager DFW connectivity strategy: {}"\
+            .format(str(nsxv3_dfw_connectivity_strategy))
+    ),
+    cfg.BoolOpt('nsxv3_groups_disconnect',
+        default=False,
+        help="Remvoe dynamic membership criteria from security groups."
+        # NSX-T objects will be created but not enforced on the segment ports
     )
 ]
 

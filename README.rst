@@ -35,7 +35,6 @@ Install dependencies
 ::
 
     # Install NSX-T 2.3 SDK (download SDK from VMware web site)
-    sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_runtime-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common-2.9.0-py2.py3-none-any.whl
     sudo pip install vapi_common_client-2.9.0-py2.py3-none-any.whl
@@ -182,3 +181,16 @@ NSX-T ML2 Driver Behaviour
 
             os port set --host <dummy host> <port_id>
             os port set --host <original host> <port_id>
+
+NSX-T ML2 Prometheus Exporter
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The agent exports the following metrics.
+
+::
+
+    # HELP nsxv3_agent_active_queue_size Active synchronization queue size
+    # TYPE nsxv3_agent_active_queue_size gauge
+    nsxv3_agent_active_queue_size{nsxv3_manager_hostname="nsxm-l-01a.corp.local"} 4.0
+    # HELP nsxv3_agent_passive_queue_size Passive synchronization queue size
+    # TYPE nsxv3_agent_passive_queue_size gauge
+    nsxv3_agent_passive_queue_size{nsxv3_manager_hostname="nsxm-l-01a.corp.local"} 72.0

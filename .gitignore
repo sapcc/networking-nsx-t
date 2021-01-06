@@ -10,11 +10,13 @@ build/
 dist/
 developer/
 networking_nsx_t.egg-info
+DEVELOPMENT.md
 *.egg-info
 *.pyc
 venv*
-bin/
-include/
-lib/
-.Python
+bin
+lib
+etc
+include
 pyvenv.cfg
+.Python

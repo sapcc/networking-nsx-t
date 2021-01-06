@@ -22,10 +22,13 @@ enable_security_group: "true"
 agent_id: "nsxm-l-01a.corp.local"
 sync_full_schedule: "24"
 locking_coordinator_url: ""
+retry_on_failure_max: 0
+retry_on_failure_delay: 10
 # 24 hours = 86400 seconds
 polling_interval: "86400"
 quitting_rpc_timeout: "5"
 rpc_max_records_per_query: "2000"
+agent_prometheus_exporter_port: "8000"
 
 # AGENT_CLI
 neutron_security_group_id:
@@ -48,3 +51,6 @@ nsxv3_transport_zone_name: "openstack-tz"
 nsxv3_suppress_ssl_wornings: "True"
 nsxv3_managed_hosts:
 nsxv3_max_records_per_query: "2000"
+nsxv3_remove_orphan_ports_after: "12"
+nsxv3_dfw_connectivity_strategy: "NONE"
+nsxv3_groups_disconnect: False
