@@ -4,6 +4,7 @@ from oslo_config import cfg
 import copy
 import json
 import datetime
+import urllib
 
 from com.vmware.nsx_client import LogicalSwitches
 from com.vmware.nsx_client import TransportZones
@@ -682,3 +683,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             for tag in obj.tags:
                 tags[tag.scope] = tag.tag
         return tags
+
+    def get_uninitalized_policies(self):
+        query = '_exists_:resource_type AND !resource_type:(GenericPolicyRealizedResource OR Domain) AND !_exists_:nsx_id AND !_create_user:nsx_policy'
+        dsl = 'security policy where status != SUCCESS'
+        params = (('query', query), ('dsl', dsl))
+        return self._get(path="/policy/api/v1/search?{}".format(urllib.urlencode(params)))

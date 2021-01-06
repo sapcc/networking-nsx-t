@@ -195,19 +195,28 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                         o if isinstance(o, list) else [o],
                         self.security_group_updated)
 
-    def _sync_inventory_full(self):
+    def sync_security_groups(self):
         self.runner.run(
             sync.Priority.HIGHER,
             self.get_revisions(
                 query=self.rpc.get_security_group_revision_tuples).keys(),
             self.sync_security_group)
+
+    def sync_qos_policies(self):
         self.runner.run(
             sync.Priority.HIGH,
             self.get_revisions(
                 query=self.rpc.get_qos_policy_revision_tuples).keys(),
             self.sync_qos)
+
+    def sync_ports(self):
         self.runner.run(sync.Priority.MEDIUM, self.get_revisions(
             query=self.rpc.get_port_revision_tuples).keys(), self.sync_port)
+
+    def _sync_inventory_full(self):
+        self.sync_security_groups()
+        self.sync_qos_policies()
+        self.sync_ports()
 
     def _sync_inventory_shallow(self):
         sg_query = self.rpc.get_security_group_revision_tuples
@@ -334,11 +343,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return result
 
     def sync_port(self, port_id):
-        retry_count = 0
-        if port_id.startswith('retry-'):
-            retry_count = int(port_id[6:7])
-            port_id = port_id[8:]
         LOG.debug("Synching port '{}'.".format(port_id))
+
+        id_options = sync.Identifier.decode(port_id)
+        port_id = id_options.identifier
+        
 
         (id, mac, up, status, qos_id, rev,
          binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
@@ -376,9 +385,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self._port_update(context=None, port=port, vif_details=json.loads(vif_details))
         except Exception as e:
             LOG.error(e)
-            eventlet.sleep(10)
-            if retry_count <= 3:
-                self.runner.run(sync.Priority.HIGHEST, ["retry-{}-{}".format(retry_count + 1, port_id)], self.sync_port)
+            if id_options.retry_next():
+                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                                self.sync_port)
 
 
     def sync_port_orphaned(self, port_id):
@@ -388,6 +397,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def sync_qos(self, qos_id):
         LOG.debug("Synching QoS porofile '{}'.".format(qos_id))
+        id_options = sync.Identifier.decode(qos_id)
+        qos_id = id_options.identifier
+
         (qos_name, qos_revision_number) = self.rpc.get_qos(qos_id)
         bwls_rules = self.rpc.get_qos_bwl_rules(qos_id)
         dscp_rules = self.rpc.get_qos_dscp_rules(qos_id)
@@ -415,10 +427,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except Exception as e:
             if "Object exists" not in str(e):
                 LOG.error("Unable to create policy '{}'".format(qos_id))
-        # try:
-        self.update_policy(context=None, policy=policy)
-        # except Exception as e:
-        #     LOG.error("Unable to update policy '{}'".format(e))
+        
+        try:
+            self.update_policy(context=None, policy=policy)
+        except Exception as e:
+            LOG.error(e)
+            if id_options.retry_next():
+                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                                self.sync_qos)
 
     def sync_qos_orphaned(self, qos_id):
         LOG.debug("Removing orphaned QoS Policy '{}'.".format(qos_id))
@@ -430,8 +446,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching Security Group '{}'.".format(security_group_id))
-        self.security_group_updated(security_group_id,
-                                    skip_rules=not update_rules)
+
+        id_options = sync.Identifier.decode(security_group_id)
+
+        try:
+            self.security_group_updated(id_options.identifier,
+                                        skip_rules=not update_rules)
+        except Exception as e:
+            LOG.error(e)
+            if id_options.retry_next():
+                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                                self.sync_security_group)
+        
         if cfg.CONF.AGENT.enable_imperative_security_group_cleanup:
             # TODO - remove after cleanup completed
             self.nsxv3.delete_security_group(security_group_id)
@@ -564,7 +590,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
 
-    def __init__(self, nsxv3=None, nsxv3_infra=None, vsphere=None):
+    def __init__(self, nsxv3=None, nsxv3_infra=None, vsphere=None, monitoring=True):
         super(NSXv3Manager, self).__init__()
         context = neutron_context.get_admin_context()
 
@@ -578,8 +604,13 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.runner = sync.Runner(
             workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
-        eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, self.runner)
+        if monitoring:
+            eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 
+                                       self.runner)
 
+    def shutdown_gracefully(self):
+
+        self.runner.stop()
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -737,41 +768,33 @@ def cli_sync():
     pt_ids = cfg.CONF.AGENT_CLI.neutron_port_id
     qs_ids = cfg.CONF.AGENT_CLI.neutron_qos_policy_id
 
-    # TODO - update with policy client
-    api_scheduler = sync.Scheduler(\
-        rate=cfg.CONF.NSXV3.nsxv3_requests_per_second, limit=1)
+    api_scheduler = sync.Scheduler(rate=cfg.CONF.NSXV3.nsxv3_requests_per_second,
+                                   limit=1)
+    nsxv3_client = nsxv3_policy.Client(api_scheduler=api_scheduler)
+    nsxv3_infra = nsxv3_policy.InfraService(nsxv3_client)
     nsxv3 = nsxv3_facada.NSXv3Facada(api_scheduler=api_scheduler)
-    # Force login as NSXv3Manager will not be started as daemon.
     nsxv3.login()
-    manager = NSXv3Manager(nsxv3=nsxv3)
+    vsphere = vsphere_client.VSphereClient()
+    manager = NSXv3Manager(nsxv3=nsxv3, nsxv3_infra=nsxv3_infra,
+                           vsphere=vsphere, monitoring=False)
     rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
 
-    def execute(callback, ids):
-        status = {}
-        error = False
-        for id in ids:
-            try:
-                callback(id)
-                status[id] = "Success"
-            except Exception as e:
-                error = True
-                status[id] = "Error: {}".format(str(e))
-                LOG.exception(e)
-        return (status, error)
+    def execute(sync_single, sync_all, ids):
+        sync_all() if '*' in ids else (sync_single(id) for id in ids)
 
-    (pt_status, pt_error) = execute(rpc.sync_port, pt_ids)
-    (sg_status, sg_error) = execute(rpc.sync_security_group, sg_ids)
-    (qs_status, qs_error) = execute(rpc.sync_qos, qs_ids)
+    execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
+    execute(rpc.sync_port, rpc.sync_ports, pt_ids)
+    execute(rpc.sync_qos, rpc.sync_qos_policies, qs_ids)
+    manager.shutdown_gracefully()
 
-    result = {
-        "security_groups": sg_status,
-        "ports": pt_status,
-        "qos_policies": qs_status
-    }
+    uninitialized = -1
+    while uninitialized:
+        res = nsxv3.get_uninitalized_policies()
+        if res.ok:
+            uninitialized = res.json().get('result_count', -1)
 
-    LOG.info(json.dumps(result))
-
-    return 1 if pt_error or sg_error or qs_error else 0
+        LOG.info("Waiting for %d uninitalized Policies", uninitialized)
+        eventlet.sleep(10)
 
 
 def main():

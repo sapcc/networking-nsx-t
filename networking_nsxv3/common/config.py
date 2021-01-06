@@ -65,20 +65,30 @@ agent_opts = [
         'agent_prometheus_exporter_port',
         default='8000',
         help="Prometheus exporter port"
+    ),
+    cfg.IntOpt(
+        'retry_on_failure_max',
+        default=0,
+        help="Maximum retries of a failed object synchronization"
+    ),
+    cfg.IntOpt(
+        'retry_on_failure_delay',
+        default=10,
+        help="Delay between retries of a failed object synchronization in seconds"
     )
 ]
 
 agent_cli_opts = [
     cfg.MultiStrOpt('neutron_security_group_id',
                     default=[],
-                    help="Neutron Security Group IDs synchronization targets."
+                    help="Neutron Security Group IDs synchronization targets. Use '*' to match all."
                     ),
     cfg.MultiStrOpt('neutron_port_id',
                     default=[],
-                    help="Neutron Port IDs synchronization targets."),
+                    help="Neutron Port IDs synchronization targets. Use '*' to match all."),
     cfg.MultiStrOpt('neutron_qos_policy_id',
                     default=[],
-                    help="Neutron QoS Policy IDs synchronization targets.")
+                    help="Neutron QoS Policy IDs synchronization targets. Use '*' to match all.")
 ]
 
 nsxv3_opts = [
@@ -173,6 +183,11 @@ nsxv3_opts = [
         help="NSXv3 Manager DFW connectivity strategy: {}"\
             .format(str(nsxv3_dfw_connectivity_strategy))
     ),
+    cfg.BoolOpt('nsxv3_groups_disconnect',
+        default=False,
+        help="Remvoe dynamic membership criteria from security groups."
+        # NSX-T objects will be created but not enforced on the segment ports
+    )
 ]
 
 vsphere_opts = [

@@ -33,6 +33,8 @@
         - { section: "AGENT", option: "quitting_rpc_timeout", value: "{{ quitting_rpc_timeout }}" }
         - { section: "AGENT", option: "rpc_max_records_per_query", value: "{{ rpc_max_records_per_query }}" }
         - { section: "AGENT", option: "agent_prometheus_exporter_port", value: "{{ agent_prometheus_exporter_port }}" }
+        - { section: "AGENT", option: "retry_on_failure_max", value: "{{ retry_on_failure_max }}" }
+        - { section: "AGENT", option: "retry_on_failure_delay", value: "{{ retry_on_failure_delay }}" }
         - { section: "AGENT_CLI", option: "neutron_security_group_id", value: "{{ neutron_security_group_id }}" }
         - { section: "AGENT_CLI", option: "neutron_port_id", value: "{{ neutron_port_id }}" }
         - { section: "AGENT_CLI", option: "neutron_qos_policy_id", value: "{{ neutron_qos_policy_id }}" }
@@ -53,6 +55,7 @@
         - { section: "NSXV3", option: "nsxv3_max_records_per_query", value: "{{ nsxv3_max_records_per_query }}" }
         - { section: "NSXV3", option: "nsxv3_remove_orphan_ports_after", value: "{{ nsxv3_remove_orphan_ports_after }}" }
         - { section: "NSXV3", option: "nsxv3_dfw_connectivity_strategy", value: "{{ nsxv3_dfw_connectivity_strategy }}" }
+        - { section: "NSXV3", option: "nsxv3_groups_disconnect", value: "{{ nsxv3_groups_disconnect }}" }
     - name: Start agent as daemon
       shell: screen -dmS neutron-nsxv3-agent /usr/local/bin/neutron-nsxv3-agent --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini
       become: yes
