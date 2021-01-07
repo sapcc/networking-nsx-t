@@ -804,8 +804,7 @@ def cli_sync():
     def execute(sync_single, sync_all, ids):
         sync_all() if '*' in ids else (sync_single(id) for id in ids)
 
-    #execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
-    rpc.sync_security_group(sg_ids[0])
+    execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
     execute(rpc.sync_port, rpc.sync_ports, pt_ids)
     execute(rpc.sync_qos, rpc.sync_qos_policies, qs_ids)
     manager.shutdown_gracefully()
