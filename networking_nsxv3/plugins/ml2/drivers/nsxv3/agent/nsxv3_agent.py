@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 import sys
 import traceback
 import time
@@ -158,7 +159,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
                 add_rules, del_rules = \
                     self._security_group_rule_updated(sg_id, revision_sg)
-                
+
             self.infra.update_policy(sg_id, tcp_strict=tcp_strict,
                                      revision_member=revision_member,
                                      revision_rule=revision_rule,
@@ -444,6 +445,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         }
         self.delete_policy(context=None, policy=policy)
 
+    def get_missing_policies(self, e):
+        missing_policies = []
+        try:
+            error = json.loads(e.args[1][23:])
+            for path_error in error['related_errors']:
+                m = re.match(r".*\[/infra/domains/default/groups/(.*)\]$", path_error['error_message'])
+                if m:
+                    missing_policies.append(m.group(1))
+        except Exception:
+            pass
+        return missing_policies
+
     def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching Security Group '{}'.".format(security_group_id))
 
@@ -453,10 +466,19 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.security_group_updated(id_options.identifier,
                                         skip_rules=not update_rules)
         except Exception as e:
-            LOG.error(e)
             if id_options.retry_next():
+                # Ensure circular dependencies are satisfied
+                missing_policies = self.get_missing_policies(e)
+                if missing_policies:
+                    self.runner.run(sync.Priority.HIGHEST, self.get_missing_policies(e),
+                                    self.security_group_updated_skip_rules)
                 self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
                                 self.sync_security_group)
+                if missing_policies:
+                    self.runner.run(sync.Priority.MEDIUM, [id_options.encode()],
+                                    self.sync_security_group)
+            else:
+                LOG.error(e)
         
         if cfg.CONF.AGENT.enable_imperative_security_group_cleanup:
             # TODO - remove after cleanup completed
@@ -782,7 +804,8 @@ def cli_sync():
     def execute(sync_single, sync_all, ids):
         sync_all() if '*' in ids else (sync_single(id) for id in ids)
 
-    execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
+    #execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
+    rpc.sync_security_group(sg_ids[0])
     execute(rpc.sync_port, rpc.sync_ports, pt_ids)
     execute(rpc.sync_qos, rpc.sync_qos_policies, qs_ids)
     manager.shutdown_gracefully()
