@@ -802,7 +802,7 @@ def cli_sync():
     rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
 
     def execute(sync_single, sync_all, ids):
-        sync_all() if '*' in ids else (sync_single(id) for id in ids)
+        sync_all() if '*' in ids else [sync_single(id) for id in ids]
 
     execute(rpc.sync_security_group, rpc.sync_security_groups, sg_ids)
     execute(rpc.sync_port, rpc.sync_ports, pt_ids)
