@@ -7,11 +7,11 @@ LOG = log.getLogger(__name__)
 
 
 class LoggingMetadata(object):
-    _url = cfg.CONF.AGENT.logging_url
     _expire = cfg.CONF.AGENT.logging_expire
 
     def __init__(self):
-        self._client = redis.from_url(self._url)
+        _url = cfg.CONF.AGENT.logging_url
+        self._client = redis.from_url(_url)
 
     def set_port(self, vif, port_id, project_id):
         """Sets Redis port context

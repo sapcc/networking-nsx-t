@@ -142,7 +142,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         try:
             sg_logged = self.rpc.has_security_group_logging(sg_id)
         except Exception as e:
-            LOG.error("Unable to fetch security group logging info", e)
+            LOG.error("Unable to fetch security group logging info %s", e)
 
         scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
         LOG.info("Updating Security Group '{}'".format(sg_id))
@@ -579,7 +579,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         try:
             logged_prj_id, _, logged_enabled = self.rpc.get_port_logging(port["id"])
         except Exception as e:
-            LOG.error("Unable to fetch port logging info", e)
+            LOG.error("Unable to fetch port logging info %s", e)
 
         if logged_enabled:
             self.logging_metadata.set_port(
