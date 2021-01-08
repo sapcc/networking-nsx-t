@@ -638,7 +638,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.nsxv3.validate_switch_profile_qos(policy["rules"])
 
     def _update_log(self, log_obj):
-        LOG.info("Debug log for Security Group={} Port={} Enable={}",
+        LOG.info("Debug log for Security Group=%s Port=%s Enable=%s",
                  log_obj["target_id"], 
                  log_obj["resource_id"], 
                  log_obj["enabled"])
