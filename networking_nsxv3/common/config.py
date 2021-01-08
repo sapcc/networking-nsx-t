@@ -67,9 +67,9 @@ agent_opts = [
         help="Prometheus exporter port"
     ),
     cfg.StrOpt(
-        'logging_socket',
-        default='/var/run/redis/socket/redis.sock',
-        help="Redis unix socket"
+        'logging_url',
+        default='unix:///var/run/redis/socket/redis.sock',
+        help="Redis URL"
     ),
     cfg.IntOpt(
         'logging_expire',

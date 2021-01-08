@@ -211,7 +211,7 @@ Use
     openstack network log delete <name>
 
 Configuration:
-    - logging_socket - Redis Cache unix socket, defaults to /var/run/redis/socket/redis.sock
+    - logging_url - Redis Cache url, defaults to unix:///var/run/redis/socket/redis.sock
     - logging_expire - Redis key expiration time in days, defaults to 1 day
     
 Flow:
