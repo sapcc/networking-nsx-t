@@ -343,11 +343,11 @@ class InfraBuilder:
         if delete or service_entry["resource_type"]:
             self._add_children([{
                 "resource_type": "ChildService",
-                "marked_for_delete": delete,
                 "Service": {
                     "resource_type": "Service",
                     "id": identifier,
                     "display_name": identifier,
+                    "marked_for_delete": delete,
                     "service_entries": [] if delete else [ service_entry ],
                     "tags": self._get_tags(service)
                 }
