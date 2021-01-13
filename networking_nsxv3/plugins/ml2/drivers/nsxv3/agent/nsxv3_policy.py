@@ -341,17 +341,19 @@ class InfraBuilder:
             return self
 
         if delete or service_entry["resource_type"]:
-            self._add_children([{
+            child_service = {
                 "resource_type": "ChildService",
                 "Service": {
                     "resource_type": "Service",
                     "id": identifier,
                     "display_name": identifier,
                     "marked_for_delete": delete,
-                    "service_entries": [] if delete else [ service_entry ],
                     "tags": self._get_tags(service)
                 }
-            }])
+            }
+            if not delete:
+                child_service["Service"]["service_entries"] = [service_entry]
+            self._add_children([])
         else:
             LOG.warn("Skipped. Unable to map service: {}/{}/{}-{}".format(\
                 service.ethertype, service.protocol,

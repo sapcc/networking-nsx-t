@@ -5,6 +5,7 @@ import re
 import sys
 import traceback
 import time
+import uuid
 
 import netaddr
 import oslo_messaging
@@ -12,6 +13,7 @@ import oslo_messaging
 from com.vmware.nsx_client import TransportZones
 from com.vmware.nsx_client import LogicalPorts
 from com.vmware.nsx.model_client import (FirewallRule,
+                                         FirewallSection,
                                          IPSet,
                                          NSGroup,
                                          LogicalPort,
@@ -258,7 +260,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         # TODO - remove after migration completes
         # Clean up the migrated Security Groups from Management to Policy API
-        orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api()
+        orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api(outdated_ips)
         self.runner.run(
             sync.Priority.LOW,
             orphan_sgs, self.nsxv3.delete_security_group)
@@ -317,21 +319,29 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return outdated, orphaned
     
     # TODO - remove after migration to the Policy API
-    def _sync_get_orphan_security_groups_mgmt_api(self):
+    def _sync_get_orphan_security_groups_mgmt_api(self, outdated):
         rc = nsxv3_policy.ResourceContainers
-        pl = nsxv3_utils.concat_revisions(\
-            self.infra.get_revisions(rc.SecurityPolicy),
-            self.infra.get_revisions(rc.SecurityPolicyGroup))
-        mg_nsgroup, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup())
-        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=IPSet())
+        pl = nsxv3_utils.concat_revisions(self.infra.get_revisions(rc.SecurityPolicy),
+                                          self.infra.get_revisions(rc.SecurityPolicyGroup))
+        mg_nsgroup, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup(create_user="admin"))
+        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=IPSet(create_user="admin"))
+        mg_fwsect, _, _ = self.nsxv3.get_revisions(sdk_model=FirewallSection(create_user="admin"))
 
         # Get all security group IDs 
         # regardless of the fact they could be partially implemented
         # Section object is excluded as it cannot be assigned with tags.
         # Though, the cleanup will try to remove the three objects for each ID
         mg = {}
+        mg.update(mg_fwsect)
         mg.update(mg_nsgroup)
         mg.update(mg_ipset)
+
+        def is_valid_uuid(uuid_to_test, version=4):
+            try:
+                uuid_obj = uuid.UUID(uuid_to_test, version=version)
+            except ValueError:
+                return False
+            return str(uuid_obj) == uuid_to_test
 
         result = []
         for k,_ in mg.items():
@@ -341,6 +351,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 # Only clean up older entries for now
                 if max(v1,v2) < int(pl.get(k)):
                     result.append(k)
+            elif k not in outdated and is_valid_uuid(k):
+                # Cleanup orphans
+                result.append(k)
         return result
 
     def sync_port(self, port_id):

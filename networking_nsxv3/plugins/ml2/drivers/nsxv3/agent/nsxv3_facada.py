@@ -403,9 +403,11 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ips_spec = IPSet(display_name=security_group_id)
         nsg_spec = NSGroup(display_name=security_group_id)
 
-        self.delete(sdk_service=Sections, sdk_model=sec_spec)
-        self.delete(sdk_service=IpSets, sdk_model=ips_spec)
-        self.delete(sdk_service=NsGroups, sdk_model=nsg_spec)
+        for sdk_service, sdk_model in [(Sections, sec_spec), (IpSets, ips_spec), (NsGroups, nsg_spec)]:
+            try:
+                self.delete(sdk_service=sdk_service, sdk_model=sdk_model)
+            except Exception:
+                pass
         return True
 
     def update_security_group_capabilities(self,
@@ -639,6 +641,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                                size=limit, start=cursor)
 
             for obj in objs:
+                # Skip immultable objects
+                if obj.get("_system_owned", False):
+                    continue
                 if 'LogicalPort' in sdk_type:
                     name = obj.get("attachment").get("id")
                     if 'tags' in obj:
@@ -647,14 +652,16 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                             continue
                 else:
                     name = obj.get("display_name")
-                revision = ""
+                revision = "-1"
+
                 if 'tags' in obj:
                     for tag in obj.get("tags"):
                         if tag.get("scope") == rev_scope:
                             revision = tag.get("tag")
                             break
+
                 # Skip Firewall Rule IPSets as they are immutable
-                if 'IPSet' in sdk_type and not obj.get("tags"):
+                if 'IPSet' in sdk_type and obj.get("_create_user", "") != "admin":
                     continue
                 if 'FirewallRule' in sdk_type:
                     metadata[name] = {

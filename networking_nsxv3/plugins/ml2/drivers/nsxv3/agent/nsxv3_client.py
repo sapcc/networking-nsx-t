@@ -297,9 +297,11 @@ class NSXv3ClientImpl(NSXv3Client):
         for resource in res:
             # Skip nsx_policy created objects
             if resource["display_name"] == sdk_name and resource["_create_user"] != 'nsx_policy':
-                if exact_res is not None:
-                    raise Exception("{} ambiguous.".format(msg))
+                # mgmt api is only used for cleanup, so ignore duplicates
+                #if exact_res is not None:
+                #    raise Exception("{} ambiguous.".format(msg))
                 exact_res = resource
+                break
 
         if exact_res is not None:
             with self.api_scheduler:
