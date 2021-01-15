@@ -696,3 +696,12 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         dsl = 'security policy where status != SUCCESS'
         params = (('query', query), ('dsl', dsl))
         return self._get(path="/policy/api/v1/search?{}".format(urllib.urlencode(params)))
+
+    def get_policy_ready(self, id):
+        try:
+            query = '( id:( {} ) AND resource_type:( SecurityPolicy ) ) AND _exists_:resource_type AND !resource_type:(GenericPolicyRealizedResource OR Domain) AND !_exists_:nsx_id'.format(id)
+            params = (('query', query), ('dsl', ""))
+            result = self._get(path="/policy/api/v1/search?{}".format(urllib.urlencode(params))).json()
+            return any(r['status'].get('consolidated_status', {}).get('consolidated_status', "") == "SUCCESS" for r in result['results'])
+        except Exception:
+            return False

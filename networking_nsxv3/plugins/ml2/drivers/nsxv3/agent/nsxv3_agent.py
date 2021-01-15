@@ -351,7 +351,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 # Only clean up older entries for now
                 if max(v1,v2) < int(pl.get(k)):
                     result.append(k)
-            elif k not in outdated and is_valid_uuid(k):
+                # Cleanup mgmt section of intialized policies
+                elif cfg.CONF.AGENT.enable_imperative_security_group_cleanup and self.nsxv3.get_policy_ready(k):
+                    result.append(k)
+            elif k not in outdated and k not in pl and is_valid_uuid(k):
                 # Cleanup orphans
                 result.append(k)
         return result
@@ -492,10 +495,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                                     self.sync_security_group)
             else:
                 LOG.error(e)
-        
-        if cfg.CONF.AGENT.enable_imperative_security_group_cleanup:
-            # TODO - remove after cleanup completed
-            self.nsxv3.delete_security_group(security_group_id)
 
     def sync_security_group_orphaned(self, security_group_id):
         LOG.debug("Removing orphaned security group '{}'.".format(
