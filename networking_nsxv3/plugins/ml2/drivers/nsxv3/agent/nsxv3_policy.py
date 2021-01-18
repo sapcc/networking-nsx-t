@@ -291,9 +291,11 @@ class InfraBuilder:
             return protocol == 'icmp'
 
         def is_valid_icmp_range(min, max):
-            return \
-                min in VALID_ICMP_RANGES[ethertype] and \
-                max in VALID_ICMP_RANGES[ethertype][min]
+            if min and min not in VALID_ICMP_RANGES[ethertype]:
+                return False
+            if max and max not in VALID_ICMP_RANGES[ethertype][min]:
+                return False
+            return True
 
         def is_valid_l4(protocol):
             return protocol in ["tcp", "udp"]
@@ -353,7 +355,7 @@ class InfraBuilder:
             }
             if not delete:
                 child_service["Service"]["service_entries"] = [service_entry]
-            self._add_children([])
+            self._add_children([child_service])
         else:
             LOG.warn("Skipped. Unable to map service: {}/{}/{}-{}".format(\
                 service.ethertype, service.protocol,
