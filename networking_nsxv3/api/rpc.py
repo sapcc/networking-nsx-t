@@ -8,6 +8,7 @@ from osprofiler.profiler import trace_cls
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
+from networking_nsxv3.common import exceptions
 
 from neutron_lib.plugins import directory
 from oslo_log import helpers as log_helpers
@@ -238,6 +239,7 @@ class NSXv3ServerRpcCallback(object):
         return db.get_qos_policy_revision_tuples(context, limit, created_after)
 
     @log_helpers.log_method_call
+    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
     def get_security_group_revision(self, context, security_group_id):
         return db.get_security_group_revision(context, security_group_id)
 
@@ -253,6 +255,7 @@ class NSXv3ServerRpcCallback(object):
             context, security_group_id, tag_name)
 
     @log_helpers.log_method_call
+    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
     def get_qos(self, context, qos_id):
         return db.get_qos(context, qos_id)
 
@@ -265,6 +268,7 @@ class NSXv3ServerRpcCallback(object):
         return db.get_qos_dscp_rules(context, qos_id)
 
     @log_helpers.log_method_call
+    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
     def get_port(self, context, port_id):
         return db.get_port(context, port_id)
 
