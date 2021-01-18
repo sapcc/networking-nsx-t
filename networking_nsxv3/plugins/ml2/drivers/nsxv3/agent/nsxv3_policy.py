@@ -345,6 +345,7 @@ class InfraBuilder:
         if delete or service_entry["resource_type"]:
             child_service = {
                 "resource_type": "ChildService",
+                "marked_for_delete": delete,
                 "Service": {
                     "resource_type": "Service",
                     "id": identifier,
