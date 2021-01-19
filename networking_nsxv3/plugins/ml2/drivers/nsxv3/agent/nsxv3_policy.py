@@ -342,7 +342,7 @@ class InfraBuilder:
         if not delete and is_valid_any(protocol):
             return self
 
-        if delete or service_entry["resource_type"]:
+        if service_entry.has_key("resource_type"):
             child_service = {
                 "resource_type": "ChildService",
                 "marked_for_delete": delete,
@@ -351,12 +351,14 @@ class InfraBuilder:
                     "id": identifier,
                     "display_name": identifier,
                     "marked_for_delete": delete,
+                    "service_entries": [service_entry],
                     "tags": self._get_tags(service)
                 }
             }
-            if not delete:
-                child_service["Service"]["service_entries"] = [service_entry]
             self._add_children([child_service])
+        elif delete:
+            # pass service deletion due to bug `Unable to process a service path`
+            pass
         else:
             LOG.warn("Skipped. Unable to map service: {}/{}/{}-{}".format(\
                 service.ethertype, service.protocol,
