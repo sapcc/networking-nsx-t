@@ -342,7 +342,19 @@ class InfraBuilder:
         if not delete and is_valid_any(protocol):
             return self
 
-        if delete or service_entry["resource_type"]:
+        elif delete or service_entry.has_key("resource_type"):
+            if delete:
+                # Fetch full service to avoid `Unable to process a service path=[...]. A service must have at least one service entry`
+                path = "{}{}/{}".format(INFRA, ResourceContainers.SecurityPolicyRuleService, identifier)
+                res = self._client.get(path)
+                if res.status_code == 404:
+                    return self
+                res.raise_for_status()
+                for entry in res.json().get('service_entries', []):
+                    entry["marked_for_delete"] = delete
+                    service_entry = entry
+                    break
+
             child_service = {
                 "resource_type": "ChildService",
                 "marked_for_delete": delete,
@@ -350,12 +362,11 @@ class InfraBuilder:
                     "resource_type": "Service",
                     "id": identifier,
                     "display_name": identifier,
+                    "service_entries": [service_entry],
                     "marked_for_delete": delete,
                     "tags": self._get_tags(service)
                 }
             }
-            if not delete:
-                child_service["Service"]["service_entries"] = [service_entry]
             self._add_children([child_service])
         else:
             LOG.warn("Skipped. Unable to map service: {}/{}/{}-{}".format(\
