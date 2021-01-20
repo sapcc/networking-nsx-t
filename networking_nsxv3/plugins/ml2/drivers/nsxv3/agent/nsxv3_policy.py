@@ -342,7 +342,9 @@ class InfraBuilder:
         if not delete and is_valid_any(protocol):
             return self
 
-        if service_entry.has_key("resource_type"):
+        delete_via_policy = delete and not cfg.CONF.NSXV3.nsxv3_legacy_service_deletion
+
+        if delete_via_policy or service_entry.has_key("resource_type") :
             child_service = {
                 "resource_type": "ChildService",
                 "marked_for_delete": delete,
@@ -351,7 +353,7 @@ class InfraBuilder:
                     "id": identifier,
                     "display_name": identifier,
                     "marked_for_delete": delete,
-                    "service_entries": [service_entry],
+                    "service_entries": [] if delete else [service_entry],
                     "tags": self._get_tags(service)
                 }
             }
@@ -590,6 +592,39 @@ class InfraService:
             return int(tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "-1"))
         else:
             return -1
+
+    def delete_object(self, resource_container, identifier):
+        path = "{}{}/{}".format(INFRA, resource_container, identifier)
+        return self._client.delete(path=path, params={})
+
+    def get_rules(self):
+        path = "{}{}".format(INFRA, ResourceContainers.SecurityPolicy)
+        cursor = ""
+        params = { "page_size": self._page_size, "cursor": cursor }
+
+        response = self._client.get(path=path, params=params)
+        if is_not_found(response):
+            return ("", {})
+
+
+        content = json.loads(response.content)
+        cursor = content.get("cursor", None)
+        revisions = {}
+        for resource in content.get("results", []):
+            identifier = AgentIdentifier.extract(resource["id"])
+            if identifier:
+                tags = self._get_tags(resource)
+
+                agent_id = tags.get(nsxv3_constants.NSXV3_AGENT_SCOPE, None)
+                revision = tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, None)
+
+                if agent_id != cfg.CONF.AGENT.agent_id or revision == None:
+                    # Process only Agent objects
+                    # An agent object always has agent_id and revision_number
+                    continue
+
+                revisions[identifier] = revision
+        return (cursor, revisions)
 
     def update_policy(self, identifier,
                               revision_rule=None, revision_member=None,

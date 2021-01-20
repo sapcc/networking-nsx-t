@@ -705,3 +705,27 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             return any(r['status'].get('consolidated_status', {}).get('consolidated_status', "") == "SUCCESS" for r in result['results'])
         except Exception:
             return False
+
+    def get_rules_revisions(self):
+        cursor = ""
+        page_size = cfg.CONF.NSXV3.nsxv3_max_records_per_query
+        revisions = {}
+        while True:
+            query = '( _create_user:( *admin* ) AND resource_type:( Rule ) ) AND _exists_:resource_type AND !resource_type:(GenericPolicyRealizedResource OR Domain) AND !_exists_:nsx_id AND !_create_user:nsx_policy'
+            params = (('query', query), ('dsl', ""), ('cursor', cursor), ('page_size', page_size))
+            result = self._get(path="/policy/api/v1/search?{}".format(urllib.urlencode(params))).json()
+
+            for rule in result['results']:
+                found = False
+                for tag in rule.get('tags', []):
+                    if tag.get('scope') == 'revision_number':
+                        revisions.update({rule['display_name']: tag['tag']})
+                        found = True
+                        break
+                if not found:
+                    revisions.update({rule['display_name']: "-1"})
+            cursor = result['cursor']
+
+            if cursor == result['result_count'] or len(result['results']) < page_size:
+                break
+        return revisions

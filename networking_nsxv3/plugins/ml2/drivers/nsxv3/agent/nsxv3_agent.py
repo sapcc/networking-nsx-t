@@ -184,6 +184,17 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.infra.update_policy(security_group_id,
                                      del_rules=del_rules, delete=True)
 
+    def sync_service_orphaned(self, service_id):
+        LOG.info("Deleting Service '{}'".format(service_id))
+
+        with LockManager.get_lock(service_id):
+            svc_id = str(service_id)
+            res = self.infra.delete_object(
+                nsxv3_policy.ResourceContainers.SecurityPolicyRuleService,
+                svc_id)
+            if not res.ok:
+                LOG.debug("Failed deleting service %s: %s", service_id, res)
+
     # RPC method
     def security_groups_member_updated(self, context, **kwargs):
         o = kwargs["security_groups"]
@@ -225,6 +236,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         sg_query = self.rpc.get_security_group_revision_tuples
         qos_query = self.rpc.get_qos_policy_revision_tuples
         port_query = self.rpc.get_port_revision_tuples
+
+        if cfg.CONF.NSXV3.nsxv3_legacy_service_deletion:
+            orphaned_services = self._sync_get_orphan_services()
+            self.runner.run(
+                sync.Priority.LOW,
+                orphaned_services, self.sync_service_orphaned)
 
         # Security Groups Synchronization
         outdated_ips, orphaned_ips = self._sync_get_content(
@@ -317,7 +334,16 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
         orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
         return outdated, orphaned
-    
+
+    # TODO - remove after all nsx-t managers > 2.4
+    def _sync_get_orphan_services(self):
+        rc = nsxv3_policy.ResourceContainers
+        revs_rules = self.nsxv3.get_rules_revisions()
+        revs_services = self.infra.get_revisions(rc.SecurityPolicyRuleService)
+
+        orphaned = set(revs_services.keys()).difference(revs_rules.keys())
+        return orphaned
+
     # TODO - remove after migration to the Policy API
     def _sync_get_orphan_security_groups_mgmt_api(self, outdated):
         rc = nsxv3_policy.ResourceContainers
