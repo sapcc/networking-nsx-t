@@ -191,7 +191,12 @@ nsxv3_opts = [
     cfg.BoolOpt('nsxv3_legacy_service_deletion',
         default=False,
         help="Cleanup policy services will be done in a seperate cleanup loop."
-    )
+    ),
+    cfg.IntOpt(
+        'nsxv3_remove_orphan_items_count',
+        default=30,
+        help="Amount of items to be deleted if per sync loop."
+    ),
 ]
 
 vsphere_opts = [

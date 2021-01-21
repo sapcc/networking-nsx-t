@@ -1,4 +1,5 @@
 import datetime
+import itertools
 import json
 import os
 import re
@@ -233,15 +234,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.sync_ports()
 
     def _sync_inventory_shallow(self):
+        orphaned_services = set()
         sg_query = self.rpc.get_security_group_revision_tuples
         qos_query = self.rpc.get_qos_policy_revision_tuples
         port_query = self.rpc.get_port_revision_tuples
+
+        num_orphans = cfg.CONF.NSXV3.nsxv3_remove_orphan_items_count
 
         if cfg.CONF.NSXV3.nsxv3_legacy_service_deletion:
             orphaned_services = self._sync_get_orphan_services()
             self.runner.run(
                 sync.Priority.LOW,
-                orphaned_services, self.sync_service_orphaned)
+                set(itertools.islice(orphaned_services, num_orphans)), self.sync_service_orphaned)
 
         # Security Groups Synchronization
         outdated_ips, orphaned_ips = self._sync_get_content(
@@ -256,7 +260,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             outdated_ips, self.security_group_updated)
         self.runner.run(
             sync.Priority.LOW,
-            orphaned_ips, self.sync_security_group_orphaned)
+            set(itertools.islice(orphaned_ips, num_orphans)), self.sync_security_group_orphaned)
 
         # QoS Policies Synchronization
         outdated_qos, orphaned_qos = self._sync_get_content(
@@ -273,15 +277,16 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             outdated_lps, self.sync_port)
         self.runner.run(
             sync.Priority.LOW,
-            orphaned_lps, self.sync_port_orphaned)
+            set(itertools.islice(orphaned_lps, num_orphans)), self.sync_port_orphaned)
 
         # TODO - remove after migration completes
         # Clean up the migrated Security Groups from Management to Policy API
         orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api(outdated_ips)
         self.runner.run(
             sync.Priority.LOW,
-            orphan_sgs, self.nsxv3.delete_security_group)
+            set(itertools.islice(orphan_sgs, num_orphans)), self.nsxv3.delete_security_group)
 
+        self._sync_report("Services", 0, orphaned_services)
         self._sync_report("Security Groups Management API", 0, orphan_sgs)
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
         self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
