@@ -26,6 +26,9 @@ INFRA = "/policy/api/v1/infra"
 def is_not_found(response):
     return re.search("The path.*is invalid", response.content)
 
+def is_atomic_request_error(response):
+    return response.status_code == 400 and re.search("The object AtomicRequest", response.content)
+
 
 class RetryPolicy(object):
 
@@ -74,10 +77,11 @@ class RetryPolicy(object):
                         self._login()
                         continue
 
-                    LOG.error(log_msg)
-
-                    # skip retry on the ramaining NSX errors
-                    break
+                    # Retry for The object AtomicRequest/10844 is already present in the system.
+                    if not is_atomic_request_error(response):
+                        # skip retry on the ramaining NSX errors
+                        LOG.error(log_msg)
+                        break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
                     LOG.error("Request={} Response={}".format(requestInfo,
