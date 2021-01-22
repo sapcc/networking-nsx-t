@@ -124,7 +124,7 @@ class Client:
         now = int(datetime.datetime.now().strftime("%s"))
         with LockManager.get_lock(self._base_path):
             if now > self._login_timestamp:
-                resp = self.post(path=self._login_path, data=self._login_data)
+                resp = self._session.post(**self._params(path=self._login_path, data=self._login_data))
                 if resp.status_code != requests.codes.ok:
                     resp.raise_for_status()
 
