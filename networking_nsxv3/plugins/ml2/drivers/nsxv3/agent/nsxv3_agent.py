@@ -173,6 +173,21 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         LOG.info("Deleting Security Group '{}'".format(security_group_id))
         with LockManager.get_lock(security_group_id):
             sg_id = str(security_group_id)
+
+            if cfg.CONF.NSXV3.nsxv3_legacy_service_deletion:
+                res = self.infra.delete_object(
+                    nsxv3_policy.ResourceContainers.SecurityPolicy,
+                    sg_id)
+                if not res.ok:
+                    LOG.warning("Failed deleting security policy %s: %s", sg_id, res)
+
+                res = self.infra.delete_object(
+                    nsxv3_policy.ResourceContainers.SecurityPolicyGroup,
+                    sg_id)
+                if not res.ok:
+                    LOG.warning("Failed deleting security policy group %s: %s", sg_id, res)
+                return
+
             nsxv3_rules = self.infra.get_revisions(\
                 nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
             
