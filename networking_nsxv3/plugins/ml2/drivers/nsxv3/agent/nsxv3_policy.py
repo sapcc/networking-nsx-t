@@ -5,12 +5,14 @@ import json
 import datetime
 import requests
 import re
+import urllib
 from requests.exceptions import HTTPError
 from requests.exceptions import ConnectionError
 from requests.exceptions import ConnectTimeout
 
 from oslo_log import log as logging
 from oslo_config import cfg
+from oslo_utils import versionutils
 
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.common.synchronization import Scheduler
@@ -122,6 +124,15 @@ class Client:
             requests.packages.urllib3.disable_warnings()
 
         self.api_scheduler = api_scheduler
+        self._version = None
+
+    @property
+    def version(self, refresh=False):
+        if not self._version or refresh:
+            resp = self.get(path="/api/v1/node/version")
+            if resp.ok:
+                self._version = resp.json()['product_version']
+        return versionutils.convert_version_to_tuple(self._version)
 
     def _login(self):
         LOG.info("Session token - acquiring")
@@ -144,7 +155,12 @@ class Client:
                 self._login_timestamp = \
                     int(datetime.datetime.now().strftime("%s"))
 
-        LOG.info("Session token - acquired")
+        try:
+            # Refresh version after login
+            self.version(refresh=True)
+        except Exception:
+            pass
+        LOG.info("Session token - acquired, connected to NSX-T {}".format(self._version))
 
     def _params(self, **kwargs):
         kwargs["timeout"] = self._timeout
@@ -348,7 +364,8 @@ class InfraBuilder:
         if not delete and is_valid_any(protocol):
             return self
 
-        delete_via_policy = delete and not cfg.CONF.NSXV3.nsxv3_legacy_service_deletion
+        # Delete via PATCH works only correctly on >=2.5
+        delete_via_policy = delete and self._client.version >= (2, 5)
 
         if delete_via_policy or service_entry.has_key("resource_type") :
             child_service = {
@@ -594,6 +611,12 @@ class InfraService:
 
         if 200 <= response.status_code < 300:
             resource = json.loads(response.content)
+
+            # Force Update if group is missing LogicalPort binding
+            if not self._infra_options.get('groups_dynamic_members_off') and resource.get('resource_type') == 'Group':
+                if not any([exp.get('member_type') == 'LogicalPort' for exp in resource.get('expression')]):
+                    return -1
+
             tags = self._get_tags(resource)
             return int(tags.get(nsxv3_constants.NSXV3_REVISION_SCOPE, "-1"))
         else:
@@ -602,6 +625,15 @@ class InfraService:
     def delete_object(self, resource_container, identifier):
         path = "{}{}/{}".format(INFRA, resource_container, identifier)
         return self._client.delete(path=path, params={})
+
+    def refresh_realized_state(self, intent_path):
+        # e.g. /policy/api/v1/infra/realized-state/realized-entity?action=refresh&intent_path=%2Finfra%2Fdomains%2Fdefault%2Fgroups%2F5c54ea41-650c-4ee7-854c-073122bdf8e0
+        params = {
+            "action": "refresh",
+            "intent_path": intent_path
+        }
+        path = "{}/realized-state/realized-entity?{}".format(INFRA, urllib.urlencode(params))
+        return self._client.post(path=path, data=None)
 
     def get_rules(self):
         path = "{}{}".format(INFRA, ResourceContainers.SecurityPolicy)

@@ -188,10 +188,6 @@ nsxv3_opts = [
         help="Remvoe dynamic membership criteria from security groups."
         # NSX-T objects will be created but not enforced on the segment ports
     ),
-    cfg.BoolOpt('nsxv3_legacy_service_deletion',
-        default=False,
-        help="Cleanup policy services will be done in a seperate cleanup loop."
-    ),
     cfg.IntOpt(
         'nsxv3_remove_orphan_items_count',
         default=30,

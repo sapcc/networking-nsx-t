@@ -126,11 +126,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         
         return add_rules, del_rules
 
-    
-    def security_group_updated_skip_rules(self, security_group_id):
-        self.security_group_updated(security_group_id, skip_rules=True)
-
-    def security_group_updated(self, security_group_id, skip_rules=False):
+    def _do_security_group_update(self, security_group_id, skip_rules=False):
         sg_id = str(security_group_id)
         try:
             _, revision_sg = self.rpc.get_security_group_revision(sg_id)
@@ -152,11 +148,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             tcp_strict = None
             add_rules = []
             del_rules = []
-            
+
+            # Just skip update if everything seems to be synced, else we are risking our AtomicRequest Errors
+            # with older nsx-t managers
+            if self._client.version < (2, 5) and (
+                revision_member == revision_sg and
+                revision_rule == revision_sg):
+                return
+
             if revision_member != revision_sg:
                 revision_member = revision_sg
                 cidrs = self._security_group_member_updated(sg_id)
-            
+
             if not skip_rules and revision_rule != revision_sg:
                 revision_rule = revision_sg
                 tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
@@ -174,7 +177,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         with LockManager.get_lock(security_group_id):
             sg_id = str(security_group_id)
 
-            if cfg.CONF.NSXV3.nsxv3_legacy_service_deletion:
+            # Delete Policies and groups via DELETE instead of Patch for NSX-T < 2.5
+            if self.infra._client.version < (2, 5):
                 res = self.infra.delete_object(
                     nsxv3_policy.ResourceContainers.SecurityPolicy,
                     sg_id)
@@ -216,14 +220,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         o = kwargs["security_groups"]
         self.runner.run(sync.Priority.HIGHEST,
                         o if isinstance(o, list) else [o],
-                        self.security_group_updated)
+                        self.sync_security_group)
 
     # RPC method
     def security_groups_rule_updated(self, context, **kwargs):
         o = kwargs["security_groups"]
         self.runner.run(sync.Priority.HIGHEST,
                         o if isinstance(o, list) else [o],
-                        self.security_group_updated)
+                        self.sync_security_group)
 
     def sync_security_groups(self):
         self.runner.run(
@@ -256,7 +260,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         num_orphans = cfg.CONF.NSXV3.nsxv3_remove_orphan_items_count
 
-        if cfg.CONF.NSXV3.nsxv3_legacy_service_deletion:
+        # Delete Services explicitly for NSX-T < 2.5
+        if self.infra._client.version < (2, 5):
             orphaned_services = self._sync_get_orphan_services()
             self.runner.run(
                 sync.Priority.LOW,
@@ -269,10 +274,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         # remote group references
         self.runner.run(
             sync.Priority.HIGH,
-            outdated_ips, self.security_group_updated_skip_rules)
+            outdated_ips, self.sync_security_group_skip_rules)
         self.runner.run(
             sync.Priority.MEDIUM,
-            outdated_ips, self.security_group_updated)
+            outdated_ips, self.sync_security_group)
         self.runner.run(
             sync.Priority.LOW,
             set(itertools.islice(orphaned_ips, num_orphans)), self.sync_security_group_orphaned)
@@ -519,28 +524,42 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             pass
         return missing_policies
 
+    def sync_security_group_skip_rules(self, security_group_id):
+        self.sync_security_group(security_group_id, update_rules=False)
+
     def sync_security_group(self, security_group_id, update_rules=True):
         LOG.debug("Synching Security Group '{}'.".format(security_group_id))
 
         id_options = sync.Identifier.decode(security_group_id)
 
         try:
-            self.security_group_updated(id_options.identifier,
-                                        skip_rules=not update_rules)
+            self._do_security_group_update(id_options.identifier,
+                                           skip_rules=not update_rules)
         except Exception as e:
-            if id_options.retry_next():
-                # Ensure circular dependencies are satisfied
-                missing_policies = self.get_missing_policies(e)
-                if missing_policies:
-                    self.runner.run(sync.Priority.HIGHEST, self.get_missing_policies(e),
-                                    self.security_group_updated_skip_rules)
-                self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+            if not id_options.retry_next():
+                LOG.error("Failed updating SG %s skip_rules=%d: %s", security_group_id, not update_rules, e)
+                return
+
+            # AtomicRequest Handling
+            if hasattr(e, 'args') and any(['AtomicRequest' in arg for arg in e.args]):
+                self.infra.refresh_realized_state("/infra/domains/default/groups/{}".format(security_group_id))
+                self.infra.refresh_realized_state(
+                    "/infra/domains/default/security-policies/{}".format(security_group_id))
+                # Reschedule with retry
+                self.runner.run(sync.Priority.MEDIUM, [id_options.encode()],
                                 self.sync_security_group)
-                if missing_policies:
-                    self.runner.run(sync.Priority.MEDIUM, [id_options.encode()],
-                                    self.sync_security_group)
-            else:
-                LOG.error(e)
+                return
+
+            # Ensure circular dependencies are satisfied
+            missing_policies = self.get_missing_policies(e)
+            if missing_policies:
+                self.runner.run(sync.Priority.HIGHEST, self.get_missing_policies(e),
+                                self.sync_security_group_skip_rules)
+            self.runner.run(sync.Priority.HIGHEST, [id_options.encode()],
+                            self.sync_security_group)
+            if missing_policies:
+                self.runner.run(sync.Priority.MEDIUM, [id_options.encode()],
+                                self.sync_security_group)
 
     def sync_security_group_orphaned(self, security_group_id):
         LOG.debug("Removing orphaned security group '{}'.".format(
