@@ -151,7 +151,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
             # Just skip update if everything seems to be synced, else we are risking our AtomicRequest Errors
             # with older nsx-t managers
-            if self._client.version < (2, 5) and (
+            if self.infra._client.version < (2, 5) and (
                 revision_member == revision_sg and
                 revision_rule == revision_sg):
                 return
