@@ -36,6 +36,7 @@ neutron_port_id:
 neutron_qos_policy_id:
 
 # NSXV3
+nsxv3_use_policy_api: True
 nsxv3_connection_retry_count: "10"
 nsxv3_connection_retry_sleep: "5"
 nsxv3_request_timeout: "60"
