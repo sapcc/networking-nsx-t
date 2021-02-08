@@ -8,8 +8,8 @@ from osprofiler.profiler import trace_cls
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
-from networking_nsxv3.common import exceptions
 
+from neutron_lib import exceptions
 from neutron_lib.plugins import directory
 from oslo_log import helpers as log_helpers
 

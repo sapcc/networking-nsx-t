@@ -17,7 +17,7 @@ from neutron.services.trunk import models as trunk_model
 from neutron.plugins.ml2.models import PortBinding
 
 from networking_nsxv3.common import constants as nsxv3_constants
-from networking_nsxv3.common import exceptions
+from neutron_lib import exceptions
 
 
 def _validate_one(result, error):
