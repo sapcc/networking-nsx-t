@@ -74,6 +74,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.vsphere = vsphere
         self.rpc = rpc
         self.runner = runner
+        LOG.info("Using Policy-API=%s", self.use_policy_api)
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -86,65 +87,63 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def _security_group_rule_updated_mgmt_api(self, security_group_id):
         sg_id = str(security_group_id)
         LOG.debug("Updating Security Group '{}' rules".format(sg_id))
-        with LockManager.get_lock(sg_id):
-            (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
-            _, revs_ips, _ = self.nsxv3.get_revisions(IPSet())
-            _, revs_fwr, meta_fwr = self.nsxv3.get_revisions(
-                FirewallRule(),
-                attr_key="section_id",
-                attr_val=sec.id)
+        (ipset, nsg, sec) = self.nsxv3.get_or_create_security_group(sg_id)
+        _, revs_ips, _ = self.nsxv3.get_revisions(IPSet())
+        _, revs_fwr, meta_fwr = self.nsxv3.get_revisions(
+            FirewallRule(),
+            attr_key="section_id",
+            attr_val=sec.id)
 
-            neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
+        neutron_rules = self.rpc.get_rules_for_security_groups_id(sg_id)
 
-            attrs = ["id", "port_range_min", "port_range_max", "protocol",
-                     "ethertype", "direction", "remote_group_id",
-                     "remote_ip_prefix", "security_group_id"]
+        attrs = ["id", "port_range_min", "port_range_max", "protocol",
+                 "ethertype", "direction", "remote_group_id",
+                 "remote_ip_prefix", "security_group_id"]
 
-            add_rules = []
-            for rule in neutron_rules:
-                name = rule["id"]
-                remote_group_id = rule["remote_group_id"]
+        add_rules = []
+        for rule in neutron_rules:
+            name = rule["id"]
+            remote_group_id = rule["remote_group_id"]
 
-                fwr = dict()
-                for key in attrs:
-                    fwr[key] = rule[key]
+            fwr = dict()
+            for key in attrs:
+                fwr[key] = rule[key]
 
-                fwr["local_group_id"] = ipset.id
-                fwr["apply_to"] = nsg.id
-                if remote_group_id in revs_ips:
-                    fwr["remote_group_id"] = revs_ips[remote_group_id]
+            fwr["local_group_id"] = ipset.id
+            fwr["apply_to"] = nsg.id
+            if remote_group_id in revs_ips:
+                fwr["remote_group_id"] = revs_ips[remote_group_id]
 
-                if name in revs_fwr:
-                    # If the rule is disabled recreate it
-                    if not meta_fwr.get(name).get("FirewallRule.disabled"):
-                        del revs_fwr[name]
-                        continue
+            if name in revs_fwr:
+                # If the rule is disabled recreate it
+                if not meta_fwr.get(name).get("FirewallRule.disabled"):
+                    del revs_fwr[name]
+                    continue
 
-                fwr_spec = self.nsxv3.get_security_group_rule_spec(fwr)
-                if fwr_spec:
-                    add_rules.append(fwr_spec)
-            del_rules = revs_fwr.values()
+            fwr_spec = self.nsxv3.get_security_group_rule_spec(fwr)
+            if fwr_spec:
+                add_rules.append(fwr_spec)
+        del_rules = revs_fwr.values()
 
-            (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
+        (sg_id, revision) = self.rpc.get_security_group_revision(sg_id)
 
-            self.nsxv3.update_security_group_rules(
-                sg_id,
-                revision_number=revision,
-                add_rules=add_rules,
-                del_rules=del_rules)
+        self.nsxv3.update_security_group_rules(
+            sg_id,
+            revision_number=revision,
+            add_rules=add_rules,
+            del_rules=del_rules)
     
     def security_group_member_updated_mgmt_api(self, security_group_id):
         sg_id = str(security_group_id)
         LOG.debug("Updating Security Group '{}' members".format(sg_id))
-        with LockManager.get_lock(sg_id):
-            self.nsxv3.get_or_create_security_group(sg_id)
-            ip1 = self.rpc.get_security_group_members_ips(sg_id)
-            ip2 = self.rpc.get_security_group_members_address_bindings_ips(
-                sg_id)
+        self.nsxv3.get_or_create_security_group(sg_id)
+        ip1 = self.rpc.get_security_group_members_ips(sg_id)
+        ip2 = self.rpc.get_security_group_members_address_bindings_ips(
+            sg_id)
 
-            members = [str(ip) for ip in netaddr.IPSet(
-                [str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
-            self.nsxv3.update_security_group_members(sg_id, members)
+        members = [str(ip) for ip in netaddr.IPSet(
+            [str(ip[0]) for ip in ip1 + ip2]).iter_cidrs()]
+        self.nsxv3.update_security_group_members(sg_id, members)
 
     def _security_group_rule_updated(self, security_group_id, revision):
         sg_id = str(security_group_id)
@@ -206,7 +205,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 # Will skip the revision check as this will prevent the daily desired state sync
                 self.nsxv3.get_or_create_security_group(sg_id)
                 tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
-                self.nsxv3.update_security_group_capabilities(sg_id,[tcp_strict])
+                self.nsxv3.update_security_group_capabilities(sg_id, [tcp_strict])
                 self.security_group_member_updated_mgmt_api(sg_id)
                 if not skip_rules:
                     self._security_group_rule_updated_mgmt_api(sg_id)
