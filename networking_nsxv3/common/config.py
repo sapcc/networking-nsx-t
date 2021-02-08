@@ -92,6 +92,11 @@ agent_cli_opts = [
 ]
 
 nsxv3_opts = [
+    cfg.BoolOpt(
+        'nsxv3_use_policy_api',
+        default=True,
+        help="Enforce use of NSXv3 Manager Policy API."
+    ),
     cfg.IntOpt(
         'nsxv3_connection_retry_count',
         default=10,
