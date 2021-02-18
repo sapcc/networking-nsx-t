@@ -84,6 +84,12 @@ class Timestamp(object):
         tags[self._name] = self._get_date()
         self._client.set_tags(self._service, self._model, tags)
 
+    def delete(self):
+        tags = self._client.get_tags(self._service, self._model)
+        if self._name in tags:
+            tags.pop(self._name)
+            self._client.set_tags(self._service, self._model, tags)
+
 
 class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
 
