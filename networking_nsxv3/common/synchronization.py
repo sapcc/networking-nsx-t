@@ -6,6 +6,7 @@ import time
 import functools
 import collections
 import json
+import heapq
 from enum import Enum
 from oslo_log import log as logging
 from oslo_config import cfg
@@ -62,6 +63,52 @@ class Identifier(object):
             return True
         return False
 
+class Runnable(object):
+
+    def __init__(self, idn, fn, priority=Priority.LOWEST):
+        self.priority = priority
+        self.idn = idn
+        self.fn = fn
+
+    def __repr__(self):
+        return str(self.idn)
+
+    def __eq__(self, other):
+        """
+        Note, the priority is not part of the comparison
+        Thus if a runnable with higher priority is about to be
+        added to the queue it will be rejected silently.
+        """
+        if isinstance(other, Runnable):
+            return (self.idn == other.idn and self.fn == other.fn)
+        else:
+            return False
+
+    def __ne__(self, other):
+        return (not self.__eq__(other))
+
+    def __lt__(self, other):
+        """ Order Runnable by their priority """
+        return self.priority.value < other.priority.value
+
+    def __hash__(self):
+        return hash(self.__repr__())
+
+
+class UniqPriorityQueue(eventlet.queue.Queue):
+
+    def _init(self, maxsize):
+        self.queue = []
+
+    def _put(self, item, heappush=heapq.heappush):
+        if item not in self.queue:
+            heappush(self.queue, item)
+        self._put_bookkeeping()
+
+    def _get(self, heappop=heapq.heappop):
+        return heappop(self.queue)
+
+
 class Runner(object):
     """ Synchronization.Runner.class runs jobs with priorities.
     It uses two types of queue:
@@ -80,8 +127,8 @@ class Runner(object):
     def __init__(self, active_size=INFINITY, passive_size=INFINITY,
                  workers_size=1):
         # if queue_size is < 0, the queue size is infinite.
-        self._active = eventlet.queue.PriorityQueue(maxsize=active_size)
-        self._passive = eventlet.queue.PriorityQueue(maxsize=passive_size)
+        self._active = UniqPriorityQueue(maxsize=active_size)
+        self._passive = UniqPriorityQueue(maxsize=passive_size)
         self._workers = eventlet.greenpool.GreenPool(size=workers_size)
         self._idle = workers_size
 
@@ -96,11 +143,14 @@ class Runner(object):
         for jid in ids:
             try:
                 LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
-                item = (priority.value, {"id": jid, "fn": fn})
+
+                job = Runnable(jid, fn, priority.value)
+
+                job = (priority.value, {"id": jid, "fn": fn})
                 if priority.value == Priority.HIGHEST:
-                    self._active.put_nowait(item)
+                    self._active.put_nowait(job)
                 else:
-                    self._passive.put_nowait(item)
+                    self._passive.put_nowait(job)
             except eventlet.queue.Full as err:
                 LOG.error(MESSAGE.format(fn.__name__, jid, priority, err))
 
@@ -139,6 +189,12 @@ class Runner(object):
         """ Gracefully terminates the runner instance """
         self._workers.waitall()
         self._active.join()
+        self._passive.join()
+    
+    def wait_active_jobs_completion(self):
+        self._active.join()
+
+    def wait_passive_jobs_completion(self):
         self._passive.join()
 
 
