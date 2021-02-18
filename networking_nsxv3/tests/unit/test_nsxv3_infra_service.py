@@ -19,7 +19,8 @@ class SchedulerMock(object):
 
 
 cfg.CONF.register_opts([
-    cfg.BoolOpt('nsxv3_use_policy_api', default=True),
+    cfg.IntOpt('nsxv3_policy_migration_rate', default=1),
+    cfg.IntOpt('nsxv3_policy_migration_limit', default=2),
     cfg.IntOpt('nsxv3_connection_retry_count', default=2),
     cfg.IntOpt('nsxv3_connection_retry_sleep', default=0.1),
     cfg.IntOpt('nsxv3_request_timeout', default=1),

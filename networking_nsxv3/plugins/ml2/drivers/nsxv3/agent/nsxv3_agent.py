@@ -68,12 +68,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                  rpc, runner):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
             context, agent, sg_agent)
-        self.use_policy_api = cfg.CONF.NSXV3.nsxv3_use_policy_api
         self.nsxv3 = nsxv3
         self.infra = nsxv3_infra
         self.vsphere = vsphere
         self.rpc = rpc
         self.runner = runner
+        self.policy_api_enabled = self.infra._client.version >= (2, 5)
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -202,7 +202,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
         LOG.info("Updating Security Group '{}'".format(sg_id))
         with LockManager.get_lock(sg_id):
-            if not self.use_policy_api:
+            if not self.policy_api_enabled:
                 # Will skip the revision check as this will prevent the daily desired state sync
                 self.nsxv3.get_or_create_security_group(sg_id)
                 tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
@@ -223,9 +223,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             add_rules = []
             del_rules = []
 
+            # TODO - remove after 2.5
             # Just skip update if everything seems to be synced, else we are risking our AtomicRequest Errors
             # with older nsx-t managers
-            if self.infra._client.version < (2, 5) and (
+            if not self.policy_api_enabled  and (
                 revision_member == revision_sg and
                 revision_rule == revision_sg):
                 return
@@ -249,26 +250,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def security_group_delete(self, security_group_id):
         LOG.info("Deleting Security Group '{}'".format(security_group_id))
         with LockManager.get_lock(security_group_id):
-            if not self.use_policy_api:
+            if not self.policy_api_enabled:
                 self.nsxv3.delete_security_group(security_group_id)
                 return
 
             sg_id = str(security_group_id)
-
-            # Delete Policies and groups via DELETE instead of Patch for NSX-T < 2.5
-            if self.infra._client.version < (2, 5):
-                res = self.infra.delete_object(
-                    nsxv3_policy.ResourceContainers.SecurityPolicy,
-                    sg_id)
-                if not res.ok:
-                    LOG.warning("Failed deleting security policy %s: %s", sg_id, res)
-
-                res = self.infra.delete_object(
-                    nsxv3_policy.ResourceContainers.SecurityPolicyGroup,
-                    sg_id)
-                if not res.ok:
-                    LOG.warning("Failed deleting security policy group %s: %s", sg_id, res)
-                return
 
             nsxv3_rules = self.infra.get_revisions(\
                 nsxv3_policy.ResourceContainers.SecurityPolicyRule, sg_id)
@@ -307,12 +293,26 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                         o if isinstance(o, list) else [o],
                         self.sync_security_group)
 
+    def sync_security_groups_monotonically(self):
+        revs = self.get_revisions(query=self.rpc.get_security_group_revision_tuples)
+
+        sync_scheduler = sync.Scheduler(
+            rate=cfg.CONF.NSXV3.nsxv3_policy_migration_rate,
+            limit=cfg.CONF.NSXV3.nsxv3_policy_migration_limit)
+
+        for identifier in revs.keys():
+            with sync_scheduler:
+                self.runner.run(sync.Priority.LOW, [identifier], self.sync_security_group_skip_rules)
+        self.runner.wait_passive_jobs_completion()
+        
+        for identifier in revs.keys():
+            with sync_scheduler:
+                self.runner.run(sync.Priority.LOW, [identifier], self.sync_security_group)
+        self.runner.wait_passive_jobs_completion()
+
     def sync_security_groups(self):
-        self.runner.run(
-            sync.Priority.HIGHER,
-            self.get_revisions(
-                query=self.rpc.get_security_group_revision_tuples).keys(),
-            self.sync_security_group)
+        revs = self.get_revisions(query=self.rpc.get_security_group_revision_tuples)
+        self.runner.run(sync.Priority.LOW, revs.keys(), self.sync_security_group)
 
     def sync_qos_policies(self):
         self.runner.run(
@@ -337,13 +337,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         port_query = self.rpc.get_port_revision_tuples
 
         num_orphans = cfg.CONF.NSXV3.nsxv3_remove_orphan_items_count
-
-        # Delete Services explicitly for NSX-T < 2.5
-        if self.use_policy_api and self.infra._client.version < (2, 5):
-            orphaned_services = self._sync_get_orphan_services()
-            self.runner.run(
-                sync.Priority.LOW,
-                set(itertools.islice(orphaned_services, num_orphans)), self.sync_service_orphaned)
 
         # Security Groups Synchronization
         outdated_ips, orphaned_ips = self._sync_get_content(
@@ -379,7 +372,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         # TODO - remove after migration completes
         # Clean up the migrated Security Groups from Management to Policy API
-        if self.use_policy_api:
+        if self.policy_api_enabled:
             orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api(outdated_ips)
             self.runner.run(
                 sync.Priority.LOW,
@@ -397,22 +390,42 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
             LOG.info(m.format(self.runner.active(), self.runner.passive()))
 
+            tz = TransportZone(display_name=self.nsxv3.tz_name)
+
             if self.runner.passive() > 0:
                 return
 
-            timestamp = nsxv3_facada.Timestamp(
-                "last_full_synchronization",
-                self.nsxv3, TransportZones,
-                TransportZone(display_name=self.nsxv3.tz_name),
-                cfg.CONF.AGENT.sync_full_schedule)
+            # TODO - Remove the statement and its body after policy migration to 2.5 completes
+            if self.policy_api_enabled:
 
-            if timestamp.has_expired():
+                timestamp_policy_migration_completed = nsxv3_facada.Timestamp(
+                    "policy_migration_completed", self.nsxv3, TransportZones, tz, 0)
+
+                if not timestamp_policy_migration_completed.has_set():
+                    LOG.info("Starting a full inventory synchronization to Policy API")
+                    self.sync_security_groups_monotonically()
+                    timestamp_policy_migration_completed.update()
+                    return
+
+            LOG.info("Starting a shallow inventory synchronization")
+            self._sync_inventory_shallow()
+
+            timestamp = nsxv3_facada.Timestamp(
+                "last_full_synchronization", self.nsxv3, 
+                TransportZones, tz, cfg.CONF.AGENT.sync_full_schedule)
+
+            if not timestamp.has_set():
+                # This is the first synchronization
+                # The shallow acts like a full synchronization
+                timestamp.update()
+            elif timestamp.has_expired():
                 LOG.info("Starting a full inventory synchronization")
+                # The shallow sync already created or synced missing groups
+                # Thus all rule source/destination dependent groups are available
+                # as soft references
                 self._sync_inventory_full()
                 timestamp.update()
-            else:
-                LOG.info("Starting a shallow inventory synchronization")
-                self._sync_inventory_shallow()
+                
 
     def _sync_report(self, object_name, outdated, orphaned):
         report = dict()
@@ -425,7 +438,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         revs_nsx = None
 
         # Policy API
-        if self.use_policy_api and isinstance(sdk_model, IPSet):
+        if self.policy_api_enabled and isinstance(sdk_model, IPSet):
             rc = nsxv3_policy.ResourceContainers
             revs_nsx = nsxv3_utils.concat_revisions(
                 self.infra.get_revisions(rc.SecurityPolicy),
@@ -849,7 +862,8 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
         c = cfg.CONF.NSXV3
         return {
-            'nsxv3_use_policy_api': c.nsxv3_use_policy_api,
+            'nsxv3_policy_migration_rate': c.nsxv3_policy_migration_rate,
+            'nsxv3_policy_migration_limit': c.nsxv3_policy_migration_limit,
             'nsxv3_connection_retry_count': c.nsxv3_connection_retry_count,
             'nsxv3_connection_retry_sleep': c.nsxv3_connection_retry_sleep,
             'nsxv3_request_timeout': c.nsxv3_request_timeout,
