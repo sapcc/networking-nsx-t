@@ -92,6 +92,11 @@ agent_cli_opts = [
 ]
 
 nsxv3_opts = [
+    cfg.BoolOpt(
+        'nsxv3_use_policy_api',
+        default=None,
+        help="Enforce use of NSXv3 Manager Policy API."
+    ),
     cfg.IntOpt(
         'nsxv3_policy_migration_rate',
         default=1,

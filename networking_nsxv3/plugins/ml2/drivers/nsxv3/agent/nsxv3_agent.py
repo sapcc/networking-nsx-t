@@ -26,6 +26,7 @@ from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
 from neutron_lib.api.definitions import portbindings
 from neutron_lib import context as neutron_context
+from neutron_lib import exceptions
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import service
@@ -74,7 +75,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.rpc = rpc
         self.runner = runner
         self.policy_api_enabled = self.infra._client.version >= (2, 5)
-        LOG.info("Using Policy-API=%s", self.use_policy_api)
+        if cfg.CONF.NSXV3.nsxv3_use_policy_api is not None:
+            self.policy_api_enabled = cfg.CONF.NSXV3.nsxv3_use_policy_api
+        LOG.info("Using Policy-API=%s", self.policy_api_enabled)
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -133,7 +136,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             add_rules=add_rules,
             del_rules=del_rules)
     
-    def security_group_member_updated_mgmt_api(self, security_group_id):
+    def _security_group_member_updated_mgmt_api(self, security_group_id):
         sg_id = str(security_group_id)
         LOG.debug("Updating Security Group '{}' members".format(sg_id))
         self.nsxv3.get_or_create_security_group(sg_id)
@@ -193,20 +196,20 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         sg_id = str(security_group_id)
         try:
             _, revision_sg = self.rpc.get_security_group_revision(sg_id)
-        except Exception as e:
-            if "'{}' not found in Neutron".format(sg_id) in e.message:
+        except exceptions.ObjectNotFound as e:
                 return
-            raise e
 
         scope = nsxv3_constants.NSXV3_CAPABILITY_TCP_STRICT
         LOG.info("Updating Security Group '{}'".format(sg_id))
         with LockManager.get_lock(sg_id):
             if not self.policy_api_enabled:
                 # Will skip the revision check as this will prevent the daily desired state sync
-                self.nsxv3.get_or_create_security_group(sg_id)
-                tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
-                self.nsxv3.update_security_group_capabilities(sg_id, [tcp_strict])
-                self.security_group_member_updated_mgmt_api(sg_id)
+
+                # Removed tcp_strict, not a valid attribute of the used nsx-t python library
+                # self.nsxv3.get_or_create_security_group(sg_id)
+                # tcp_strict = self.rpc.has_security_group_tag(sg_id, scope)
+                # self.nsxv3.update_security_group_capabilities(sg_id, [tcp_strict])
+                self._security_group_member_updated_mgmt_api(sg_id)
                 if not skip_rules:
                     self._security_group_rule_updated_mgmt_api(sg_id)
                 return
@@ -267,17 +270,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.infra.update_policy(security_group_id,
                                      del_rules=del_rules, delete=True)
 
-    def sync_service_orphaned(self, service_id):
-        LOG.info("Deleting Service '{}'".format(service_id))
-
-        with LockManager.get_lock(service_id):
-            svc_id = str(service_id)
-            res = self.infra.delete_object(
-                nsxv3_policy.ResourceContainers.SecurityPolicyRuleService,
-                svc_id)
-            if not res.ok:
-                LOG.debug("Failed deleting service %s: %s", service_id, res)
-
     # RPC method
     def security_groups_member_updated(self, context, **kwargs):
         o = kwargs["security_groups"]
@@ -330,7 +322,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.sync_ports()
 
     def _sync_inventory_shallow(self):
-        orphaned_services = set()
         sg_query = self.rpc.get_security_group_revision_tuples
         qos_query = self.rpc.get_qos_policy_revision_tuples
         port_query = self.rpc.get_port_revision_tuples
@@ -378,7 +369,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 set(itertools.islice(orphan_sgs, num_orphans)), self.nsxv3.delete_security_group)
             self._sync_report("Security Groups Management API", 0, orphan_sgs)
 
-        self._sync_report("Services", 0, orphaned_services)
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
         self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
         self._sync_report("Ports", outdated_lps, orphaned_lps)
@@ -629,16 +619,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         except Exception as e:
             if not id_options.retry_next():
                 LOG.error("Failed updating SG %s skip_rules=%d: %s", security_group_id, not update_rules, e)
-                return
-
-            # AtomicRequest Handling
-            if hasattr(e, 'args') and any(['AtomicRequest' in arg for arg in e.args]):
-                self.infra.refresh_realized_state("/infra/domains/default/groups/{}".format(security_group_id))
-                self.infra.refresh_realized_state(
-                    "/infra/domains/default/security-policies/{}".format(security_group_id))
-                # Reschedule with retry
-                self.runner.run(sync.Priority.MEDIUM, [id_options.encode()],
-                                self.sync_security_group)
                 return
 
             # Ensure circular dependencies are satisfied
