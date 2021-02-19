@@ -21,11 +21,10 @@ from neutron_lib import exceptions
 
 
 def _validate_one(result, error):
-    msg = "{} not found in Neutron."
     if result:
         return result
     else:
-        raise exceptions.ObjectNotFound(msg.format(error))
+        raise exceptions.ObjectNotFound(id=error)
 
 
 def _get_datetime(datetime_value):
