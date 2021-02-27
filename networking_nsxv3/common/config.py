@@ -103,6 +103,16 @@ nsxv3_opts = [
         help='Management to Policy API objects migration limit in seconds'
     ),
     cfg.IntOpt(
+        'nsxv3_policy_migration_rate',
+        default=1,
+        help='Management to Policy API objects migration rate'
+    ),
+    cfg.IntOpt(
+        'nsxv3_policy_migration_limit',
+        default=2,
+        help='Management to Policy API objects migration limit in seconds'
+    ),
+    cfg.IntOpt(
         'nsxv3_connection_retry_count',
         default=10,
         help='NSXv3 Manager client connection retry-count.'
