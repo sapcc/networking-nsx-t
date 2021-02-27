@@ -56,6 +56,35 @@ def is_migration_enabled():
     return cfg.CONF.AGENT.enable_runtime_migration_from_dvs_driver
 
 
+class SecurityGroupSyncNormalizer(sync.Rescheduler):
+
+    def __init__(self, infra):
+        self.infra = infra
+        # Heuristicly discovered MAX_IN_PROGRESS=20
+        self.max_in_progress = 20
+        self.in_progress = 0
+        self.last_check = 0
+    
+    def delay(self, task):
+        include_filter = ["sync_security_group_skip_rules", "sync_security_group"]
+        if task.priority == sync.Priority.HIGHEST or task.fn.__name__ not in include_filter:
+            return False
+
+        self.in_progress += 1
+        if self.in_progress > self.max_in_progress:
+            now = time.time()
+            if now > self.last_check + 60:
+                self.in_progress = int(self.infra.get_inprogress_policies_count())
+                LOG.info("Security Policies with state IN_PROGRESS={}".format(self.in_progress))
+                if self.in_progress > self.max_in_progress:
+                    # Update last_check only if there is a real reason to wait
+                    self.last_check = now
+                    return True
+            else:
+                return True
+        return False
+
+
 class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     target = oslo_messaging.Target(version=nsxv3_constants.RPC_VERSION)
@@ -74,7 +103,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.rpc = rpc
         self.runner = runner
         self.policy_api_enabled = self.infra._client.version >= (2, 5)
-        LOG.info("Using Policy-API=%s", self.use_policy_api)
+        LOG.info("Using Policy-API=%s", self.policy_api_enabled)
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -302,12 +331,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         for identifier in revs.keys():
             with sync_scheduler:
                 self.runner.run(sync.Priority.LOW, [identifier], self.sync_security_group_skip_rules)
-        self.runner.wait_passive_jobs_completion()
+        self.runner.wait_passive_tasks_completion()
         
         for identifier in revs.keys():
             with sync_scheduler:
                 self.runner.run(sync.Priority.LOW, [identifier], self.sync_security_group)
-        self.runner.wait_passive_jobs_completion()
+        self.runner.wait_passive_tasks_completion()
 
     def sync_security_groups(self):
         revs = self.get_revisions(query=self.rpc.get_security_group_revision_tuples)
@@ -792,7 +821,8 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             context, nsxv3_constants.NSXV3_SERVER_RPC_TOPIC, cfg.CONF.host)
         self.last_sync_time = 0
         self.runner = sync.Runner(
-            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
+            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests,
+            rescheduler=SecurityGroupSyncNormalizer(self.infra))
         self.runner.start()
         if monitoring:
             eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 

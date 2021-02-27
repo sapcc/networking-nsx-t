@@ -635,6 +635,13 @@ class InfraService:
         path = "{}/realized-state/realized-entity?{}".format(INFRA, urllib.urlencode(params))
         return self._client.post(path=path, data=None)
 
+    def get_inprogress_policies_count(self):
+        response = self._client.get(path="/policy/api/v1/search", params={
+            "query": "resource_type:SecurityPolicy AND status.consolidated_status.consolidated_status:IN_PROGRESS",
+            "page_size": "0"
+        })
+        return json.loads(response.content).get("result_count", 0)
+
     def get_rules(self):
         path = "{}{}".format(INFRA, ResourceContainers.SecurityPolicy)
         cursor = ""

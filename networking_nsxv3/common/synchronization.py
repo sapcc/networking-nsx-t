@@ -109,48 +109,63 @@ class UniqPriorityQueue(eventlet.queue.Queue):
         return heappop(self.queue)
 
 
+class Rescheduler(object):
+    """
+    This class relates to Runner execution behavior.
+
+    There are cases when an event in the Runner queue
+    needs to be postponed.
+    """
+
+    def delay(self, runnable):
+        """
+        if returns True
+            the event will be send back in the queue
+        else
+            the event will be processed
+        """
+        return False
+
 class Runner(object):
-    """ Synchronization.Runner.class runs jobs with priorities.
+    """ Synchronization.Runner.class runs tasks with priorities.
     It uses two types of queue:
-    Active - containing all jobs that are ready to be executed.
+    Active - containing all tasks that are ready to be executed.
              Workers pick immediately work from this queue.
-    Passive - containing all jobs submitted with lower than Priority.HIGHEST.
-              A job is transferred from passive to active queue only when the
+    Passive - containing all tasks submitted with lower than Priority.HIGHEST.
+              A task is transferred from passive to active queue only when the
               active queue size is less than 'workers_size'.
 
     Keyword arguments:
     active_size -- the size of the active queue
     passive_size -- the size of the passive queue
-    workers_size -- number of worker's processing jobs from the active queue
+    workers_size -- number of worker's processing tasks from the active queue
     """
 
     def __init__(self, active_size=INFINITY, passive_size=INFINITY,
-                 workers_size=1):
+                 workers_size=1, rescheduler=None):
         # if queue_size is < 0, the queue size is infinite.
         self._active = UniqPriorityQueue(maxsize=active_size)
         self._passive = UniqPriorityQueue(maxsize=passive_size)
         self._workers = eventlet.greenpool.GreenPool(size=workers_size)
         self._idle = workers_size
+        self._rescheduler = rescheduler if rescheduler else Rescheduler()
 
     def run(self, priority, ids, fn):
-        """ Submit a job with priority
+        """ Submit a task with priority
 
         Keyword arguments:
-        priority -- job priority of type Priority.class
+        priority -- task priority of type Priority.class
         ids -- list of IDs (identifiers) that will be passed to the 'fn'
         fn -- a function about to be executed by the runner with an argument ID
         """
         for jid in ids:
             try:
                 LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
-
-                job = Runnable(jid, fn, priority.value)
-
-                job = (priority.value, {"id": jid, "fn": fn})
-                if priority.value == Priority.HIGHEST:
-                    self._active.put_nowait(job)
+                task = Runnable(jid, fn, priority)
+                if priority == Priority.HIGHEST:
+                    self._active.put_nowait(task)
                 else:
-                    self._passive.put_nowait(job)
+                    self._passive.put_nowait(task)
             except eventlet.queue.Full as err:
                 LOG.error(MESSAGE.format(fn.__name__, jid, priority, err))
 
@@ -158,12 +173,18 @@ class Runner(object):
         while True:
             try:
                 if self.active() < self._idle and self.passive() > 0:
-                    self._active.put_nowait(self._passive.get_nowait())
+                    task = self._passive.get_nowait()
+                    if self._rescheduler.delay(task):
+                        LOG.debug(MESSAGE.format(task.fn.__name__, task.idn, task.priority, "rescheduled"))
+                        self._passive.put_nowait(task)
+                        # The delay will be performed on the _active.get blocking event with timeout
+                    else:
+                        self._active.put_nowait(task)
                     self._passive.task_done()
-                priority_value, job = self._active.get(block=True,
+                task = self._active.get(block=True,
                                                        timeout=TIMEOUT)
-                LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
-                self._workers.spawn_n(job["fn"], job["id"])
+                LOG.debug(MESSAGE.format(task.fn.__name__, task.idn, task.priority, "started"))
+                self._workers.spawn_n(task.fn, task.idn)
                 self._active.task_done()
             except eventlet.queue.Empty:
                 LOG.info("No activity for the last {} seconds.".format(TIMEOUT))
@@ -191,10 +212,10 @@ class Runner(object):
         self._active.join()
         self._passive.join()
     
-    def wait_active_jobs_completion(self):
+    def wait_active_tasks_completion(self):
         self._active.join()
 
-    def wait_passive_jobs_completion(self):
+    def wait_passive_tasks_completion(self):
         self._passive.join()
 
 
