@@ -70,6 +70,15 @@ def get_firewall_rule(sdk_model):
         rule["applied_tos"] = [ref(o) for o in sdk_model.applied_tos]
     return rule
 
+def get_logical_switch_status(ls):
+    for detail in ls.get("details",[]):
+        state = detail.get("state", "UNKNOWN")
+        if state != "success":
+            return (state, "Logical Switch {} subsystem {} is in state {}".format(
+                        ls.get("logical_switch_id", "UNKNOWN"),
+                        detail.get("sub_system_id", "UNKNOWN"),
+                        state))
+    return ("success", None)
 
 def get_resource_reference(sdk_model):
     ref = {}
