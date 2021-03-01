@@ -43,6 +43,11 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.nsxv3_constants import *
 
+if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
+    import eventlet
+    eventlet.monkey_patch()
+
+
 LOG = logging.getLogger(__name__)
 
 
