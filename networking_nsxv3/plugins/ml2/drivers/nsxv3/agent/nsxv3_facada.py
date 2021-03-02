@@ -3,6 +3,7 @@ from oslo_log import log as logging
 from oslo_config import cfg
 import copy
 import json
+import time
 import datetime
 import urllib
 
@@ -41,6 +42,11 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_client
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import nsxv3_utils
 
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.nsxv3_constants import *
+
+if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
+    import eventlet
+    eventlet.monkey_patch()
+
 
 LOG = logging.getLogger(__name__)
 
@@ -159,7 +165,25 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             address_bindings=[]
         )
 
-        return self.create(sdk_service=LogicalSwitches, sdk_model=ls_spec).id
+        ls_id = self.create(sdk_service=LogicalSwitches, sdk_model=ls_spec).id
+
+        now = time.time()
+        end = now + 60
+        err = None
+        while now < end:
+            ls = self._get("/api/v1/logical-switches/{}/state".format(ls_id))
+            state, err = nsxv3_utils.get_logical_switch_status(ls.json())
+            if err:
+                LOG.warn("Retrying for 60s. {}".format(err))
+            else:
+                return ls_id
+            eventlet.greenthread.sleep(seconds=5)
+            now = time.time()
+        LOG.error(err)
+        # In case of timed out with unsuccessful state
+        # return the ID as a last retry from the vCenter
+        # if vCenter is not able to bind then an error in Nova will be thrown
+        return ls_id
 
     def get_port(self, sdk_service, sdk_model):
         sdk_service(self.stub_config)
