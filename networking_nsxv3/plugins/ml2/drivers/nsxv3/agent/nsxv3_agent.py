@@ -225,14 +225,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             add_rules = []
             del_rules = []
 
-            # TODO - remove after 2.5
-            # Just skip update if everything seems to be synced, else we are risking our AtomicRequest Errors
-            # with older nsx-t managers
-            if not self.policy_api_enabled  and (
-                revision_member == revision_sg and
-                revision_rule == revision_sg):
-                return
-
             if revision_member != revision_sg:
                 revision_member = revision_sg
                 cidrs = self._security_group_member_updated(sg_id)
@@ -392,7 +384,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
                 if not timestamp_policy_migration_completed.has_set():
                     LOG.info("Starting a full inventory synchronization to Policy API")
-                    self.sync_security_groups_monotonically()
                     timestamp_policy_migration_completed.update()
                     return
 
