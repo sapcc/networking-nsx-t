@@ -127,6 +127,6 @@ def outdated_revisions(rev_1, rev_2):
     outdated = set()
 
     for key, rev in rev_1.items():
-        if rev_2.get(key) != rev:
+        if key in rev_2 and rev_2.get(key) != rev:
             outdated.add(key)
     return outdated

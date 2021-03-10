@@ -98,11 +98,6 @@ nsxv3_opts = [
         help="Enforce use of NSXv3 Manager Policy API."
     ),
     cfg.IntOpt(
-        'nsxv3_policy_migration_rate',
-        default=1,
-        help='Management to Policy API objects migration rate'
-    ),
-    cfg.IntOpt(
         'nsxv3_policy_migration_limit',
         default=2,
         help='Management to Policy API objects migration limit in seconds'

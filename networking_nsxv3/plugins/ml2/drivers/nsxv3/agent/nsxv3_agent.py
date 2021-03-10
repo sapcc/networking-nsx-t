@@ -276,23 +276,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                         o if isinstance(o, list) else [o],
                         self.sync_security_group)
 
-    def sync_security_groups_monotonically(self):
-        revs = self.get_revisions(query=self.rpc.get_security_group_revision_tuples)
-
-        sync_scheduler = sync.Scheduler(
-            rate=cfg.CONF.NSXV3.nsxv3_policy_migration_rate,
-            limit=cfg.CONF.NSXV3.nsxv3_policy_migration_limit)
-
-        for identifier in revs.keys():
-            with sync_scheduler:
-                self.runner.run(sync.Priority.LOW, [identifier], self.sync_security_group_skip_rules)
-        self.runner.wait_passive_jobs_completion()
-        
-        for identifier in revs.keys():
-            with sync_scheduler:
-                self.runner.run(sync.Priority.LOW, [identifier], self.sync_security_group)
-        self.runner.wait_passive_jobs_completion()
-
     def sync_security_groups(self):
         revs = self.get_revisions(query=self.rpc.get_security_group_revision_tuples)
         self.runner.run(sync.Priority.LOW, revs.keys(), self.sync_security_group)
@@ -319,15 +302,39 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         port_query = self.rpc.get_port_revision_tuples
 
         num_orphans = cfg.CONF.NSXV3.nsxv3_remove_orphan_items_count
+        migration_limit = cfg.CONF.NSXV3.nsxv3_policy_migration_limit
 
         # Security Groups Synchronization
-        outdated_ips, orphaned_ips = self._sync_get_content(
+        missing_ips, outdated_ips, orphaned_ips = self._sync_get_content(
             sdk_model=IPSet(), os_query=sg_query)
         # All Groups need to be created before rule creation begins duo to
         # remote group references
+
+        # Migration Magic
+        if self.migration_mode:
+            if not missing_ips:
+                # That's all folks
+                self.migration_complete()
+                return
+
+            # Get legacy mgmt sections
+            mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=IPSet(create_user="admin"))
+            # Add any newly added sg that not existing at all yet
+            outdated_ips |= missing_ips.difference(mg_ipset)
+            missing_ips.difference_update(outdated_ips)
+
+            # If there's enough space in the queue, add missing policies (MGMT -> Policy)
+            in_progress = int(self.infra.get_inprogress_policies_count()) + len(outdated_ips)
+            migrate_to_queue = max(migration_limit - in_progress, 0)
+            outdated_ips |= set(itertools.islice(missing_ips, migrate_to_queue))
+        else:
+            # handle missing same as outdated
+            outdated_ips |= missing_ips
+        # END Migration Magic
+
         self.runner.run(
             sync.Priority.HIGH,
-            outdated_ips, self.sync_security_group_skip_rules)  
+            outdated_ips, self.sync_security_group_skip_rules)
         self.runner.run(
             sync.Priority.MEDIUM,
             outdated_ips, self.sync_security_group)
@@ -336,18 +343,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             set(itertools.islice(orphaned_ips, num_orphans)), self.sync_security_group_orphaned)
 
         # QoS Policies Synchronization
-        outdated_qos, orphaned_qos = self._sync_get_content(
+        missing_qos, outdated_qos, orphaned_qos = self._sync_get_content(
             sdk_model=QosSwitchingProfile(), os_query=qos_query)
         self.runner.run(
             sync.Priority.LOWER,
-            outdated_qos, self.sync_qos)
+            outdated_qos | missing_qos, self.sync_qos)
 
         # Ports Synchronization
-        outdated_lps, orphaned_lps = self._sync_get_content(
+        missing_lps, outdated_lps, orphaned_lps = self._sync_get_content(
             sdk_model=LogicalPort(), os_query=port_query)
         self.runner.run(
             sync.Priority.LOW,
-            outdated_lps, self.sync_port)
+            outdated_lps | missing_lps, self.sync_port)
         self.runner.run(
             sync.Priority.LOW,
             set(itertools.islice(orphaned_lps, num_orphans)), self.sync_port_orphaned)
@@ -362,50 +369,43 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self._sync_report("Security Groups Management API", 0, orphan_sgs)
 
         self._sync_report("Security Groups", outdated_ips, orphaned_ips)
-        self._sync_report("QoS Profiles", outdated_qos, orphaned_qos)
-        self._sync_report("Ports", outdated_lps, orphaned_lps)
+        self._sync_report("QoS Profiles", outdated_qos| missing_qos, orphaned_qos)
+        self._sync_report("Ports", outdated_lps | missing_lps, orphaned_lps)
+
+    def migration_complete(self):
+        tz = TransportZone(display_name=self.nsxv3.tz_name)
+
+        timestamp_policy_migration_completed = nsxv3_facada.Timestamp(
+            "policy_migration_completed", self.nsxv3, TransportZones, tz, 0)
+
+        timestamp_policy_migration_completed.update()
 
     def sync_inventory(self):
         m = "Synchronization events pools size HIGHPRIORITY={} LOWPRIORITY={}"
 
         with LockManager.get_lock(AGENT_SYNCHRONIZATION_LOCK):
             LOG.info(m.format(self.runner.active(), self.runner.passive()))
-
             tz = TransportZone(display_name=self.nsxv3.tz_name)
 
             if self.runner.passive() > 0:
                 return
 
-            # TODO - Remove the statement and its body after policy migration to 2.5 completes
-            if self.policy_api_enabled:
-
-                timestamp_policy_migration_completed = nsxv3_facada.Timestamp(
-                    "policy_migration_completed", self.nsxv3, TransportZones, tz, 0)
-
-                if not timestamp_policy_migration_completed.has_set():
-                    LOG.info("Starting a full inventory synchronization to Policy API")
-                    timestamp_policy_migration_completed.update()
-                    return
-
-            LOG.info("Starting a shallow inventory synchronization")
-            self._sync_inventory_shallow()
+            timestamp_policy_migration_completed = nsxv3_facada.Timestamp(
+                "policy_migration_completed", self.nsxv3, TransportZones, tz, 0)
+            self.migration_mode = self.policy_api_enabled and not timestamp_policy_migration_completed.has_set()
 
             timestamp = nsxv3_facada.Timestamp(
-                "last_full_synchronization", self.nsxv3, 
-                TransportZones, tz, cfg.CONF.AGENT.sync_full_schedule)
+                "last_full_synchronization", self.nsxv3, TransportZones, tz, cfg.CONF.AGENT.sync_full_schedule)
 
-            if not timestamp.has_set():
-                # This is the first synchronization
-                # The shallow acts like a full synchronization
-                timestamp.update()
-            elif timestamp.has_expired():
+            # Policy compatbile and migrating?
+            # Then only sync shallow to ensure slow migration and low policy-realiziation queue
+            if not timestamp.has_expired() or self.migration_mode:
+                LOG.info("Starting a shallow inventory synchronization")
+                self._sync_inventory_shallow()
+            else:
                 LOG.info("Starting a full inventory synchronization")
-                # The shallow sync already created or synced missing groups
-                # Thus all rule source/destination dependent groups are available
-                # as soft references
                 self._sync_inventory_full()
                 timestamp.update()
-                
 
     def _sync_report(self, object_name, outdated, orphaned):
         report = dict()
@@ -429,8 +429,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
 
         outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
+        missing = set(revs_os.keys()).difference(revs_nsx.keys())
         orphaned = set(revs_nsx.keys()).difference(revs_os.keys())
-        return outdated, orphaned
+        return missing, outdated, orphaned
 
     # TODO - remove after all nsx-t managers > 2.4
     def _sync_get_orphan_services(self):
@@ -832,7 +833,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
         c = cfg.CONF.NSXV3
         return {
-            'nsxv3_policy_migration_rate': c.nsxv3_policy_migration_rate,
             'nsxv3_policy_migration_limit': c.nsxv3_policy_migration_limit,
             'nsxv3_connection_retry_count': c.nsxv3_connection_retry_count,
             'nsxv3_connection_retry_sleep': c.nsxv3_connection_retry_sleep,

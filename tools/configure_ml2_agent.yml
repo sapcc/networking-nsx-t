@@ -38,7 +38,6 @@
         - { section: "AGENT_CLI", option: "neutron_security_group_id", value: "{{ neutron_security_group_id }}" }
         - { section: "AGENT_CLI", option: "neutron_port_id", value: "{{ neutron_port_id }}" }
         - { section: "AGENT_CLI", option: "neutron_qos_policy_id", value: "{{ neutron_qos_policy_id }}" }
-        - { section: "NSXV3", option: "nsxv3_policy_migration_rate", value: "{{ nsxv3_policy_migration_rate }}" }
         - { section: "NSXV3", option: "nsxv3_policy_migration_limit", value: "{{ nsxv3_policy_migration_limit }}" }
         - { section: "NSXV3", option: "nsxv3_connection_retry_count", value: "{{ nsxv3_connection_retry_count }}" }
         - { section: "NSXV3", option: "nsxv3_connection_retry_sleep", value: "{{ nsxv3_connection_retry_sleep }}" }
