@@ -478,7 +478,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 # Cleanup mgmt section of intialized policies
                 elif cfg.CONF.AGENT.enable_imperative_security_group_cleanup and self.nsxv3.get_policy_ready(k):
                     result.append(k)
-            elif k not in outdated and k not in pl and is_valid_uuid(k):
+            elif k not in outdated and k not in pl and is_valid_uuid(k) and not self.migration_mode:
                 # Cleanup orphans
                 result.append(k)
         return result
