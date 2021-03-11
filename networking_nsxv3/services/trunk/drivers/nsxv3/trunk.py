@@ -63,26 +63,50 @@ class NSXv3TrunkDriver(base.DriverBase):
 
         LOG.info("NSXv3 trunk driver initialized.")
 
+    def _get_context_and_parent_port(self, parent_port_id):
+        """Get admin context and parent port
+
+        Return None, None if this driver is not responsible for this trunk/port
+        """
+        ctx = context.get_admin_context()
+        parent = self.core_plugin.get_port(ctx, parent_port_id)
+        if not self.is_interface_compatible(parent[portbindings.VIF_TYPE]):
+            return None, None
+        return ctx, parent
+
     def trunk_create(self, resource, event, trunk_plugin, payload):
+        ctx, parent = self._get_context_and_parent_port(payload.current_trunk.port_id)
+        if not parent:
+            return
+
         LOG.info("Trunk create called, resource %s payload %s trunk id %s",
                  resource, payload, payload.trunk_id)
-        self._bind_subports(payload.current_trunk, payload.current_trunk.sub_ports)
+        self._bind_subports(ctx, parent, payload.current_trunk, payload.current_trunk.sub_ports)
         payload.current_trunk.update(status=trunk_consts.ACTIVE_STATUS)
 
     def trunk_delete(self, resource, event, trunk_plugin, payload):
+        ctx, parent = self._get_context_and_parent_port(payload.original_trunk.port_id)
+        if not parent:
+            return
+
         LOG.info("Trunk %s delete called", payload.trunk_id)
-        self._bind_subports(payload.original_trunk, payload.original_trunk.sub_ports, delete=True)
+        self._bind_subports(ctx, parent, payload.original_trunk, payload.original_trunk.sub_ports, delete=True)
 
     def subport_create(self, resource, event, trunk_plugin, payload):
-        self._bind_subports(payload.current_trunk, payload.subports)
+        ctx, parent = self._get_context_and_parent_port(payload.current_trunk.port_id)
+        if not parent:
+            return
+
+        self._bind_subports(ctx, parent, payload.current_trunk, payload.subports)
 
     def subport_delete(self, resource, event, trunk_plugin, payload):
-        self._bind_subports(payload.current_trunk, payload.subports, delete=True)
+        ctx, parent = self._get_context_and_parent_port(payload.current_trunk.port_id)
+        if not parent:
+            return
 
-    def _bind_subports(self, trunk, subports, delete=False):
-        ctx = context.get_admin_context()
-        parent = self.core_plugin.get_port(ctx, trunk.port_id)
+        self._bind_subports(ctx, parent, payload.current_trunk, payload.subports, delete=True)
 
+    def _bind_subports(self, ctx, parent, trunk, subports, delete=False):
         for subport in subports:
             LOG.debug("%s parent %s for subport %s on trunk %s",
                       "Setting" if not delete else "Unsetting",
