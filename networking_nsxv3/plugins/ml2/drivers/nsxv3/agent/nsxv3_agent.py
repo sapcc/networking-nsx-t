@@ -362,7 +362,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         # TODO - remove after migration completes
         # Clean up the migrated Security Groups from Management to Policy API
         if self.policy_api_enabled:
-            orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api(outdated_ips)
+            orphan_sgs = self._sync_get_orphan_security_groups_mgmt_api(outdated_ips | missing_ips)
             self.runner.run(
                 sync.Priority.LOW,
                 set(itertools.islice(orphan_sgs, num_orphans)), self.nsxv3.delete_security_group)
