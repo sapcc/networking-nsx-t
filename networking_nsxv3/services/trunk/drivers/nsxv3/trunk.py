@@ -57,22 +57,17 @@ class NSXv3TrunkDriver(base.DriverBase):
         self.core_plugin = directory.get_plugin()
 
         registry.subscribe(self.trunk_create, trunk_consts.TRUNK, events.AFTER_CREATE)
-        registry.subscribe(self.trunk_update, trunk_consts.TRUNK, events.AFTER_UPDATE)
         registry.subscribe(self.trunk_delete, trunk_consts.TRUNK, events.AFTER_DELETE)
         registry.subscribe(self.subport_create, trunk_consts.SUBPORTS, events.AFTER_CREATE)
         registry.subscribe(self.subport_delete, trunk_consts.SUBPORTS, events.AFTER_DELETE)
-    
-        LOG.info("NSXv3 trunk driver initialized.")
 
+        LOG.info("NSXv3 trunk driver initialized.")
 
     def trunk_create(self, resource, event, trunk_plugin, payload):
         LOG.info("Trunk create called, resource %s payload %s trunk id %s",
                  resource, payload, payload.trunk_id)
         self._bind_subports(payload.current_trunk, payload.current_trunk.sub_ports)
         payload.current_trunk.update(status=trunk_consts.ACTIVE_STATUS)
-
-    def trunk_update(self, resource, event, trunk_plugin, payload):
-        LOG.info("Trunk %s update called", payload.trunk_id)
 
     def trunk_delete(self, resource, event, trunk_plugin, payload):
         LOG.info("Trunk %s delete called", payload.trunk_id)
