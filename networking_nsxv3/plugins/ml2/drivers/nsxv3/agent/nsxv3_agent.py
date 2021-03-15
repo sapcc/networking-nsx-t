@@ -609,6 +609,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self._do_security_group_update(id_options.identifier,
                                            skip_rules=not update_rules)
         except Exception as e:
+            if (isinstance(e, oslo_messaging.RemoteError)
+                    and e.exc_type == 'ObjectNotFound'
+                    or isinstance(e, exceptions.ObjectNotFound)):
+                LOG.debug(getattr(e, 'value', 'ObjectNotFound'))
+                return
+
             if not id_options.retry_next():
                 LOG.error("Failed updating SG %s skip_rules=%d: %s", security_group_id, not update_rules, e)
                 return
