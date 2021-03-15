@@ -586,13 +586,13 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.delete_policy(context=None, policy=policy)
 
     def get_missing_policies(self, e):
-        missing_policies = []
+        missing_policies = set()
         try:
             error = json.loads(e.args[1][23:])
             for path_error in error['related_errors']:
-                m = re.match(r".*\[/infra/domains/default/groups/(.*)\]$", path_error['error_message'])
+                m = re.match(r".*\[/infra/domains/default/groups/(.*)\]", path_error['error_message'])
                 if m:
-                    missing_policies.append(m.group(1))
+                    missing_policies.add(m.group(1))
         except Exception:
             pass
         return missing_policies
