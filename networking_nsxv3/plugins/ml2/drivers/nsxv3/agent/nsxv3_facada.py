@@ -151,10 +151,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
     def get_switch_id_for_segmentation_id(self, segmentation_id):
         sw_name = "{}-{}".format(self.tz_name, segmentation_id)
 
-        ls_id = self.get(sdk_service=LogicalSwitches, sdk_model=LogicalSwitch(display_name=sw_name))
-        if ls_id:
-            return ls_id.id
-
         ls_spec = LogicalSwitch(
             display_name=sw_name,
             description="",
@@ -171,7 +167,6 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         )
 
         ls_id = self.create(sdk_service=LogicalSwitches, sdk_model=ls_spec).id
-        eventlet.greenthread.sleep(seconds=10)
         return ls_id
 
     def get_port(self, sdk_service, sdk_model):
