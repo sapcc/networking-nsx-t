@@ -26,6 +26,7 @@ cfg.CONF.register_opts([
     cfg.IntOpt('nsxv3_operation_retry_count', default=2),
     cfg.IntOpt('nsxv3_operation_retry_sleep', default=0.1),
     cfg.IntOpt('nsxv3_requests_per_second', default=90),
+    cfg.IntOpt('nsxv3_requests_per_second_timeout', default=5),
     cfg.IntOpt('nsxv3_concurrent_requests', default=40),
     cfg.StrOpt('nsxv3_login_user', default='admin'),
     cfg.StrOpt('nsxv3_login_password', default='VMware1!'),

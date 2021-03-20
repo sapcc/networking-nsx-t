@@ -133,6 +133,11 @@ nsxv3_opts = [
         help='''Requests per second to NSXv3 Manager. NSXv3 limit 100 req/s'''
     ),
     cfg.IntOpt(
+        'nsxv3_requests_per_second_timeout',
+        default=5,
+        help='''Number of seconds trying to send the request to NSXv3 Manager.'''
+    ),
+    cfg.IntOpt(
         'nsxv3_concurrent_requests',
         default=40,
         help='''Concurrent requests to NSXv3 Manager. NSXv3 limit 40'''
