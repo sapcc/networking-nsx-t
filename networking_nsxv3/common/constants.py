@@ -17,6 +17,13 @@ NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE = 265
 NSXV3_REVISION_SCOPE = "revision_number"
 NSXV3_AGENT_SCOPE = "agent_id"
 
+# DFW Logging
+NSXV3_LOGGING_SCOPE = "logging"
+NSXV3_LOGGING_ENABLED = "enabled"
+NSXV3_DEFAULT_POLICY_ID = "DefaultML2Policy"
+NSXV3_DEFAULT_LOGGING_ID = "DefaultLoggingRule"
+
+# Migration DVS to NVDS
 NSXV3_MIGRATION_SCOPE = "vswitch_migration_target"
 NSXV3_MIGRATION_TAG_DVS = "dvs"
 NSXV3_MIGRATION_TAG_NVDS = "nvds"
