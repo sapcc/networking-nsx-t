@@ -72,6 +72,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.rpc = rpc
         self.runner = runner
         self.logging_metadata = LoggingMetadata()
+        self.infra.update_default_policies()
 
     def _security_group_member_updated(self, security_group_id):
         sg_id = str(security_group_id)
@@ -140,7 +141,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             raise e
 
         try:
-            sg_logged = self.rpc.has_security_group_logging(sg_id)
+            logging_enabled = self.rpc.has_security_group_logging(sg_id)
         except Exception as e:
             LOG.error("Unable to fetch security group logging info %s", e)
 
@@ -173,8 +174,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                                      revision_rule=revision_rule,
                                      cidrs=cidrs,
                                      add_rules=add_rules, del_rules=del_rules,
-                                     logged=sg_logged)
-            if sg_logged:
+                                     logging=logging_enabled)
+            if logging_enabled:
                 self.logging_metadata.set_security_group(add_rules)
 
     def security_group_delete(self, security_group_id):
@@ -568,10 +569,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         else:
             lock = port["parent_id"]
 
-        with LockManager.get_lock(lock):
-            self.nsxv3.port_update(port, vif_details, address_bindings)
-        self.updated_devices.add(port['mac_address'])
-
         # NSX-T DWF debug log contains only the last 8 characters from the VIF
         # attachment ID which is the OpenStack Port ID
         logged_port_id = port["id"][-8:]
@@ -586,8 +583,13 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 logged_port_id,
                 port["id"],
                 logged_prj_id)
+            port["logging"] = True
         else:
             self.logging_metadata.remove(logged_port_id)
+
+        with LockManager.get_lock(lock):
+            self.nsxv3.port_update(port, vif_details, address_bindings)
+        self.updated_devices.add(port['mac_address'])
 
     def port_delete(self, context, **kwargs):
         port_id = kwargs["port_id"]

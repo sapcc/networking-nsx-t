@@ -198,10 +198,16 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         sg_scope = nsxv3_constants.NSXV3_SECURITY_GROUP_SCOPE
         rev_scope = nsxv3_constants.NSXV3_REVISION_SCOPE
         agent_scope = nsxv3_constants.NSXV3_AGENT_SCOPE
+        logging_scope = nsxv3_constants.NSXV3_LOGGING_SCOPE
+        logging_tag = nsxv3_constants.NSXV3_LOGGING_ENABLED
 
         lp.tags = [
             Tag(scope=sg_scope, tag=id) for id in port["security_groups"]
         ]
+
+        if port["logging"]:
+            lp.tags.append(Tag(scope=logging_scope, tag=logging_tag))
+
         lp.tags.append(Tag(scope=rev_scope, tag=str(port["revision_number"])))
         lp.tags.append(Tag(scope=agent_scope, tag=str(self.agent_id)))
         lp.switching_profile_ids = []
@@ -627,6 +633,9 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
         ands = [attr_val] if attr_val else []
 
         def is_managed_by(obj):
+            # Skip updats for the Default Policy
+            if obj.get("id") == nsxv3_constants.NSXV3_DEFAULT_POLICY_ID:
+                return False
             for tag in obj.get("tags"):
                 if tag.get("scope") == nsxv3_constants.NSXV3_AGENT_SCOPE\
                     and tag.get("tag") == self.agent_id:

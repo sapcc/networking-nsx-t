@@ -21,6 +21,8 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.nsxv3_constants import *
 LOG = logging.getLogger(__name__)
 
 INFRA = "/policy/api/v1/infra"
+DEFAULT_POLICY_ID = nsxv3_constants.NSXV3_DEFAULT_POLICY_ID
+DEFAULT_LOGGING_ID = nsxv3_constants.NSXV3_DEFAULT_LOGGING_ID
 
 
 def is_not_found(response):
@@ -484,6 +486,67 @@ class InfraBuilder:
         self._add_domain_children([section])
         return self
 
+    def with_logging_policy(self):
+        logging_scope = nsxv3_constants.NSXV3_LOGGING_SCOPE
+        logging_tag = nsxv3_constants.NSXV3_LOGGING_ENABLED
+
+        section = {
+            "resource_type": "ChildSecurityPolicy",
+            "SecurityPolicy": {
+                "resource_type": "SecurityPolicy",
+                "id": DEFAULT_POLICY_ID,
+                "display_name": DEFAULT_POLICY_ID,
+                "category": "Application",
+                # Enforce sequence 1 less than the Default L2 Policy
+                "sequence_number": 999999,
+                "internal_sequence_number": 999999,
+                "stateful": true,
+                "tags": self._get_tags(),
+                "children": [
+                    {
+                        "resource_type": "ChildRule",
+                        "Rule": {
+                            "resource_type": "Rule",
+                            "id": DEFAULT_LOGGING_ID,
+                            "display_name": DEFAULT_LOGGING_ID,
+                            "action": "REJECT",
+                            "destination_groups": ["ANY"],
+                            "direction": "IN_OUT",
+                            "disabled": false,
+                            "ip_protocol": "IPV4_IPV6",
+                            "logged": true,
+                            "notes": "",
+                            "profiles": ["ANY"],
+                            "scope": ["/infra/domains/default/groups/{}".format(DEFAULT_LOGGING_ID)],
+                            "services": ["ANY"],
+                            "source_groups": ["ANY"],
+                            "tag": ""
+                        }
+                    }
+                ]
+            }
+        }
+        group = {
+            "resource_type": "ChildGroup",
+            "Group": {
+                "resource_type": "Group",
+                "id": DEFAULT_LOGGING_ID,
+                "display_name": DEFAULT_LOGGING_ID,
+                "expression": [
+                    {
+                        "key": "Tag",
+                        "member_type": "SegmentPort",
+                        "operator": "EQUALS",
+                        "resource_type": "Condition",
+                        "value": "{}|{}".format(logging_scope, logging_tag)
+                    }
+                ]
+            }
+        }
+
+        self._add_domain_children([section, group])
+        return self
+
     def with_segment(self, segment, delete=False):
         identifier = AgentIdentifier.build(segment.identifier)
         path = \
@@ -612,6 +675,9 @@ class InfraService:
             builder.with_group(group, delete)
 
         builder.build()
+
+    def update_default_policies(self):
+        self.get_builder().with_logging_policy().build()
 
     def get_builder(self):
         return InfraBuilder(self._client, options=self._infra_options)
