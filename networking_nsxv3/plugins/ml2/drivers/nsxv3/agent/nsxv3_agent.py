@@ -489,9 +489,12 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         id_options = sync.Identifier.decode(port_id)
         port_id = id_options.identifier
         
+        try:
+            (id, mac, up, status, qos_id, rev, binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
+        except exceptions.ObjectNotFound:
+            LOG.warning("Port '{}' not found in Neutron".format(port_id))
+            return
 
-        (id, mac, up, status, qos_id, rev,
-         binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
         port = {
             "id": id,
             "parent_id": parent_id,
