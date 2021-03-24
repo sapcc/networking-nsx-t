@@ -937,8 +937,11 @@ def cli_sync():
     pt_ids = cfg.CONF.AGENT_CLI.neutron_port_id
     qs_ids = cfg.CONF.AGENT_CLI.neutron_qos_policy_id
 
-    api_scheduler = sync.Scheduler(rate=cfg.CONF.NSXV3.nsxv3_requests_per_second,
-                                   limit=1)
+    rate=cfg.CONF.NSXV3.nsxv3_requests_per_second
+    timeout=cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
+    limit=1
+
+    api_scheduler = sync.Scheduler(rate, limit, timeout)
     nsxv3_client = nsxv3_policy.Client(api_scheduler=api_scheduler)
     nsxv3_infra = nsxv3_policy.InfraService(nsxv3_client)
     nsxv3 = nsxv3_facada.NSXv3Facada(api_scheduler=api_scheduler)
@@ -980,8 +983,11 @@ def main():
     except (ValueError, TypeError):
         LOG.error("VMware NSXv3 Agent setting DEBUG configuration has failed.")
 
-    api_scheduler = sync.Scheduler(rate=cfg.CONF.NSXV3.nsxv3_requests_per_second,
-                              limit=1)
+    rate=cfg.CONF.NSXV3.nsxv3_requests_per_second
+    timeout=cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
+    limit=1
+
+    api_scheduler = sync.Scheduler(rate, limit, timeout)
 
     nsxv3_client = nsxv3_policy.Client(api_scheduler=api_scheduler)
     nsxv3_infra = nsxv3_policy.InfraService(nsxv3_client)

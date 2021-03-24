@@ -207,7 +207,7 @@ class Scheduler(object):
         limit -- the limit of execution
     """
 
-    def __init__(self, rate=1, limit=1.0):
+    def __init__(self, rate=1, limit=1.0, timeout=5):
 
         if limit <= 0:
             raise ValueError('Schedule limit "{}" not positive'.format(limit))
@@ -218,6 +218,7 @@ class Scheduler(object):
 
         self.rate = rate
         self.limit = limit
+        self.timeout = timeout
 
         # Callback reporting the limit was hit
         def callback(seconds):
@@ -235,18 +236,21 @@ class Scheduler(object):
         return wrapped
 
     def __enter__(self):
-        self._semaphore.acquire(blocking=True, timeout=3)
-        run_time = time.time()
-        offset = len(self.schedule) - self.rate
+        if self._semaphore.acquire(blocking=True, timeout=self.timeout):
+            run_time = time.time()
+            offset = len(self.schedule) - self.rate
 
-        if offset >= 0 and run_time - self.limit < self.schedule[offset]:
-            sleeptime = run_time - self.schedule[offset] + self.limit
-            if self.callback:
-                eventlet.spawn(self.callback, sleeptime)
-            eventlet.greenthread.sleep(sleeptime)
-            run_time = self.schedule[offset] + self.limit
-        self.schedule.append(run_time)
-        return self
+            if offset >= 0 and run_time - self.limit < self.schedule[offset]:
+                sleeptime = run_time - self.schedule[offset] + self.limit
+                if self.callback:
+                    eventlet.spawn(self.callback, sleeptime)
+                eventlet.greenthread.sleep(sleeptime)
+                run_time = self.schedule[offset] + self.limit
+            self.schedule.append(run_time)
+            return self
+        raise Exception("{} Queue Size={}, Rate={}, Limit={}, Timeout={}"\
+            .format("Timeout reached of trying to schedule operation.",
+                    len(self.schedule), self.rate, self.limit, self.timeout))
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self._semaphore.release()
