@@ -693,6 +693,7 @@ class InfraService:
             group.identifier = identifier
             group.revision = revision_member
             group.dynamic_members = True
+            group.cidrs = cidrs
             builder.with_group(group, delete)
 
         builder.build()
