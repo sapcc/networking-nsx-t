@@ -84,7 +84,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         cidrs = \
             self.rpc.get_security_group_members_ips(sg_id) + \
             self.rpc.get_security_group_members_address_bindings_ips(sg_id)
-        return cidrs
+        return list(set(ip[0] for ip in cidrs))
 
 
     def _security_group_rule_updated_mgmt_api(self, security_group_id):
@@ -214,20 +214,15 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                     self._security_group_rule_updated_mgmt_api(sg_id)
                 return
 
-            revision_member = self.infra.get_revision(
-                nsxv3_policy.ResourceContainers.SecurityPolicyGroup, sg_id)
-            
             revision_rule = self.infra.get_revision(
                 nsxv3_policy.ResourceContainers.SecurityPolicy, sg_id)
 
-            cidrs = []
             tcp_strict = None
             add_rules = []
             del_rules = []
 
-            if revision_member != revision_sg:
-                revision_member = revision_sg
-                cidrs = self._security_group_member_updated(sg_id)
+            revision_member = revision_sg
+            cidrs = self._security_group_member_updated(sg_id)
 
             if not skip_rules and revision_rule != revision_sg:
                 revision_rule = revision_sg
