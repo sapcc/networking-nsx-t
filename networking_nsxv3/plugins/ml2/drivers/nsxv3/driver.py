@@ -17,6 +17,7 @@ from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
 from networking_nsxv3.services.logapi.drivers.nsxv3 import driver as nsxv3_logging
+from neutron.services.trunk import constants as trunk_consts
 
 LOG = log.getLogger(__name__)
 
@@ -96,9 +97,9 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agent_type = agent['agent_type']
         host = agent.get('host', None)
 
-        if not device.startswith('compute'):
+        if not device.startswith('compute') or not device.startswith(trunk_consts.TRUNK_SUBPORT_OWNER):
             LOG.warn(
-                "Only compute devices are supported. Device=" +
+                "Only compute and trunk subport devices are supported. Device=" +
                 str(device))
             return False
 
