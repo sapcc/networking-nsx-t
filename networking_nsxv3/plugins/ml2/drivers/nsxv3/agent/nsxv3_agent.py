@@ -29,7 +29,7 @@ from neutron_lib import context as neutron_context
 from neutron_lib import exceptions
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_service import service
+from oslo_service import service, loopingcall
 
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
@@ -769,14 +769,26 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.last_sync_time = 0
         self.runner = sync.Runner(
             workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
+        self.sync_inventory = loopingcall.FixedIntervalLoopingCall(
+            self.run_sync_inventory)
+        self.sync_inventory.start(interval=cfg.CONF.AGENT.polling_interval)
+
         self.runner.start()
         if monitoring:
             eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 
                                        self.runner)
 
     def shutdown_gracefully(self):
-
+        self.sync_inventory.stop()
         self.runner.stop()
+
+    def run_sync_inventory(self):
+        if self.rpc:
+            try:
+                self.rpc.sync_inventory()
+                self.last_sync_time = time.time()
+            except Exception:
+                LOG.error(traceback.format_exc())
 
     def get_all_devices(self):
         """Get a list of all devices of the managed type from this host
@@ -789,19 +801,11 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         prefix.
         :return: set -- the set of all devices e.g. ['tap1', 'tap2']
         """
-
-        if self.rpc:
-            try:
-                # get_all_devices is called by sync loop and report which
-                # have different frequency. Here it is ensured that sync loop
-                # will not be called more often than the sync loop
-                now = time.time()
-                elapsed = (time.time() - self.last_sync_time)
-                if elapsed > cfg.CONF.AGENT.polling_interval:
-                    self.rpc.sync_inventory()
-                    self.last_sync_time = now
-            except Exception:
-                LOG.error(traceback.format_exc())
+        elapsed = (time.time() - self.last_sync_time)
+        timeout = 10 * cfg.CONF.AGENT.polling_interval
+        if self.last_sync_time and elapsed > timeout:
+            raise Exception("Last successful inventory sync {} old > timeout={}, bailing out report state".format(
+                elapsed, timeout))
         return set()
 
     def get_devices_modified_timestamps(self, devices):
