@@ -84,8 +84,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         cidrs = \
             self.rpc.get_security_group_members_ips(sg_id) + \
             self.rpc.get_security_group_members_address_bindings_ips(sg_id)
-        return list(set(ip[0] for ip in cidrs))
 
+        return [str(ip).replace("/32", "") for ip in netaddr.IPSet(
+            [str(ip[0]) for ip in cidrs]).iter_cidrs()]
 
     def _security_group_rule_updated_mgmt_api(self, security_group_id):
         sg_id = str(security_group_id)
@@ -486,10 +487,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         
         try:
             (id, mac, up, status, qos_id, rev, binding_host, vif_details, parent_id) = self.rpc.get_port(port_id)
-        except exceptions.ObjectNotFound:
-            LOG.warning("Port '{}' not found in Neutron".format(port_id))
-            return
-
+        except oslo_messaging.RemoteError as err:
+            if err.exc_type in ['ObjectNotFound']:
+                LOG.warning("Port '{}' not found in Neutron".format(port_id))
+                return
         port = {
             "id": id,
             "parent_id": parent_id,

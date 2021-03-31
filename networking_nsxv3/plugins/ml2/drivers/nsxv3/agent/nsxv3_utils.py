@@ -119,7 +119,7 @@ def get_segmentation_id_lock(segmentation_id):
 
 def concat_revisions(rev_1, rev_2):
     """Concatenating using the lowest version, using -1 to force-sync missing keys"""
-    return {key: min(rev_1.get(key, u'-1'), rev_2.get(key, u'-1'))
+    return {key: str(min(int(rev_1.get(key, u'-1')), int(rev_2.get(key, u'-1'))))
             for key in set(rev_1.keys() + rev_2.keys())}
 
 def outdated_revisions(rev_1, rev_2):
