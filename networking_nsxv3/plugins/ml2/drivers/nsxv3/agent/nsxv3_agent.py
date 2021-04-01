@@ -422,7 +422,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             )
         # TODO - imperative API - replace with policy
         else:
-            revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model)
+            revs_nsx, _, _ = self.nsxv3.get_revisions(sdk_model=sdk_model, only_with_revision=isinstance(sdk_model, IPSet))
 
         outdated = nsxv3_utils.outdated_revisions(revs_os, revs_nsx)
         missing = set(revs_os.keys()).difference(revs_nsx.keys())
