@@ -629,7 +629,7 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
             services=[FirewallService(service=service)] if service else None,
             applied_tos=[applied_to])
 
-    def get_revisions(self, sdk_model, attr_key=None, attr_val=None):
+    def get_revisions(self, sdk_model, attr_key=None, attr_val=None, only_with_revision=False):
         sdk_type = str(sdk_model.__class__.__name__)
         name_rev = {}
         name_id = {}
@@ -673,6 +673,10 @@ class NSXv3Facada(nsxv3_client.NSXv3ClientImpl):
                         if tag.get("scope") == rev_scope:
                             revision = tag.get("tag")
                             break
+
+                # skip entities without revision
+                if only_with_revision and revision == "-1":
+                    continue
 
                 # Skip Firewall Rule IPSets as they are immutable
                 if 'IPSet' in sdk_type and obj.get("_create_user", "") != "admin":

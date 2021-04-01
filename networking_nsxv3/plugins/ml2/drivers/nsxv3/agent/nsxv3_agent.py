@@ -444,7 +444,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         pl = nsxv3_utils.concat_revisions(self.infra.get_revisions(rc.SecurityPolicy),
                                           self.infra.get_revisions(rc.SecurityPolicyGroup))
         mg_nsgroup, _, _ = self.nsxv3.get_revisions(sdk_model=NSGroup(create_user="admin"))
-        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=IPSet(create_user="admin"))
+        mg_ipset, _, _ = self.nsxv3.get_revisions(sdk_model=IPSet(create_user="admin"), only_with_revision=True)
         mg_fwsect, _, _ = self.nsxv3.get_revisions(sdk_model=FirewallSection(create_user="admin"))
 
         # Get all security group IDs 
