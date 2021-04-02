@@ -13,6 +13,7 @@ import oslo_messaging
 
 from com.vmware.nsx_client import TransportZones
 from com.vmware.nsx_client import LogicalPorts
+from com.vmware.nsx_client import IpSets
 from com.vmware.nsx.model_client import (FirewallRule,
                                          FirewallSection,
                                          IPSet,
@@ -69,6 +70,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                  rpc, runner):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
             context, agent, sg_agent)
+        self.is_first_boot = True
         self.nsxv3 = nsxv3
         self.infra = nsxv3_infra
         self.vsphere = vsphere
@@ -393,6 +395,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             timestamp = nsxv3_facada.Timestamp(
                 "last_full_synchronization", self.nsxv3, TransportZones, tz, cfg.CONF.AGENT.sync_full_schedule)
 
+            if self.is_first_boot:
+                self.first_boot()
+                self.is_first_boot = False
+
             # Policy compatbile and migrating?
             # Then only sync shallow to ensure slow migration and low policy-realiziation queue
             if not timestamp.has_expired() or self.migration_mode:
@@ -402,7 +408,26 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 LOG.info("Starting a full inventory synchronization")
                 self._sync_inventory_full()
                 timestamp.update()
+    
+    def first_boot(self):
+        LOG.info("Executing one-time first-boot tasks")
+        # A failure in this code should not lead to failure in agent operation
+        try:
+            os_id_nsx_id_map = self.infra.get_orphan_ipsets()
+        except Exception as err:
+            LOG.error("Unable to fetch orphan IPSets %s", err)
+            return
+        
+        for os_id in os_id_nsx_id_map:
+            try:
+                self.nsxv3.delete(sdk_service=IpSets, 
+                                  sdk_model=IPSet(id=os_id_nsx_id_map[os_id]))
+            except Exception:
+                # Exception will be logged on the NSXv3 client level
+                # Clean have to be greedy and clean as much as possible
+                pass
 
+        
     def _sync_report(self, object_name, outdated, orphaned):
         report = dict()
         report["outdated"] = outdated

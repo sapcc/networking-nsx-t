@@ -622,6 +622,62 @@ class InfraService:
         else:
             return -1
 
+    def get_orphan_ipsets(self):
+        """
+        Find all orphan IPSets which used to be one-to-one associated with a Rules from Management API
+        These IPSets share the same name as the rule they have been associated with
+        The identification is implemented by querying all IPSets IDs of type Rule CIDR and
+        remove these that still have an associated rule with.
+        """
+        path = "/policy/api/v1/search"
+        params = {
+            "data_source": "ALL",
+            "included_fields": "display_name",
+            "page_size": cfg.CONF.NSXV3.nsxv3_max_records_per_query,
+            "cursor": ""
+        }
+
+        # Get IPSets representing CIDR in Management API
+        ips_query = { "query": "resource_type:IPSet AND _create_user:admin AND !tags.scope:revision_number"}
+        # Get Management Rules in Management API
+        fwr_query = {"query": "resource_type:FirewallRule AND !_meta:*"}
+
+        ips_query.update(params)
+        ips_query.update({"included_fields": "display_name,id",})
+        fwr_query.update(params)
+
+        ips = []
+        cursor="begin"
+        while cursor:
+            if cursor == "begin":
+                cursor = ""
+            ips_query.update({"cursor": cursor})
+            response = self._client.get(path=path, params=ips_query)
+            data = json.loads(response.content)
+            cursor = data.get("cursor")
+            ips += data.get("results")
+            
+        
+        ips_ids = set([o.get("display_name") for o in ips])
+        cursor="begin"
+        while cursor:
+            if cursor == "begin":
+                cursor = ""
+            fwr_query.update({"cursor": cursor})
+            response = self._client.get(path=path, params=fwr_query)
+            data = json.loads(response.content)
+            cursor = data.get("cursor")
+            results = data.get("results")
+            ips_ids = ips_ids.difference([ o.get("display_name") for o in results ])
+        
+        os_id_nsx_id_map = dict((o, None) for o in ips_ids)
+
+        for o in ips:
+            key = o.get("display_name")
+            if os_id_nsx_id_map.has_key(key):
+                os_id_nsx_id_map[key] = o.get("id")
+        return os_id_nsx_id_map
+
     def delete_object(self, resource_container, identifier):
         path = "{}{}/{}".format(INFRA, resource_container, identifier)
         return self._client.delete(path=path, params={})
