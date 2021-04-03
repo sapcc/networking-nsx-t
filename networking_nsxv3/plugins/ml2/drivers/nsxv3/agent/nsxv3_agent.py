@@ -410,7 +410,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 timestamp.update()
     
     def first_boot(self):
-        LOG.info("Executing one-time first-boot tasks")
+        LOG.info("One-time first-boot tasks - started ...")
         # A failure in this code should not lead to failure in agent operation
         try:
             os_id_nsx_id_map = self.infra.get_orphan_ipsets()
@@ -421,11 +421,13 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         for os_id in os_id_nsx_id_map:
             try:
                 self.nsxv3.delete(sdk_service=IpSets, 
-                                  sdk_model=IPSet(id=os_id_nsx_id_map[os_id]))
+                                  sdk_model=IPSet(id=os_id_nsx_id_map[os_id],
+                                                  display_name=os_id))
             except Exception:
                 # Exception will be logged on the NSXv3 client level
                 # Clean have to be greedy and clean as much as possible
                 pass
+        LOG.info("One-time first-boot tasks - completed.")
 
         
     def _sync_report(self, object_name, outdated, orphaned):
