@@ -1,31 +1,4 @@
-QOS_SPEC_SHAPER_CONFIGURATION = {
-    "IngressRateShaper": {
-        "resource_type": "IngressRateShaper",
-        "enabled": False,
-        "average_bandwidth_mbps": 0,
-        "peak_bandwidth_mbps": 0,
-        "burst_size_bytes": 0
-    },
-    "IngressBroadcastRateShaper": {
-        "resource_type": "IngressBroadcastRateShaper",
-        "enabled": False,
-        "burst_size_bytes": 0,
-        "peak_bandwidth_kbps": 0,
-        "average_bandwidth_kbps": 0
-    },
-    "EgressRateShaper": {
-        "resource_type": "EgressRateShaper",
-        "enabled": False,
-        "average_bandwidth_mbps": 0,
-        "peak_bandwidth_mbps": 0,
-        "burst_size_bytes": 0
-    }
-}
 
-QOS_SPEC_DSCP = {
-    "mode": "TRUSTED",
-    "priority": 0
-}
 
 # IP_PROTOCOL_NUMBERS source
 # https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
@@ -168,12 +141,6 @@ IP_PROTOCOL_NUMBERS = {
     "shim6": 140,
     "wesp": 141,
     "rohc": 142
-}
-
-
-ICMP_PROTOCOLS = {
-    "IPv4": "ICMPv4",
-    "IPv6": "ICMPv6"
 }
 
 VALID_ICMP_RANGES = {

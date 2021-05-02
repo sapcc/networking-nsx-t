@@ -1,0 +1,211 @@
+CHANGES
+=======
+
+* Improve logging messages
+* Clean up orphan IPSets every time when agent boots
+* Reduce ipset size by reconciling, fix port-not-found exception, fix special case revision detection
+* Moved inventory\_sync to own intervalloop, caused timeout for agent report\_state
+* Fix update of group members if remote security group is self-referencing
+* Silence exceptions caused by missing ports in neutron
+* Add timeout to operation scheduler
+* revert logical switch delay
+* Don't retry ObjectNotFound SGs
+* fix re-schedule of missing dependencies
+* Ignore trunk-ports for which nsx-t is not responsible
+* safeguard mgmt cleanup
+* fix bug where mgmt-api sections where deleted although not yet synced to policy api
+* Drop trunk\_update(), as this CB is not needed
+* check existance of logical switch before creating it, thus saving some delay
+* Detect Migration Mode: migrate mgmt sgs to policy api, but hold realization queue low and prefer urgent updates
+* remove old 2.4+policy workaround
+* Wait for 10 seconds after logical-switch creation
+* fix imports
+* Add monkey patch
+* Wait for LS state to become success on port binding
+* removed pre-nsx-t 2.4 workarounds, nsxv3\_use\_policy\_api for override policy-usage-decision
+* Automatic switch between Management and Policy APIs
+* Pass object via id to ObjectNotFound
+* use correct import for neutron exceptions
+* Don't double-lock for mgmt-api
+* Ability so switch between NSX Management and Policy APIs
+* fix typo
+* Autodiscover NSX-T Version and use quirks, reschedule retry on AtomicRequest Error
+* Raise ObjectNotFound as expected exception on server
+* Add legacy support for deleting Policies via DELETE
+* Use fresh request session for login
+* Retry for The object AtomicRequest exceptions with nsx-t 2.4
+* Don't retry in policy \_login function, mitigating recursive lock
+* limit amount of orphans to delete per sync loop
+* added iterative (non-declarative) way to delete orphaned services
+* omit serivce deletion
+* Revert "Fetch Service before trying to delete, mitigate service entry error"
+* Fetch Service before trying to delete, mitigate service entry error
+* Reduce \`Unable to process a service\` Exception
+* fix ICMP rules
+* added ability to cleanup all mgmt-api sections
+* Multiple fixes, better cleanup of orphaned mgmt entities, fixed deletion of orphaned policies
+* fix deletion of services
+* fix cli sync for specific sg
+* fix debug setting for cli sync
+* fix circular dependencies for cli sync
+* Ability to retry object synchronization on failure
+* Unify group memebrship criteria for 2.4.2, 2.5.2 and 3.1.0
+* fix Terminate gracefully, wait for policies initalized
+* Add an option to sync security groups but disable them
+* Enhance the CLI to perform fullsync for a resource type
+* Sync only non-policy managed objects
+* improve debug logs, retry 3 times instead of infinite
+* fix AttributeError: 'NoneType' object has no attribute 'isdigit'
+* only cleanup MGMT sg if they are older than current
+* Force sync of all groups with missing sections/groups, fix for mgmt-cleanup
+* Revert "Bind only known networks"
+* Add support for Port Trunking
+* Refactoring update sg revision
+* Configure default revision\_number for IPSet
+* Bugfix - Cleanup of FW Management object having same name as FW Policy object
+* Improve clean up of Management API objects
+* Add support for Segment and Logical Ports
+* Bugfix - extract network definition from CIDRs
+* Fix TypeError for egress rules with destination
+* Set timeout for vapi requests\_connector
+* Handle 0.0.0.0/x firewall rules
+* Bind only known networks
+* Introduce Prometheus Exporter
+* Bugfix - Set Security delete flags
+* ignore security-group updates missing in neutron
+* fix revision compare type
+* nsxt\_client get: only access admin-created ports
+* don't emit error if authentication required
+* also use array for port-sync retry mechanism
+* queue expects list for id's in port\_update
+* Remove only agent own orphan objects
+* Retry port update
+* fix GRE instead of GRES ip protocol mapping
+* Select a Default Connectivity Strategy for DFW
+* Remove NSX-T object ID prefix - agent\_id
+* Delay NSX-T Orphan ports deletion
+* Adapt agent to NSX-T 2.4.2 Policy API
+* Revert "Migrate Security Group realization to NSX-T Policy API"
+* Bugfix - scoup group reference prefix
+* Migrate Security Group realization to NSX-T Policy API
+* Do not update/remove ports not managed by the agent
+* Revert "Merge pull request #34 from sapcc/revert-33-development/queens-bugfix"
+* Revert "Development/queens bugfix"
+* Detach port when removing
+* Remove migration check from the agent
+* Remove orphaned ports during sync
+* Bugfix - NSX-T empty error message body
+* Implement sync loop with two priority queues
+* fix bug for SG rules with remote ip network XX0.0.0.0
+* Add Timeout settings to NSX-T HTTP requests
+* Revert "Revert "Bugfix on Sync Priority index""
+* Revert "Revert "SNT-85 Bugfix Prevent agent exit on synchronization errors""
+* Revert "Revert "Handle Neutron RPC calls asynchrounously""
+* Revert "Handle Neutron RPC calls asynchrounously"
+* Revert "SNT-85 Bugfix Prevent agent exit on synchronization errors"
+* Revert "Bugfix on Sync Priority index"
+* convert ::/0 to ANY\_TARGET
+* Bugfix - scheduler reports negative sleep interval
+* Apply flake8 fixes
+* Pull request feedback
+* SNT-83 Bugfix Handle incorrect payload errors
+* SNT-85 Bugfix Prevent agent exit on synchronization errors
+* SNT-84 Bugfix thread synchronization issue
+* Due to API bugs in nsx-t: adapt sg group to current set of supported api calls
+* Bugfix on Sync Priority index
+* Introduce Capability Tags - TCP Strict Check
+* Bugfix - Resolve properly Priority Enum
+* Handle Neutron RPC calls asynchrounously
+* Revert "Handle Neutron RPC calls asynchrounously"
+* Handle Neutron RPC calls asynchrounously
+* Handle exceptions in get\_security\_group\_revision gracefully
+* Improve synchronization between OpenStack and NSX-T
+* fix ip protocol names test
+* moved nsxt rpc calls to it's own topic, fixed get\_port\_revision\_tuples
+* rpc logging, try to fix endpoint not found
+* Make use of ANY\_TARGET more explicit
+* accept hosts bits set for remote\_ip\_prefix networks
+* fix is\_valid\_uuid check
+* Replace Agent DB calls with Neutron RCP
+* Log timestamp to function execution in Scheduler
+* Create all Security Groups before use their references in rules
+* Replace ratelimiter implementaiton
+* Upate gitignore with venv
+* workaround for too large ipsets: compact with netaddr library
+* Bugfix - Apply rate limiter on security group sync
+* accept hosts bits set for remote\_ip\_prefix networks
+* Bugfix - NSServiceElement serialization
+* fix pagination
+* Revert "evaluate dvs migration variable during runtime"
+* Bugix - Get by ID never worked for update
+* Add debug log to the DFW Rule add/remove tasks
+* Bugfix - Add rate limitter to the logging
+* Bigfix - switch migration from dvs
+* evaluate dvs migration variable during runtime
+* fix auto-reconcillation sync port for LogicalPorts
+* don't increment revision if post fails
+* Remove .pyc binary files, add \*.pyc to .gitignore
+* Disable migration from DVS ML2 Driver by default
+* Add lock to the synchronization task
+* Bugfix - Rate limiter for pure REST Post
+* Bugfix - Duplication of Firewall objects
+* Recreate instead of reuse session on Unauthorized
+* Bugfix NSXv3 API request limiter
+* Bugfix - Security group source None on update
+* Set default SG rule to allow ANY
+* Revert "Add proper error handling to the migration module"
+* ensure nic is connected aufter migration
+* Add proper error handling to the migration module
+* don't abort nsx-t configuration if migration fails
+* fix binding\_host\_id check and skip non-existing vms in vsphere
+* ignore cidr ranges also in port\_update
+* Disable CIDR from manual port binding
+* Bugfix - Logging message formatting
+* Bugfix - Logging message formatting
+* Fix formatting according to flake8
+* Add network segmentation id as part of port details during binding
+* Automatically renew vSphere connection after expiration
+* Disable migration from DVS to NSX-T during synchronization window
+* Move segmentation\_id lock into utils
+* Introduce IP Protocol Service for firewall rules
+* Remove NSX-T trigger from the migration code
+* Bugfix - Update vCenter NIC externalId with correct value
+* Update vCenter port exteranl ID to point to the OpenStack port id
+* Add port protection configuration switch
+* fix tls constant for older python version
+* fix keyerror in security\_group\_rule\_updated
+* use PROTOCOL\_TLS for connection to vsphere
+* update files to ignore
+* Enable NSXv3 and DVS drivers to work together
+* fix orphan cleaning exception, check port type, provisioning\_complete
+* Fix formatting - flake8wrap
+* Bugfix - Firewall rule with desintation ANY
+* Bugfix - Separate agent reporting from sync
+* Removed vlan\_trunk\_spec from new LogicalSwitch configuration
+* fix greenthread pool argument call
+* Bugfix - NSX-T Firewall creation eve-consistency
+* Bugfix - Ansible - Set correct driver name
+* Update requirements.txt with ratelimiter
+* Limit Agent API calls per second to NSXv3
+* fixed entrypoint
+* NSX object lookup performance optimizations
+* Bugfix - SG Rule update missing method
+* Make QoS Policy port binding optional
+* Fix typo in Ansible playbook
+* fix typo in entry\_points
+* added nsxv3 security group alias
+* Bugfix - Handle NSX-T SDK polymorphic types
+* Automate ML2 Install and config with Ansible
+* import custom config to ensure options have been populated
+* add tooz to requirements
+* Address comments from the review part 2
+* Address comments from the review
+* Fix code style for flake8wrap
+* Feature - Agent CLI for object synchronization
+* Bugfix - Security Group Removal
+* Security Group Methods
+* Fix README formatting
+* Initial commit
+* Initial commit
+* Create License
+* Initial commit

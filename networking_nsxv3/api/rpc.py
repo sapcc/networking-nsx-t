@@ -1,18 +1,16 @@
 from datetime import datetime
+
 import oslo_messaging
-from oslo_log import log
-from neutron.common import rpc
-from neutron.common import topics
-
-from osprofiler.profiler import trace_cls
-
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
-
+from neutron.common import rpc, topics
+from neutron_lib import context as neutron_context
 from neutron_lib import exceptions
 from neutron_lib.plugins import directory
+from oslo_config import cfg
 from oslo_log import helpers as log_helpers
-
+from oslo_log import log
+from osprofiler.profiler import trace_cls
 
 LOG = log.getLogger(__name__)
 
@@ -33,32 +31,19 @@ class NSXv3AgentRpcClient(object):
         self.rpc = rpc.get_client(target)
 
     def _get_call_context(self, host=None):
-        # True - broadcast to all agents
-        # False - send only to the host
-        fanout = True if host is None else False
-
         topic = topics.get_topic_name(
-            topics.AGENT, nsxv3_constants.NSXV3, topics.UPDATE, host
-        )
+            topics.AGENT, nsxv3_constants.NSXV3, topics.UPDATE, host)
 
+        # fanout=True - broadcast to all agents, False only to the host
         return self.rpc.prepare(
             version=self.version,
             topic=topic,
-            fanout=fanout
-        )
+            fanout=True if host is None else False)
 
-    def get_network_bridge(
-            self,
-            current,
-            network_segments,
-            network_current,
-            host):
-        LOG.debug(
-            "Bind port on Host {} & Segment {}".format(
-                host, network_segments))
+    def get_network_bridge(self, current, network_segments, network_current, host):
+        LOG.debug("Bind port on Host {} & Segment {}".format(host, network_segments))
         return self._get_call_context(host).call(
-            self.context,
-            'get_network_bridge',
+            self.context, 'get_network_bridge',
             current=current,
             network_segments=network_segments,
             network_current=network_current
@@ -67,36 +52,24 @@ class NSXv3AgentRpcClient(object):
     def create_policy(self, context, policy):
         LOG.debug("All gents. Creating policy={}.".format(policy.name))
         return self._get_call_context().cast(
-            self.context,
-            'create_policy',
-            policy=policy
-        )
+            self.context, 'create_policy', policy=policy)
 
     def update_policy(self, context, policy):
         LOG.debug("All gents. Updating policy={}.".format(policy.name))
         if (hasattr(policy, "rules")):
             return self._get_call_context().cast(
-                self.context,
-                'update_policy',
-                policy=policy
-            )
+                self.context, 'update_policy',policy=policy)
 
     def delete_policy(self, context, policy):
         LOG.debug("All gents. Deleting policy={}.".format(policy.name))
         return self._get_call_context().cast(
-            self.context,
-            'delete_policy',
-            policy=policy
-        )
+            self.context, 'delete_policy', policy=policy)
 
     def update_policy_precommit(self, context, policy):
         LOG.debug("All gents. Validating policy={}.".format(policy))
         if (hasattr(policy, "rules")):
             return self._get_call_context().cast(
-                self.context,
-                'validate_policy',
-                policy=policy
-            )
+                self.context, 'validate_policy', policy=policy)
 
 
 class NSXv3ServerRpcApi(object):
@@ -108,90 +81,46 @@ class NSXv3ServerRpcApi(object):
 
     rpc_version = nsxv3_constants.NSXV3_SERVER_RPC_VERSION
 
-    _LIMIT = 100
-    _CREATE_AFTER = datetime.utcfromtimestamp(0).isoformat()
-
-    def __init__(self, context, topic, host):
-        target = oslo_messaging.Target(topic=topic, version=self.rpc_version)
+    def __init__(self):
+        target = oslo_messaging.Target(topic=nsxv3_constants.NSXV3_SERVER_RPC_TOPIC, 
+                                       version=self.rpc_version)
+        self.context = neutron_context.get_admin_context()
         self.client = rpc.get_client(target)
-        self.context = context
-        self.host = host
-        self.topic = topic
+        self.host = cfg.CONF.host        
 
     @log_helpers.log_method_call
-    def get_port_revision_tuples(
-            self, limit=_LIMIT, created_after=_CREATE_AFTER):
+    def get_ports_revisions(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(
-            self.context,
-            'get_port_revision_tuples',
-            host=self.host,
-            limit=limit,
-            created_after=created_after)
+        return cctxt.call(self.context, 'get_ports_revisions',
+                          host=self.host, limit=limit, offset=offset)
 
     @log_helpers.log_method_call
-    def get_qos_policy_revision_tuples(
-            self, limit=_LIMIT, created_after=_CREATE_AFTER):
+    def get_qoses_revisions(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_qos_policy_revision_tuples',
-                          limit=limit, created_after=created_after)
+        return cctxt.call(self.context, 'get_qoses_revisions',
+                          host=self.host, limit=limit, offset=offset)
 
     @log_helpers.log_method_call
-    def get_security_group_revision(self, security_group_id):
+    def get_security_groups_revisions(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group_revision',
+        return cctxt.call(self.context, 'get_security_groups_revisions',
+                          host=self.host, limit=limit, offset=offset)
+
+    @log_helpers.log_method_call
+    def get_security_group(self, security_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_security_group',
                           security_group_id=security_group_id)
-
-    @log_helpers.log_method_call
-    def get_security_group_revision_tuples(
-            self, limit=_LIMIT, created_after=_CREATE_AFTER):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group_revision_tuples',
-                          limit=limit, created_after=created_after)
-
-    @log_helpers.log_method_call
-    def has_security_group_tag(
-            self, security_group_id, tag_name):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'has_security_group_tag',
-                          security_group_id=security_group_id,
-                          tag_name=tag_name)
 
     @log_helpers.log_method_call
     def get_qos(self, qos_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_qos', qos_id=qos_id)
-
-    @log_helpers.log_method_call
-    def get_qos_bwl_rules(self, qos_id):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_qos_bwl_rules', qos_id=qos_id)
-
-    def get_qos_dscp_rules(self, qos_id):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_qos_dscp_rules', qos_id=qos_id)
+        return cctxt.call(self.context, 'get_qos', host=self.host, qos_id=qos_id)
 
     @log_helpers.log_method_call
     def get_port(self, port_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port', port_id=port_id)
-
-    @log_helpers.log_method_call
-    def get_port_security_groups(self, port_id):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port_security_groups',
-                          port_id=port_id)
-
-    @log_helpers.log_method_call
-    def get_port_allowed_pairs(self, port_id):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port_allowed_pairs',
-                          port_id=port_id)
-
-    @log_helpers.log_method_call
-    def get_port_addresses(self, port_id):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port_addresses', port_id=port_id)
+        return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
 
     @log_helpers.log_method_call
     def get_rules_for_security_groups_id(self, security_group_id):
@@ -206,12 +135,22 @@ class NSXv3ServerRpcApi(object):
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_group_members_address_bindings_ips(self,
-                                                        security_group_id):
+    def get_security_groups_for_host(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context,
-                          'get_security_group_members_address_bindings_ips',
-                          security_group_id=security_group_id)
+        return cctxt.call(self.context, 'get_security_groups_for_host',
+                          host=self.host, limit=limit, offset=offset)
+
+    @log_helpers.log_method_call
+    def get_remote_security_groups_for_host(self, limit, offset):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_remote_security_groups_for_host',
+                          host=self.host, limit=limit, offset=offset)
+
+    @log_helpers.log_method_call
+    def has_security_group_used_by_host(self, security_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'has_security_group_used_by_host',
+                          host=self.host, security_group_id=security_group_id)
 
 
 class NSXv3ServerRpcCallback(object):
@@ -231,58 +170,27 @@ class NSXv3ServerRpcCallback(object):
         return self._plugin
 
     @log_helpers.log_method_call
-    def get_port_revision_tuples(self, context, host, limit, created_after):
-        return db.get_port_revision_tuples(context, host, limit, created_after)
+    def get_ports_revisions(self, context, host, limit, offset):
+        return db.get_ports_revisions(context, host, limit, offset)
 
     @log_helpers.log_method_call
-    def get_qos_policy_revision_tuples(self, context, limit, created_after):
-        return db.get_qos_policy_revision_tuples(context, limit, created_after)
+    def get_qoses_revisions(self, context, host, limit, offset):
+        return db.get_qoses_revisions(context, host, limit, offset)
+    
+    @log_helpers.log_method_call
+    def get_security_groups_revisions(self, context, host, limit, offset):
+        return db.get_security_groups_revisions(context, host, limit, offset)
 
     @log_helpers.log_method_call
-    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
-    def get_security_group_revision(self, context, security_group_id):
-        return db.get_security_group_revision(context, security_group_id)
-
-    @log_helpers.log_method_call
-    def get_security_group_revision_tuples(
-            self, context, limit, created_after):
-        return db.get_security_group_revision_tuples(
-            context, limit, created_after)
-
-    def has_security_group_tag(
-            self, context, security_group_id, tag_name):
-        return db.has_security_group_tag(
-            context, security_group_id, tag_name)
-
-    @log_helpers.log_method_call
-    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
-    def get_qos(self, context, qos_id):
-        return db.get_qos(context, qos_id)
-
-    @log_helpers.log_method_call
-    def get_qos_bwl_rules(self, context, qos_id):
-        return db.get_qos_bwl_rules(context, qos_id)
-
-    @log_helpers.log_method_call
-    def get_qos_dscp_rules(self, context, qos_id):
-        return db.get_qos_dscp_rules(context, qos_id)
-
-    @log_helpers.log_method_call
-    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
-    def get_port(self, context, port_id):
-        return db.get_port(context, port_id)
-
-    @log_helpers.log_method_call
-    def get_port_security_groups(self, context, port_id):
-        return db.get_port_security_groups(context, port_id)
-
-    @log_helpers.log_method_call
-    def get_port_allowed_pairs(self, context, port_id):
-        return db.get_port_allowed_pairs(context, port_id)
-
-    @log_helpers.log_method_call
-    def get_port_addresses(self, context, port_id):
-        return db.get_port_addresses(context, port_id)
+    def get_security_group(self, context, security_group_id):
+        id_rev = db.get_security_group_revision(context, security_group_id)
+        if id_rev:
+            return {
+                "id": id_rev[0],
+                "revision_number": id_rev[1],
+                "tags": db.get_security_group_tag(context, security_group_id),
+                "ports": db.get_port_id_by_sec_group_id(context, sec_group_id)
+            }
 
     @log_helpers.log_method_call
     def get_rules_for_security_groups_id(self, context, security_group_id):
@@ -290,10 +198,54 @@ class NSXv3ServerRpcCallback(object):
 
     @log_helpers.log_method_call
     def get_security_group_members_ips(self, context, security_group_id):
-        return db.get_security_group_members_ips(context, security_group_id)
+        return \
+            db.get_security_group_members_ips(context, security_group_id) + \
+            db.get_security_group_members_address_bindings_ips(context, security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_group_members_address_bindings_ips(self, context,
-                                                        security_group_id):
-        return db.get_security_group_members_address_bindings_ips(
-            context, security_group_id)
+    def get_security_groups_for_host(self, context, host, limit, offset):
+        return db.get_security_groups_for_host(context, host, limit, offset)
+
+    @log_helpers.log_method_call
+    def get_remote_security_groups_for_host(self, context, host, limit, offset):
+        return db.get_remote_security_groups_for_host(context, host, limit, offset)
+    
+    @log_helpers.log_method_call
+    def has_security_group_used_by_host(self, context, host, security_group_id):
+        return db.has_security_group_used_by_host(context, host, security_group_id)
+
+    @log_helpers.log_method_call
+    def get_port(self, context, host, port_id):
+        port = db.get_port(context, host, port_id)
+
+        # vRA with NSX-T does not support CIDR as port manual binding - skipping X/X
+
+        for ip in db.get_port_addresses(context, port_id):
+            if "/" in ip:
+                continue
+            port["address_bindings"].append({"ip_address": ip,  "mac_address": port["mac_address"]})
+
+        for ip, mac in db.get_port_allowed_pairs(context, port_id):
+            if "/" in ip:
+                continue
+            port["address_bindings"].append({"ip_address": ip, "mac_address": mac})
+
+        for sg_id,_ in db.get_port_security_groups(context, port_id):
+            port["security_groups"].append(sg_id)
+        
+        return port
+
+    @log_helpers.log_method_call
+    @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
+    def get_qos(self, context, host, qos_id):
+        if not db.get_qos_ports_by_host(context, host, qos_id):
+            return
+
+        q = db.get_qos(context, qos_id)
+        qos = {"id": qos_id, "name": q[0], "revision_number": q[1], "rules": []}
+
+        for _, dscp_mark in db.get_qos_dscp_rules(context, qos_id):
+            qos["rules"].append({"dscp_mark": dscp_mark})
+
+        for dir, bps, burst in db.get_qos_bwl_rules(context, qos_id):
+            qos["rules"].append({"direction": dir,"max_kbps": bps, "max_burst_kbps": burst})

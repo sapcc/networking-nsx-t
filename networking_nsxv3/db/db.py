@@ -1,86 +1,71 @@
+import json
 from datetime import datetime
 
-from neutron.db.models import securitygroup as sg_db
-from neutron.db.models import allowed_address_pair
-from neutron.db.models import tag as tag_model
-from neutron.db.qos.models import QosPortPolicyBinding
-from neutron.db.qos.models import QosPolicy
-from neutron.db.qos.models import QosBandwidthLimitRule
-from neutron.db.qos.models import QosDscpMarkingRule
-from neutron.db.models_v2 import Port
-from neutron.db.standard_attr import StandardAttribute
-from neutron.plugins.ml2.models import PortBindingLevel
-from neutron.db.models_v2 import IPAllocation
-from neutron.db.models.allowed_address_pair import AllowedAddressPair
-from neutron.services.trunk import models as trunk_model
-
-from neutron.plugins.ml2.models import PortBinding
-
 from networking_nsxv3.common import constants as nsxv3_constants
-from neutron_lib import exceptions
+from neutron.db.models import allowed_address_pair
+from neutron.db.models import securitygroup as sg_db
+from neutron.db.models import tag as tag_model
+from neutron.db.models.allowed_address_pair import AllowedAddressPair
+from neutron.db.models_v2 import IPAllocation, Port
+from neutron.db.qos.models import (QosBandwidthLimitRule, QosDscpMarkingRule,
+                                   QosPolicy, QosPortPolicyBinding)
+from neutron.db.standard_attr import StandardAttribute
+from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
+from neutron.services.trunk import models as trunk_model
+from neutron_lib.api.definitions import portbindings
 
 
-def _validate_one(result, error):
-    if result:
-        return result
-    else:
-        raise exceptions.ObjectNotFound(id=error)
-
-
-def _get_datetime(datetime_value):
-    if isinstance(datetime_value, datetime):
-        return datetime_value
-    elif isinstance(datetime_value, basestring):
-        return datetime.strptime(datetime_value, '%Y-%m-%dT%H:%M:%S.%f')
-    else:
-        raise Exception(
-            "datetime_value object should be datetime or string in isoformat")
-
-
-def get_port_revision_tuples(
-        context,
-        host,
-        limit,
-        created_after):
+def get_ports_revisions(context, host, limit, offset):
     return context.session.query(
         Port.id,
         StandardAttribute.revision_number,
-        StandardAttribute.created_at
     ).join(
         StandardAttribute,
         PortBindingLevel
-    ).order_by(
-        StandardAttribute.created_at
     ).filter(
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
-        StandardAttribute.created_at >= _get_datetime(created_after)
     ).limit(
         limit
+    ).offset(
+        offset
     ).all()
 
 
-def get_qos_policy_revision_tuples(
-        context,
-        limit,
-        created_after):
+def get_qoses_revisions(context, host, limit, offset):
     return context.session.query(
         QosPolicy.id,
         StandardAttribute.revision_number,
-        StandardAttribute.created_at
     ).join(
         StandardAttribute
-    ).order_by(
-        StandardAttribute.created_at
-    ).filter(
-        StandardAttribute.created_at >= _get_datetime(created_after)
     ).limit(
         limit
+    ).offset(
+        offset
+    ).all()
+
+
+def get_security_groups_revisions(context, host, limit, offset):
+    return context.session.query(
+        sg_db.SecurityGroup.id,
+        StandardAttribute.revision_number,
+    ).join(
+        sg_db.SecurityGroupPortBinding
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).limit(
+        limit
+    ).offset(
+        offset
     ).all()
 
 
 def get_security_group_revision(context, security_group_id):
-    result = context.session.query(
+    return context.session.query(
         sg_db.SecurityGroup.id,
         StandardAttribute.revision_number
     ).join(
@@ -88,44 +73,21 @@ def get_security_group_revision(context, security_group_id):
     ).filter(
         sg_db.SecurityGroup.id == security_group_id
     ).one_or_none()
-    return _validate_one(result,
-                         "Security Group ID='{}'".format(security_group_id))
 
 
-def get_security_group_revision_tuples(
-        context,
-        limit,
-        created_after):
+def get_security_group_tag(context, security_group_id):
     return context.session.query(
-        sg_db.SecurityGroup.id,
-        StandardAttribute.revision_number,
-        StandardAttribute.created_at
+        tag_model.Tag.tag
     ).join(
-        StandardAttribute
-    ).order_by(
-        StandardAttribute.created_at
-    ).filter(
-        StandardAttribute.created_at >= _get_datetime(created_after)
-    ).limit(
-        limit
-    ).all()
-
-
-def has_security_group_tag(context, security_group_id, tag_name):
-    result = context.session.query(
-        sg_db.SecurityGroup.id
-    ).join(
-        tag_model.Tag,
+        sg_db.SecurityGroup,
         tag_model.Tag.standard_attr_id == sg_db.SecurityGroup.standard_attr_id
     ).filter(
-        tag_model.Tag.tag == tag_name,
         sg_db.SecurityGroup.id == security_group_id
     ).all()
-    return len(result) != 0
 
 
 def get_qos(context, qos_id):
-    result = context.session.query(
+    return context.session.query(
         QosPolicy.name,
         StandardAttribute.revision_number
     ).filter(
@@ -133,8 +95,22 @@ def get_qos(context, qos_id):
     ).join(
         StandardAttribute
     ).one_or_none()
-    return _validate_one(result,
-                         "QoS Policy ID='{}'".format(qos_id))
+
+
+def get_qos_ports_by_host(context, host, qos_id):
+    return context.session.query(
+        Port.id,
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == Port.id
+    ).join(
+        QosPortPolicyBinding,
+        QosPortPolicyBinding.port_id == Port.id
+    ).filter(
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+        QosPolicy.id == qos_id
+    ).limit(1).one_or_none()
 
 
 def get_qos_bwl_rules(context, qos_id):
@@ -156,7 +132,7 @@ def get_qos_dscp_rules(context, qos_id):
     ).all()
 
 
-def get_port(context, port_id):
+def get_port(context, host, port_id):
     result = context.session.query(
         Port.id,
         Port.mac_address,
@@ -168,10 +144,11 @@ def get_port(context, port_id):
         PortBinding.vif_details,
         trunk_model.Trunk.port_id
     ).filter(
-        Port.id == port_id
+        Port.id == port_id,
+        PortBindingLevel.host == host
     ).join(
         StandardAttribute,
-        PortBinding,
+        PortBinding
     ).outerjoin(
         QosPortPolicyBinding,
         QosPolicy
@@ -181,8 +158,28 @@ def get_port(context, port_id):
     ).outerjoin(
         trunk_model.Trunk
     ).one_or_none()
-    return _validate_one(result,
-                         "Port ID='{}'".format(port_id))
+
+    if not result:
+        return None
+
+    (id, mac, up, status, qos_id, rev, binding_host, vif_details,
+     parent_id) = result
+
+    return {
+        "id": id,
+        "parent_id": parent_id,
+        "mac_address": mac,
+        "admin_state_up": up,
+        "status": status,
+        "qos_policy_id": qos_id,
+        "security_groups": [],
+        "address_bindings": [],
+        "revision_number": rev,
+        "binding:host_id": binding_host,
+        "vif_details": json.loads(vif_details),
+        portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
+        portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
+    }
 
 
 def get_port_security_groups(context, port_id):
@@ -279,7 +276,7 @@ def get_rules_for_security_groups_id(context, security_group_id):
     ).all()
 
 
-def _get_port_id_by_sec_group_id(context, sec_group_id):
+def get_port_id_by_sec_group_id(context, sec_group_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.port_id
     ).filter(
@@ -287,18 +284,62 @@ def _get_port_id_by_sec_group_id(context, sec_group_id):
     ).all()
 
 
+def get_security_groups_for_host(context, host, limit, offset):
+    return context.session.query(
+        sg_db.SecurityGroupPortBinding.security_group_id,
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3
+    ).distinct().limit(limit).offset(offset).all()
+
+
+def get_remote_security_groups_for_host(context, host, limit, offset):
+    return context.session.query(
+        sg_db.SecurityGroupRule.remote_group_id,
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroupRule.security_group_id
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        sg_db.SecurityGroupRule.remote_group_id.isnot(None),
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3
+    ).distinct().limit(limit).offset(offset).all()
+
+
+def has_security_group_used_by_host(context, host, security_group_id):
+    return context.session.query(
+        sg_db.SecurityGroupRule.remote_group_id,
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroupRule.security_group_id
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        (sg_db.SecurityGroupRule.remote_group_id == security_group_id) | \
+        (sg_db.SecurityGroupRule.security_group_id == security_group_id),
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).limit(1).first() is not None
+
+
 def get_security_group_members_ips(context, security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
-    return list(
-        context.session.query(
+    return context.session.query(
             IPAllocation.ip_address
         ).join(
             sg_db.SecurityGroupPortBinding,
             IPAllocation.port_id == port_id
         ).filter(
             security_group_id == group_id
-        ).all())
+        ).all()
 
 
 def get_security_group_members_address_bindings_ips(context,
