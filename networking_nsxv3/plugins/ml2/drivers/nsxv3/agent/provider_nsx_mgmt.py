@@ -1,6 +1,8 @@
+import copy
 import ipaddress
-
+import json
 import time
+
 import eventlet
 import netaddr
 from networking_nsxv3.common.constants import *
@@ -10,8 +12,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from oslo_config import cfg
 from oslo_log import log as logging
-import json
-import copy
 
 LOG = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class Payload(object):
         p_qid = pp.get("qos_policy_id")
 
         if not p_pid and not p_ppid:
-            LOG.error("Port '{}' not found.".format(p.get("id")))
+            LOG.error("Port '%s' not found.", p.get("id"))
             return
 
         port = {
@@ -278,7 +278,7 @@ class Payload(object):
             }
 
 
-    def _sg_rule_service(self, os_rule, provider_rule):
+    def _sg_rule_service(self, os_rule, provider_rule, subtype="NSService"):
         min = os_rule["port_range_min"]
         max = os_rule["port_range_max"]
         protocol = os_rule["protocol"]
@@ -298,7 +298,7 @@ class Payload(object):
                     (None, "Not supported ICMP Range {}-{}".format(min, max))
 
             return ({
-                "resource_type": "ICMPTypeNSService",
+                "resource_type": "ICMPType{}".format(subtype),
                 "icmp_type": str(min) if min else None,
                 "icmp_code": str(max) if max else None,
                 "protocol": { 
@@ -309,7 +309,7 @@ class Payload(object):
 
         if protocol in ["tcp", "udp"]:
             return ({
-                "resource_type": "L4PortSetNSService",
+                "resource_type": "L4PortSet{}".format(subtype),
                 "l4_protocol": {'tcp': "TCP", 'udp': "UDP"}.get(protocol),
                 "destination_ports": ["{}-{}".format(min, max) \
                     if min != max and max else str(min)],
@@ -318,13 +318,13 @@ class Payload(object):
         
         if str(protocol).isdigit():
             return ({
-                "resource_type": "IPProtocolNSService",
+                "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(protocol)
             }, None)
 
         if protocol and protocol in IP_PROTOCOL_NUMBERS:
             return ({
-                "resource_type": "IPProtocolNSService",
+                "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(IP_PROTOCOL_NUMBERS.get(protocol))
             }, None)
         
@@ -342,8 +342,8 @@ class Provider(abs.Provider):
         self._cache = self._cache_loader()
         self._chache_refresh_window = cfg.CONF.NSXV3.nsxv3_cache_refresh_window
         
-        self.payload = Payload()
         self.client = Client()
+        self.payload = self._payload()
 
         self.zone_id = None
         self.switch_profiles = []
@@ -396,6 +396,9 @@ class Provider(abs.Provider):
             }
         ]
 
+    def _payload(self):
+        return Payload()
+
     def _cache_loader(self):
         # Resource := {os_id: {"id": id, "rev": revision}, ...}
         return {
@@ -431,7 +434,6 @@ class Provider(abs.Provider):
         report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
 
         path = self._cache.get(resource_type).get("provider")
-
 
         meta = self.metadata(resource_type, os_id)
         if meta:
@@ -471,6 +473,7 @@ class Provider(abs.Provider):
         # NSX does not allow to filter by custom property
         # Search API has hard limit of 50k objects (with cursor)
         result = self.client.get_all(path=provider, params=params)
+
         for o in result:
             if o.get("_create_user") != "admin":
                 continue
@@ -554,7 +557,7 @@ class Provider(abs.Provider):
             "gen": tags.get(NSXV3_GENERATION_SCOPE),
             "_revision": provider_object.get("_revision")
         }
-        
+
         self._cache.get(resource_type).get("resources")[os_id] = meta
         backup = self._cache.get(resource_type).get("backup")
         if backup:
@@ -640,15 +643,15 @@ class Provider(abs.Provider):
         if os_ppid:
             meta_pport = self.metadata(Provider.PORT, os_ppid)
             if not meta_pport:
-                LOG.error("Parent port '{}' not found for Child '{}'".format(\
-                    os_ppid, os_pid))
+                LOG.error("Parent port '%s' not found for Child '%s'",
+                    os_ppid, os_pid)
                 return
             provider_port["parent_id"] = meta_pport.get(os_ppid).get("id")
 
         meta_port = self.metadata(Provider.PORT, os_pid)
         
         if not meta_port and not os_ppid:
-            LOG.error("Port port '{}' not found".format(os_pid))
+            LOG.error("Port port '%s' not found", os_pid)
             return
         
         if meta_port:
@@ -657,8 +660,7 @@ class Provider(abs.Provider):
         if os_qid:
             meta_qos = self.metadata(Provider.QOS, os_qid)
             if not meta_qos:
-                LOG.error("QoS '{}' not found for Port '{}'".format(os_qid, 
-                                                                    os_pid))
+                LOG.error("QoS '%s' not found for Port '%s'", os_qid, os_pid)
             else:
                 provider_port["qos_policy_id"] = meta_qos.get(os_qid).get("id")
 
@@ -746,7 +748,7 @@ class Provider(abs.Provider):
                     resp = self.client.post(path=path, data=data)
                     sec_rev = resp.json().get("rules")[0].get("_revision")
                 except Exception as err:
-                    LOG.error("Security Group rules creation has failed.", err)
+                    LOG.error("Security Group rules creation has failed. Error: %s", err)
                 data["rules"] = []
         
         for id in os_rules_enable:

@@ -141,7 +141,7 @@ class TestProvider(base.BaseTestCase):
 
         provider.sg_members_realize(sg)
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg["id"])
-        self.assertNotEquals(sg_ipset, None)
+        self.assertNotEqual(sg_ipset, None)
 
         provider.sg_members_realize(sg, delete=True)
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg["id"])
@@ -812,8 +812,8 @@ class TestProvider(base.BaseTestCase):
         meta_child_port = provider.metadata(provider.PORT, os_port_child.get("id")).get(os_port_child.get("id"))
 
         self.assertEquals(len(self.inventory.inventory[Inventory.PORTS].keys()), 2)
-        self.assertNotEquals(meta_parent_port, None)
-        self.assertNotEquals(meta_child_port, None)
+        self.assertNotEqual(meta_parent_port, None)
+        self.assertNotEqual(meta_child_port, None)
 
         provider.port_realize(os_port_parent, dict(), delete=True)
         provider.port_realize(os_port_child, dict(), delete=True)
@@ -935,7 +935,7 @@ class TestProvider(base.BaseTestCase):
         provider.qos_realize(os_qos, dict())
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
         qos = self.get_result_by_name(result, os_qos.get("id"))
-        self.assertNotEquals(qos, None)
+        self.assertNotEqual(qos, None)
 
         provider.qos_realize(os_qos, dict(), delete=True)
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()

@@ -18,12 +18,15 @@ class Inventory(object):
     IPSETS = "api/v1/ip-sets"
     NSGROUPS = "api/v1/ns-groups"
     SECTIONS = "api/v1/firewall/sections"
+    POLICIES = "policy/api/v1/infra/domains/default/security-policies"
+    GROUPS = "policy/api/v1/infra/domains/default/groups"
 
     CHILD_RULES = "rules"
     CHILD_RULES_CREATE = "rules?action=create_multiple"
 
-    def __init__(self, base_url):
+    def __init__(self, base_url, version="2.4.2.0.0.14269501"):
         self.url = urlparse(base_url)
+        self.version = version
         self.inventory = {
             Inventory.ZONES: {
                 "97C47802-2781-4CBF-825B-08689269B077": {
@@ -32,12 +35,14 @@ class Inventory(object):
                     "display_name": "openstack-tz"
                 }
             },
-            Inventory.PROFILES: {},
-            Inventory.PORTS: {},
-            Inventory.SWITCHES: {},
-            Inventory.IPSETS: {},
-            Inventory.NSGROUPS: {},
-            Inventory.SECTIONS: {}
+            Inventory.PROFILES: dict(),
+            Inventory.PORTS: dict(),
+            Inventory.SWITCHES: dict(),
+            Inventory.IPSETS: dict(),
+            Inventory.NSGROUPS: dict(),
+            Inventory.SECTIONS: dict(),
+            Inventory.POLICIES: dict(),
+            Inventory.GROUPS: dict(),
         }
 
     def resp(self, code, data=dict()):
@@ -64,6 +69,8 @@ class Inventory(object):
             resource["id"] = self.identifier(inventory, resource)
             resource["_create_user"] = "admin"
             inventory[resource["id"]] = resource
+            if resource.get("_revision"):
+                resource["_revision"] = int(resource["_revision"])+1
             return self.resp(200, resource)
 
     def id(self, request, inventory, id, resource):
@@ -71,6 +78,14 @@ class Inventory(object):
         if request.method == "GET":    
             return self.resp(200, o) if o else self.resp(404)
         if request.method == "PUT":
+            if "policy" in request.url:
+                if o:
+                    return self.resp(422)
+                else:
+                    inventory[id] = resource
+                    resource["id"] = id
+                    resource["_create_user"] = "admin"
+                    return self.resp(200, o)
             if o:
                 if resource.get("id") and resource.get("id") != id:
                     self.resp(422)
@@ -78,17 +93,38 @@ class Inventory(object):
                 return self.resp(200, o)
             else:
                 return self.resp(404)
+        if request.method == "PATCH":
+            if o:
+                inventory[id] = resource
+                return self.resp(200, o)
+            else:
+                if "policy" in request.url:
+                    inventory[id] = resource
+                    return self.resp(200, o)
+                else:
+                    return self.resp(404)
         if request.method == "DELETE":
             if o:
                 del inventory[id]
             return self.resp(200) if o else self.resp(404)
     
-    def version(self, request):
+    def _version(self, request):
         if "api/v1/node/version" in request.url and request.method == "GET":
-            return self.resp(200, {"product_version": "2.4.2.0.0.14269501"})
+            return self.resp(200, {"product_version": self.version})
 
+    def _policy_status(self, request):
+        if "policy/api/v1/infra/realized-state" in request.url and request.method == "GET":
+            return self.resp(200, {
+                "consolidated_status": {
+                    "consolidated_status": "SUCCESS"
+                }
+            })
+        
     def api(self, request):
-        version = self.version(request)
+        policy_status = self._policy_status(request)
+        version = self._version(request)
+        if policy_status:
+            return policy_status
         if version:
             return version
 
@@ -109,12 +145,17 @@ class Inventory(object):
             paths.pop(0)
         if paths:
             api = paths.pop(0)
+            if api == "policy" and paths:
+                api = "{}/{}".format(api, paths.pop(0))
         if paths:
             version = paths.pop(0)
         if paths:
             type = paths.pop(0)
+
             if type == "firewall" and paths:
                 type = "{}/{}".format(type, paths.pop(0))
+            elif type == "infra" and len(paths) > 2:
+                type = "{}/{}/{}/{}".format(type, paths.pop(0), paths.pop(0), paths.pop(0))
         if paths:
             id = paths.pop(0)
         if paths:
@@ -123,6 +164,7 @@ class Inventory(object):
             child_id = paths.pop(0)
 
         path = "/".join([api, version, type])
+
         if path not in self.inventory:
             return self.resp(404)
 
@@ -142,12 +184,14 @@ class Inventory(object):
                 return self.id(request, inventory, child_id, resource)
             if child:
                 if child in resource:
+                    result = []
                     for item in resource.get(child):
-                        self.type(request, inventory, item)
-                    return self.resp(200)
+                        _, _, o = self.type(request, inventory, item)
+                        result.append(json.loads(o))
+                    return self.resp(200, { child: result })
                 else:
                     return self.type(request, inventory, resource)
-                
+        
         if id:
             return self.id(request, inventory, id, resource)
         if type:

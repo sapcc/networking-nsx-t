@@ -1,9 +1,9 @@
+import itertools
+import json
+
 from networking_nsxv3.common.locking import LockManager
 from oslo_config import cfg
 from oslo_log import log as logging
-import json
-import itertools
-
 
 LOG = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class AgentRealizer(object):
         self.callback = callback
         self.kpi = kpi
         self.provider = provider
-        self.legacy_provider = provider
+        self.legacy_provider = legacy_provider
         # Initializing metadata
         self.all()
 
@@ -130,11 +130,12 @@ class AgentRealizer(object):
                 else:
                     self.provider.sg_members_realize(\
                         {"id": os_id}, meta=meta, delete=True)
-            # TODO 
-            # try:
-            #     self.legacy_provider.sg_members_realize({"id": os_id}, delete=True)
-            # except Exception:
-            #     pass
+            
+            # TODO - remove after legacy provider is not supported
+            try:
+                self.legacy_provider.sg_members_realize({"id": os_id}, delete=True)
+            except Exception:
+                pass
         
 
     def security_group_rules(self, os_id):
@@ -165,14 +166,14 @@ class AgentRealizer(object):
                     {"id": os_id}, provider_rules_meta=meta, delete=True)
                 # Skip members as they can be used as references
 
-            # TODO
-            # try:
-            #     legacy_meta = self.legacy_provider.metadata(
-            #         self.legacy_provider.SG_RULE, os_id)
-            #     self.legacy_provider.sg_rules_realize({"id": os_id},
-            #         provider_rules_meta=legacy_meta, delete=True)
-            # except Exception:
-            #     pass     
+            # TODO - remove after legacy provider is not supported
+            try:
+                legacy_meta = self.legacy_provider.metadata(
+                    self.legacy_provider.SG_RULE, os_id)
+                self.legacy_provider.sg_rules_realize({"id": os_id},
+                    provider_rules_meta=legacy_meta, delete=True)
+            except Exception:
+                pass     
 
 
     def port(self, os_id):
@@ -189,12 +190,7 @@ class AgentRealizer(object):
                 self.provider.port_realize(port)
             else:
                 self.provider.port_realize({"id": os_id}, delete=True)
-            
-            # TODO
-            # try:
-            #     self.legacy_provider.port_realize({"id": os_id}, delete=True)
-            # except Exception:
-            #     pass
+
 
     def qos(self, os_id, reference=False):
         """
@@ -211,13 +207,8 @@ class AgentRealizer(object):
                 else:
                     self.provider.qos_realize(\
                         {"id": os_id}, meta=meta, delete=True)
-            # TODO
-            # try:
-            #     self.legacy_provider.qos_realize(
-            #       {"id": os_id}, meta=meta, delete=True)
-            # except Exception:
-            #     pass
     
+
     def network(self, os_seg_id):
         """
         Realize Network state.
