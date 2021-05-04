@@ -17,7 +17,7 @@ class AgentRealizer(object):
         self.provider = provider
         self.legacy_provider = legacy_provider
         # Initializing metadata
-        self.all()
+        self.all(dryrun=True)
 
     def _os_meta(self, query):
         step = cfg.CONF.AGENT.rpc_max_records_per_query
@@ -42,7 +42,7 @@ class AgentRealizer(object):
                 self.callback(o[1], self.security_group_members)
 
 
-    def all(self):
+    def all(self, dryrun=False):
         """
         Enforce desired state between OpenStack and Provider objects
         Objects concidered outdated include new, updated or removed
@@ -68,6 +68,10 @@ class AgentRealizer(object):
             qos_outdated, qos_current = p.outdated(p.QOS, qos_meta)
             # There is not way to revision group members but can 'age' them
             sgm_outdated, _ = p.outdated(p.SG_MEMBERS, dict())
+
+            if dryrun:
+                LOG.info("Dryrun:%s. Metadata refresh completed.", dryrun)
+                return
 
             outdated = list(itertools.islice(port_outdated, slice))
             slice -= len(outdated)

@@ -133,54 +133,33 @@ Port Binding (Trunk)
     --subport port=<trunk_subport_id_2>,segmentation-type=vlan,segmentation-id=200 
     openstack server create --image <image_name> --flavor "1" --nic "port-id=<trunk-parent-port-id>" <server-name>
 
+CLI
+^^^
+Neutron ML2 NSX-T Agent command line interface
 
-Ansible Playbook - Install ML2 Driver & ML2 Agent
--------------------------------------------------
 ::
+    # Synchronize OpenStack resource Types with ids
+    /usr/local/bin/neutron-nsxv3-agent-cli-sync -h
+    usage: neutron-nsxv3-agent-cli-sync
+        [-h] [--config-file CONFIG_FILE]
+        -T{port,qos,security_group_rules,security_group_members}
+        -I IDS
 
-    cd tools
-    ansible-playbook -i open_stack.cfg configure_ml2_agent.yml
-    ansible-playbook -i open_stack.cfg configure_ml2_plugin.yml
+    optional arguments:
+    -h, --help                  show this help message and exit
+    --config-file CONFIG_FILE   OpenStack Neutron configuration file(s) location(s)
+    -T TYPE,    --type TYPE     OpenStack object type target of synchronization
+                                TYPE := {port,qos,security_group_rules,security_group_members}
+    -I IDS,     --ids IDS       OpenStack object IDs, separated by ','
 
 
-Workload Migration from DVS ML2 driver
--------------------------------------------------
-The driver supports migration of worklods from DVS ML2 driver to NSXv3 ML2 driver.
+    # Example for synchronization of members for two security groups
+    /usr/local/bin/neutron-nsxv3-agent-cli-sync \
+        --config-file /etc/neutron/neutron.conf \
+        --config-file /etc/neutron/plugins/ml2/ml2_conf.ini \
+        --type security_group_members \
+        --ids 5af2f34b-cb81-4a9d-bcb4-30f72fca91cd,b0cd1ce8-9fe0-44f6-8b5c-be455e778756
 
-Migration Prerequisites
-^^^^^^^^^^^^^^^^^^^^^^^
-
-- ESXi hosts have to be both enabled for DVS and N-VDS workloads
-- Virtual machines target of migration have to be assigned with the NSX-T tag:
-    ::
-
-        scope = "vswitch_migration_target"
-        tag = "dvs"
-
-- Enable DVS and NSX-T drivers to work at the same time as follow:
-    ::
-
-        # /etc/neutron/plugins/ml2/ml2_conf.ini
-        mechanism_drivers = nsxv3,dvs
-
-NSX-T ML2 Driver Behaviour
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-- Once both drivers are enabled the OpenStack networking will behave as follow:
-    - network operations related to the existing virtual machines assigned with NSX-T tag = "dvs" will be skipped by NSX-T driver and handled by the DVS driver
-    - network operations related to the new virtual machines will be handled by the NSX-T dirver
-- Migrate DVS managed virtual machine to NSX-T:
-    - change the NSX-T tag:
-        ::
-        
-            scope = "vswitch_migration_target"
-            tag = "nvds"
-
-    - re-trigger port binding for every virtual machine port by using an random name for a dummy host and then switch back to the original host
-        ::
-
-            os port set --host <dummy host> <port_id>
-            os port set --host <original host> <port_id>
 
 NSX-T ML2 Prometheus Exporter
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

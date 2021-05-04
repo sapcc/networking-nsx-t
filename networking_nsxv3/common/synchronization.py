@@ -164,8 +164,8 @@ class Runner(object):
                 self._active.task_done()
             except eventlet.queue.Empty as e:
                 LOG.info("No activity for the last {} seconds.".format(TIMEOUT))
-                LOG.info("Active Queue Size={}, Passive Queue Size={}, Active Jobs={}".format(
-                    self._active.qsize(), self._passive.qsize(), self._workers.running()))
+                LOG.info("Sizes Queue[Active=%s, Passive=%s], Jobs=%s",
+                    self.active(), self.passive(), self._workers.running())
             except Exception as err:
                 # Continue on error. Otherwise the agent operation will stop
                 LOG.error(err)
@@ -184,6 +184,16 @@ class Runner(object):
 
     def stop(self):
         """ Gracefully terminates the runner instance """
+        while True:
+            a = self.active()
+            p = self.passive()
+            w = self._workers.running()
+            LOG.info("Terminating... Waiting for all active work to complete")
+            LOG.info("Sizes Queue[Active=%s, Passive=%s], Jobs=%s", a, p, w)
+            if a == 0 and p == 0:
+                break
+            eventlet.sleep(5)
+
         self._workers.resize(0)
         self._workers.waitall()
         LOG.info("Job Queue workers terminated successfully.")
