@@ -1,7 +1,11 @@
-class Provider(object):
+import abc
+
+class Provider:
     """
     Provider interface used for realization of OpenStack objects 
     """
+
+    __metaclass__ = abc.ABCMeta
 
     PORT = "Port"
     QOS = "QoS"
@@ -10,11 +14,13 @@ class Provider(object):
     SG_RULE = "Rule"
     NETWORK = "Network"
 
+    @abc.abstractmethod
     def metadata_refresh(self, esource_type):
         """
         Fetch fresh metadata out from the provider
         """
 
+    @abc.abstractmethod
     def metadata(self, resource_type, os_id):
         """
         Get metadata for a resource from cached metadata
@@ -23,6 +29,7 @@ class Provider(object):
         :return: {"os_id": (self, provider_id, revision_number)}
         """
 
+    @abc.abstractmethod
     def outdated(self, resource_type, os_meta):
         """
         Get outdated OpenStack IDs for a resource
@@ -31,6 +38,7 @@ class Provider(object):
         :return: (set(<outdated>), set(<current>)) -- Outdated OpenStack IDs
         """
     
+    @abc.abstractmethod
     def age(self, resource_type, os_ids):
         """
         Get OpenStack resources IDs and their provider last updated age
@@ -39,6 +47,7 @@ class Provider(object):
         :return: {os_id:provider_age} -- OpenStack resource ID and provider age
         """
 
+    @abc.abstractmethod
     def port_realize(self, os_port, delete=False):
         """
         Realize OpenStack Port in provider
@@ -62,6 +71,7 @@ class Provider(object):
         :delete: bool -- If True will remove Port
         """
 
+    @abc.abstractmethod
     def qos_realize(self, os_qos, delete=False):
         """
         Realize OpenStack QoS in provider
@@ -86,6 +96,7 @@ class Provider(object):
         :delete: bool -- If True will remove QoS
         """
 
+    @abc.abstractmethod
     def sg_members_realize(self, os_sg, delete=False):
         """
         Realize OpenStack Security Group Members in provider
@@ -100,6 +111,7 @@ class Provider(object):
         :delete: bool -- If True will remove Security Group Members
         """
 
+    @abc.abstractmethod
     def sg_rules_realize(self, os_sg, provider_rules_meta=dict(), delete=False):
         """
         Realize OpenStack Security Group Rules in provider

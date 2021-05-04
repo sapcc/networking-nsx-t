@@ -1,6 +1,6 @@
-import datetime
 import json
 import re
+import time
 
 import eventlet
 import requests
@@ -131,7 +131,7 @@ class Client:
 
     def _login(self):
         LOG.info("Session token - acquiring")
-        now = int(datetime.datetime.now().strftime("%s"))
+        now = int(time.time())
         with LockManager.get_lock(self._base_path):
             if now > self._login_timestamp:
                 resp = requests.post(**self._params(path=self._login_path,
@@ -147,8 +147,7 @@ class Client:
                 self._session.headers["Accept"] = "application/json"
                 self._session.headers["Content-Type"] = "application/json"
 
-                self._login_timestamp = \
-                    int(datetime.datetime.now().strftime("%s"))
+                self._login_timestamp = int(time.time())
 
         try:
             # Refresh version after login
@@ -161,24 +160,22 @@ class Client:
         kwargs["timeout"] = self._timeout
         kwargs["url"] = "{}{}".format(self._base_path, kwargs["path"])
         del kwargs["path"]
-        if self._login_path not in kwargs["url"] and "data" in kwargs:
-            kwargs["data"] = json.dumps(kwargs["data"])
         return kwargs
 
     @RetryPolicy()
     def post(self, path, data):
         with self._api_scheduler:
-            return self._session.post(**self._params(path=path, data=data))
+            return self._session.post(**self._params(path=path, json=data))
 
     @RetryPolicy()
     def patch(self, path, data):
         with self._api_scheduler:
-            return self._session.patch(**self._params(path=path, data=data))
+            return self._session.patch(**self._params(path=path, json=data))
 
     @RetryPolicy()
     def put(self, path, data):
         with self._api_scheduler:
-            return self._session.put(**self._params(path=path, data=data))
+            return self._session.put(**self._params(path=path, json=data))
 
     @RetryPolicy()
     def get(self, path, params=dict()):

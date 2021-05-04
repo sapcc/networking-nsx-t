@@ -558,6 +558,7 @@ class Provider(abs.Provider):
             "_revision": provider_object.get("_revision")
         }
 
+        
         self._cache.get(resource_type).get("resources")[os_id] = meta
         backup = self._cache.get(resource_type).get("backup")
         if backup:

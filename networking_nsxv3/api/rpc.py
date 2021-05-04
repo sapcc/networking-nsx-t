@@ -218,7 +218,7 @@ class NSXv3ServerRpcCallback(object):
     def get_port(self, context, host, port_id):
         port = db.get_port(context, host, port_id)
 
-        # vRA with NSX-T does not support CIDR as port manual binding - skipping X/X
+        # NSX-T does not support CIDR as port manual binding - skipping X/X
 
         for ip in db.get_port_addresses(context, port_id):
             if "/" in ip:
