@@ -44,6 +44,7 @@ class TestProvider(base.BaseTestCase):
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
+        cfg.CONF.set_override("nsxv3_cache_refresh_window", 0, "NSXV3")
 
         self.inventory = Inventory("https://nsxm-l-01a.corp.local:443")
         r = responses
@@ -61,12 +62,9 @@ class TestProvider(base.BaseTestCase):
         ipp = "{}-{}".format(cfg.CONF.AGENT.agent_id, "IpDiscovery")
 
         self.assertEquals(len(profiles), 2)
-
-        keys = profiles.keys()
-
-        self.assertEquals(profiles.get(keys[0]).get("display_name"), sgp)
-        self.assertEquals(profiles.get(keys[1]).get("display_name"), ipp)
-
+        realized_profiles = [profiles.get(key).get("display_name") for key in profiles.keys()]
+        self.assertIn(sgp, realized_profiles)
+        self.assertIn(ipp, realized_profiles)
 
     @responses.activate
     def test_security_group_members_creation_diverse_cidrs(self):
