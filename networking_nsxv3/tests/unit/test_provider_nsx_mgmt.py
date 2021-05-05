@@ -62,12 +62,8 @@ class TestProvider(base.BaseTestCase):
         ipp = "{}-{}".format(cfg.CONF.AGENT.agent_id, "IpDiscovery")
 
         self.assertEquals(len(profiles), 2)
-
-        keys = profiles.keys()
-
-        self.assertEquals(profiles.get(keys[0]).get("display_name"), sgp)
-        self.assertEquals(profiles.get(keys[1]).get("display_name"), ipp)
-
+        realized_profiles = [profiles.get(key).get("display_name") for key in profiles.keys()]
+        self.assertEqual([sgp, ipp], realized_profiles)
 
     @responses.activate
     def test_security_group_members_creation_diverse_cidrs(self):
