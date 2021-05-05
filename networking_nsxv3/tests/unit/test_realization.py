@@ -19,8 +19,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import realization
 from networking_nsxv3.tests.unit import provider
 from networking_nsxv3.tests.unit import openstack
 
-from networking_nsxv3.tests.unit import rpc
-
 import re
 import json
 import eventlet
@@ -86,6 +84,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
+        cfg.CONF.set_override("nsxv3_cache_refresh_window", 0, "NSXV3")
 
         self.provider_inventory = provider.Inventory("https://nsxm-l-01a.corp.local:443")
         self.openstack_inventory = openstack.Inventory()
@@ -114,7 +113,7 @@ class TestAgentRealizer(base.BaseTestCase):
         child_port = self.openstack_inventory.port_create("p1-1", "3201", parent_name="p1")
         child_port = self.openstack_inventory.port_update("p1-1", security_group_names=[])
 
-        eventlet.sleep(1.1)
+        eventlet.sleep(5.0)
 
         p_inv = self.provider_inventory
         LOG.info(json.dumps(p_inv.inventory, indent=4))
@@ -123,7 +122,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
 
         provider_ports = [o.get("display_name") for _,o in p_inv.inventory.get(p_inv.PORTS).items()]
-        self.assertEquals(set(provider_ports), set([port.get("id"), child_port.get("id")]))
+        self.assertEqual(set(provider_ports), set([port.get("id"), child_port.get("id")]))
 
         self.manager.shutdown()
 
@@ -164,13 +163,13 @@ class TestAgentRealizer(base.BaseTestCase):
         LOG.info(json.dumps(self.openstack_inventory.inventory, indent=4))
         LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))
 
-        self.assertNotEquals(p_inv.lookup(p_inv.NSGROUPS, sg_02.get("id")), None)
-        self.assertNotEquals(p_inv.lookup(p_inv.SECTIONS, sg_02.get("id")), None)
-        self.assertNotEquals(p_inv.lookup(p_inv.IPSETS, sg_01.get("id")), None)
-        self.assertNotEquals(p_inv.lookup(p_inv.IPSETS, sg_02_rule.get("id")), None)
-        self.assertEquals(len(p_inv.lookup(p_inv.SECTIONS, sg_02.get("id")).get("_").get("rules").keys()), 3)
-        self.assertEquals(len(p_inv.inventory.get(p_inv.IPSETS).keys()), 3)
-        self.assertNotEquals(p_inv.lookup(p_inv.PROFILES, qos_01.get("id")), None)
+        self.assertNotEqual(p_inv.lookup(p_inv.NSGROUPS, sg_02.get("id")), None)
+        self.assertNotEqual(p_inv.lookup(p_inv.SECTIONS, sg_02.get("id")), None)
+        self.assertNotEqual(p_inv.lookup(p_inv.IPSETS, sg_01.get("id")), None)
+        self.assertNotEqual(p_inv.lookup(p_inv.IPSETS, sg_02_rule.get("id")), None)
+        self.assertEqual(len(p_inv.lookup(p_inv.SECTIONS, sg_02.get("id")).get("_").get("rules").keys()), 3)
+        self.assertEqual(len(p_inv.inventory.get(p_inv.IPSETS).keys()), 3)
+        self.assertNotEqual(p_inv.lookup(p_inv.PROFILES, qos_01.get("id")), None)
 
         sgs = []
         for i in range(1,3):
@@ -194,12 +193,12 @@ class TestAgentRealizer(base.BaseTestCase):
         LOG.info(json.dumps(self.openstack_inventory.inventory, indent=4))
         LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))        
         
-        self.assertEquals(p_inv.inventory.get(p_inv.NSGROUPS).keys(), [])
-        self.assertEquals(p_inv.inventory.get(p_inv.SECTIONS).keys(), [])
-        self.assertEquals(p_inv.inventory.get(p_inv.IPSETS).keys(), [])
-        self.assertEquals(p_inv.inventory.get(p_inv.PORTS).keys(), [])
+        self.assertEqual(p_inv.inventory.get(p_inv.NSGROUPS).keys(), [])
+        self.assertEqual(p_inv.inventory.get(p_inv.SECTIONS).keys(), [])
+        self.assertEqual(p_inv.inventory.get(p_inv.IPSETS).keys(), [])
+        self.assertEqual(p_inv.inventory.get(p_inv.PORTS).keys(), [])
         # Default IP-Discovery and Spoofguard
-        self.assertEquals(len(p_inv.inventory.get(p_inv.PROFILES).keys()), 2)
+        self.assertEqual(len(p_inv.inventory.get(p_inv.PROFILES).keys()), 2)
 
         self.manager.shutdown()
 
