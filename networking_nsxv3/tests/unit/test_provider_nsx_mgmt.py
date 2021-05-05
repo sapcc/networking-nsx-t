@@ -63,7 +63,8 @@ class TestProvider(base.BaseTestCase):
 
         self.assertEquals(len(profiles), 2)
         realized_profiles = [profiles.get(key).get("display_name") for key in profiles.keys()]
-        self.assertEqual([sgp, ipp], realized_profiles)
+        self.assertIn(sgp, realized_profiles)
+        self.assertIn(ipp, realized_profiles)
 
     @responses.activate
     def test_security_group_members_creation_diverse_cidrs(self):
