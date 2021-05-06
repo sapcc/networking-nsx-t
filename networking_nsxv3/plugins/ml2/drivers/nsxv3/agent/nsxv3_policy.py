@@ -26,10 +26,10 @@ INFRA = "/policy/api/v1/infra"
 
 
 def is_not_found(response):
-    return re.search("The path.*is invalid", str(response.content))
+    return re.search("The path.*is invalid", response.text)
 
 def is_atomic_request_error(response):
-    return response.status_code == 400 and re.search("The object AtomicRequest", response.content)
+    return response.status_code == 400 and re.search("The object AtomicRequest", response.text)
 
 
 class RetryPolicy(object):
@@ -367,7 +367,7 @@ class InfraBuilder:
         # Delete via PATCH works only correctly on >=2.5
         delete_via_policy = delete and self._client.version >= (2, 5)
 
-        if delete_via_policy or service_entry.has_key("resource_type") :
+        if delete_via_policy or "resource_type" in service_entry:
             child_service = {
                 "resource_type": "ChildService",
                 "marked_for_delete": delete,

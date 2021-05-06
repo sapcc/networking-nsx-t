@@ -19,6 +19,7 @@ pyvmomi                         # Apache-2.0
 tooz
 ratelimiter                     # Apache-2.0
 prometheus_client               # Apache-2.0
+nsx-python-sdk
 
 datadog
 attrs                           # MIT License
