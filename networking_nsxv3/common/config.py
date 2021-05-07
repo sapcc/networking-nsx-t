@@ -114,7 +114,7 @@ nsxv3_opts = [
     ),
     cfg.StrOpt(
         'nsxv3_login_password',
-        default='VMwarensbu_1!',
+        default='',
         secret=True,
         help="NSXv3 Manager login password."
     ),

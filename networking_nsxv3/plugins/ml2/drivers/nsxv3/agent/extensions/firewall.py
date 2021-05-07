@@ -1,6 +1,6 @@
 
-from oslo_log import log as logging
 from neutron.agent import firewall
+from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
@@ -43,5 +43,6 @@ class NSXv3SecurityGroupsDriver(firewall.FirewallDriver):
     def update_security_group_rules(self, sg_id, rules):
         pass
 
-    def security_group_updated(self, action_type, sec_group_ids, device_id=None):
+    def security_group_updated(self, action_type, security_group_ids, 
+                               device_id=None):
         pass

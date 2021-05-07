@@ -15,7 +15,7 @@ from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
 
 
-def get_ports_revisions(context, host, limit, offset):
+def get_ports_with_revisions(context, host, limit, offset):
     return context.session.query(
         Port.id,
         StandardAttribute.revision_number,
@@ -32,7 +32,7 @@ def get_ports_revisions(context, host, limit, offset):
     ).all()
 
 
-def get_qoses_revisions(context, host, limit, offset):
+def get_qos_policies_with_revisions(context, host, limit, offset):
     return context.session.query(
         QosPolicy.id,
         StandardAttribute.revision_number,
@@ -45,7 +45,7 @@ def get_qoses_revisions(context, host, limit, offset):
     ).all()
 
 
-def get_security_groups_revisions(context, host, limit, offset):
+def get_security_groups_with_revisions(context, host, limit, offset):
     return context.session.query(
         sg_db.SecurityGroup.id,
         StandardAttribute.revision_number,
@@ -276,11 +276,11 @@ def get_rules_for_security_groups_id(context, security_group_id):
     ).all()
 
 
-def get_port_id_by_sec_group_id(context, sec_group_id):
+def get_port_id_by_sec_group_id(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.port_id
     ).filter(
-        sg_db.SecurityGroupPortBinding.security_group_id == sec_group_id
+        sg_db.SecurityGroupPortBinding.security_group_id == security_group_id
     ).all()
 
 

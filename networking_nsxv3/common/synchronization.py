@@ -1,15 +1,17 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
+import collections
+import functools
+import heapq
+import json
 import os
 import time
-import functools
-import collections
-import json
-import heapq
 from enum import Enum
-from oslo_log import log as logging
+
 from oslo_config import cfg
+from oslo_log import log as logging
+
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
@@ -155,6 +157,9 @@ class Runner(object):
     def _start(self):
         while True:
             try:
+                if self._workers.size == 0:
+                    LOG.info("Terminating... Workers pool reached size of 0.")
+                    return
                 if self.active() < self._idle and self.passive() > 0:
                     self._active.put_nowait(self._passive.get_nowait())
                     self._passive.task_done()

@@ -1,14 +1,13 @@
+import json
 import os
 
+import eventlet
 import netaddr
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from oslo_config import cfg
 from oslo_log import log as logging
-import eventlet
-import json
-
 
 LOG = logging.getLogger(__name__)
 
@@ -25,8 +24,17 @@ class API(provider_nsx_mgmt.API):
 
 class Payload(provider_nsx_mgmt.Payload):
 
-    def cidr(self, os_cidrs):
-        return [str(ip).replace("/32", "") for ip in netaddr.IPSet(os_cidrs).iter_cidrs()]
+    def get_compacted_cidrs(self, os_cidrs):
+        """
+        Reduce number of CIDRs based on the netmask overlapping
+        """
+        compacted_cidrs = []
+        for cidr in netaddr.IPSet(os_cidrs).iter_cidrs():
+            if cidr.version == 4 and cidr.prefixlen == 32:
+                compacted_cidrs.append(str(cidr.ip))
+            else:
+                compacted_cidrs.append(str(cidr))
+        return compacted_cidrs
 
     def sg_members_container(self, os_sg, provider_sg):
         sg = {
@@ -43,7 +51,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "tags": self.tags(os_sg)
         }
 
-        cidrs = self.cidr(os_sg.get("cidrs"))
+        cidrs = self.get_compacted_cidrs(os_sg.get("cidrs"))
         if cidrs:
             sg["expression"].append({
                 "resource_type": "ConjunctionOperator",
@@ -201,7 +209,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 group = self.metadata(Provider.SG_MEMBERS, group_id)
                 provider_rule["remote_group_id"] = group.get(group_id).get("id")
             if rule.get("remote_ip_prefix"):
-                provider_rule["remote_ip_prefix"] = self.payload.cidr([rule.get("remote_ip_prefix")])
+                provider_rule["remote_ip_prefix"] = self.payload.get_compacted_cidrs([rule.get("remote_ip_prefix")])
 
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
             provider_rule = self.payload.sg_rule(rule, provider_rule)

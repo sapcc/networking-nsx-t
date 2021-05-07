@@ -1,9 +1,9 @@
+import itertools
+import json
+
 from networking_nsxv3.common.locking import LockManager
 from oslo_config import cfg
 from oslo_log import log as logging
-import json
-import itertools
-
 
 LOG = logging.getLogger(__name__)
 
@@ -57,9 +57,9 @@ class AgentRealizer(object):
             p = self.provider
             r = self.rpc
 
-            port_meta = self._os_meta(r.get_ports_revisions)
-            sg_meta = self._os_meta(r.get_security_groups_revisions)
-            qos_meta = self._os_meta(r.get_qoses_revisions)
+            port_meta = self._os_meta(r.get_ports_with_revisions)
+            sg_meta = self._os_meta(r.get_security_groups_with_revisions)
+            qos_meta = self._os_meta(r.get_qos_policies_with_revisions)
 
             # Refresh entire metadata with its latest state
             LOG.info("Updating agent inventory metadata for all resources.")
@@ -128,7 +128,7 @@ class AgentRealizer(object):
             meta = self.provider.metadata(self.provider.SG_MEMBERS, os_id)
             if not(reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
-                    cidrs = self.rpc.get_security_group_members_ips(os_id)
+                    cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
                     self.provider.sg_members_realize(\
                         {"id": os_id, "cidrs": cidrs}, meta=meta)
                 else:

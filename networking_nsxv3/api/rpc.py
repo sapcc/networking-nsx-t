@@ -38,7 +38,7 @@ class NSXv3AgentRpcClient(object):
         return self.rpc.prepare(
             version=self.version,
             topic=topic,
-            fanout=True if host is None else False)
+            fanout=(host is None))
 
     def get_network_bridge(self, current, network_segments, network_current, host):
         LOG.debug("Bind port on Host {} & Segment {}".format(host, network_segments))
@@ -89,21 +89,21 @@ class NSXv3ServerRpcApi(object):
         self.host = cfg.CONF.host        
 
     @log_helpers.log_method_call
-    def get_ports_revisions(self, limit, offset):
+    def get_ports_with_revisions(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_ports_revisions',
+        return cctxt.call(self.context, 'get_ports_with_revisions',
                           host=self.host, limit=limit, offset=offset)
 
     @log_helpers.log_method_call
-    def get_qoses_revisions(self, limit, offset):
+    def get_qos_policies_with_revisions(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_qoses_revisions',
+        return cctxt.call(self.context, 'get_qos_policies_with_revisions',
                           host=self.host, limit=limit, offset=offset)
 
     @log_helpers.log_method_call
-    def get_security_groups_revisions(self, limit, offset):
+    def get_security_groups_with_revisions(self, limit, offset):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_groups_revisions',
+        return cctxt.call(self.context, 'get_security_groups_with_revisions',
                           host=self.host, limit=limit, offset=offset)
 
     @log_helpers.log_method_call
@@ -129,9 +129,10 @@ class NSXv3ServerRpcApi(object):
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_group_members_ips(self, security_group_id):
+    def get_security_group_members_effective_ips(self, security_group_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group_members_ips',
+        return cctxt.call(self.context, 
+                          'get_security_group_members_effective_ips',
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
@@ -170,16 +171,16 @@ class NSXv3ServerRpcCallback(object):
         return self._plugin
 
     @log_helpers.log_method_call
-    def get_ports_revisions(self, context, host, limit, offset):
-        return db.get_ports_revisions(context, host, limit, offset)
+    def get_ports_with_revisions(self, context, host, limit, offset):
+        return db.get_ports_with_revisions(context, host, limit, offset)
 
     @log_helpers.log_method_call
-    def get_qoses_revisions(self, context, host, limit, offset):
-        return db.get_qoses_revisions(context, host, limit, offset)
+    def get_qos_policies_with_revisions(self, context, host, limit, offset):
+        return db.get_qos_policies_with_revisions(context, host, limit, offset)
     
     @log_helpers.log_method_call
-    def get_security_groups_revisions(self, context, host, limit, offset):
-        return db.get_security_groups_revisions(context, host, limit, offset)
+    def get_security_groups_with_revisions(self, context, host, limit, offset):
+        return db.get_security_groups_with_revisions(context, host, limit, offset)
 
     @log_helpers.log_method_call
     def get_security_group(self, context, security_group_id):
@@ -189,7 +190,8 @@ class NSXv3ServerRpcCallback(object):
                 "id": id_rev[0],
                 "revision_number": id_rev[1],
                 "tags": db.get_security_group_tag(context, security_group_id),
-                "ports": db.get_port_id_by_sec_group_id(context, sec_group_id)
+                "ports": db.get_port_id_by_sec_group_id(context, 
+                                                        security_group_id)
             }
 
     @log_helpers.log_method_call
@@ -197,7 +199,7 @@ class NSXv3ServerRpcCallback(object):
         return db.get_rules_for_security_groups_id(context, security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_group_members_ips(self, context, security_group_id):
+    def get_security_group_members_effective_ips(self, context, security_group_id):
         return \
             db.get_security_group_members_ips(context, security_group_id) + \
             db.get_security_group_members_address_bindings_ips(context, security_group_id)

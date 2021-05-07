@@ -1,5 +1,6 @@
 import abc
 
+
 class Provider:
     """
     Provider interface used for realization of OpenStack objects 
@@ -15,7 +16,7 @@ class Provider:
     NETWORK = "Network"
 
     @abc.abstractmethod
-    def metadata_refresh(self, esource_type):
+    def metadata_refresh(self, resource_type):
         """
         Fetch fresh metadata out from the provider
         """

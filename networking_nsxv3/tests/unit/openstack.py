@@ -1,6 +1,6 @@
 import copy
-import uuid
 import json
+import uuid
 
 from oslo_log import log as logging
 
@@ -99,7 +99,9 @@ class Inventory(object):
     def get_all(self, resource_type):
         return copy.deepcopy(self.inventory.get(resource_type,{}).items())
 
-    def port_create(self, name, segmentation_id, parent_name=None, qos_name=None, security_group_names=[]):
+    def port_create(self, name, segmentation_id, parent_name=None, 
+                    qos_name=None, security_group_names=[],
+                    address_bindings=[], allowed_address=[]):
         self._add(self.PORT, {
             "name": name,
             "parent_id": self._get_by_name(self.PORT, parent_name).get("id") if parent_name else None,
@@ -107,11 +109,12 @@ class Inventory(object):
             "admin_state_up": "UP",
             "qos_policy_id": self._get_by_name(self.QOS, qos_name).get("id") if qos_name else None,
             "security_groups": [self._get_by_name(self.SECURITY_GROUP, gname).get("id") for gname in security_group_names],
-            "address_bindings": ["172.24.4.3", "172.24.4.4"],
+            "address_bindings": address_bindings,
             "vif_details": {
                 "nsx-logical-switch-id": "712CAD71-B3F5-4AA0-8C3F-8D453DCBF2F2",
                 "segmentation_id": segmentation_id
-            }
+            },
+            "_allowed_address": allowed_address
         })
         return self._get_by_name(self.PORT, name)
     
@@ -218,24 +221,24 @@ class TestNSXv3ServerRpcApi(object):
         id_o = self.inventory.get_all(resource_type)
         return [(id,o.get("revision_number")) for id,o in id_o]
 
-    def get_qoses_revisions(self, limit, offset):
-        qoses = set()
+    def get_qos_policies_with_revisions(self, limit, offset):
+        qos_policies = set()
         for _,port in self.inventory.get_all(Inventory.PORT):
             qos_id = port.get("qos_policy_id")
             if qos_id:
-                qoses.update(qos_id)
+                qos_policies.update(qos_id)
 
-        effective_qoses = []
+        effective_qos_policies = []
         for id,rev in self._get_revisions(Inventory.QOS):
-            if id in qoses:
-                effective_qoses.append((id, rev))
+            if id in qos_policies:
+                effective_qos_policies.append((id, rev))
 
-        return effective_qoses
+        return effective_qos_policies
 
-    def get_ports_revisions(self, limit, offset):
+    def get_ports_with_revisions(self, limit, offset):
         return self._get_revisions(Inventory.PORT)
 
-    def get_security_groups_revisions(self, limit, offset):
+    def get_security_groups_with_revisions(self, limit, offset):
         sgs = set()
         for _,port in self.inventory.get_all(Inventory.PORT):
             port_sgs = port.get("security_groups")
@@ -262,8 +265,21 @@ class TestNSXv3ServerRpcApi(object):
                 return True
         return False
 
-    def get_security_group_members_ips(self, os_id):
-        return None
+    def get_security_group_members_effective_ips(self, os_id):
+        sg = self.inventory.get_by_id(Inventory.SECURITY_GROUP, os_id)
+        if not sg:
+            return []
+        effective_ips = []
+        id_o = self.inventory.get_all(Inventory.PORT)
+        for _,o in id_o:
+            if os_id in o.get("security_groups"):
+                ips_bindings = o.get("address_bindings")
+                ips_allowed = o.get("_allowed_address")
+                if ips_bindings:
+                    effective_ips.extend(ips_bindings)
+                if ips_allowed:
+                    effective_ips.extend(ips_allowed)
+        return effective_ips
 
     def get_security_group(self, os_id):
         sg = self.inventory.get_by_id(Inventory.SECURITY_GROUP, os_id)
