@@ -1,0 +1,36 @@
+  # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+
+name: Unit Tests
+
+on:
+  push:
+    branches: [ stable/quuens-m3 ]
+  pull_request:
+    branches: [ stable/queens-m3 ]
+
+env:
+  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/queens-m3/upper-constraints.txt
+  VIRTUALENV_PIP: "20.2.3"
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: [2.7]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Tox and any other packages
+        run: |
+          sudo apt-get -y update
+          sudo apt-get -y install build-essential netbase
+          pip install tox
+      - name: Tox
+        run: tox -e py

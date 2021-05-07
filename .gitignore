@@ -20,3 +20,7 @@ etc
 include
 pyvenv.cfg
 .Python
+.local
+.DS_Store
+test.log
+developer.sh

@@ -1,24 +1,26 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
+import collections
+import functools
+import heapq
+import json
 import os
 import time
-import functools
-import collections
-import json
-import heapq
 from enum import Enum
-from oslo_log import log as logging
+
 from oslo_config import cfg
+from oslo_log import log as logging
+
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
 
 LOG = logging.getLogger(__name__)
 
-MESSAGE = "{} for object with id='{}' and priority '{}' {}"
+MESSAGE = "{} Resource ID:{} with Priority:{} for action {}"
 INFINITY = -1
-TIMEOUT = 10
+TIMEOUT = 5
 
 
 class Priority(Enum):
@@ -89,7 +91,7 @@ class Runnable(object):
 
     def __lt__(self, other):
         """ Order Runnable by their priority """
-        return self.priority.value < other.priority.value
+        return self.priority < other.priority
 
     def __hash__(self):
         return hash(self.__repr__())
@@ -142,33 +144,33 @@ class Runner(object):
         """
         for jid in ids:
             try:
-                LOG.info(MESSAGE.format(fn.__name__,jid, priority, "enqueued"))
+                LOG.info(MESSAGE.format("Enqueued", jid, priority.name, fn.__name__))
 
                 job = Runnable(jid, fn, priority.value)
-
-                job = (priority.value, {"id": jid, "fn": fn})
                 if priority.value == Priority.HIGHEST:
                     self._active.put_nowait(job)
                 else:
                     self._passive.put_nowait(job)
             except eventlet.queue.Full as err:
-                LOG.error(MESSAGE.format(fn.__name__, jid, priority, err))
+                LOG.error(MESSAGE.format(err, jid, priority.name, fn.__name__))
 
     def _start(self):
         while True:
             try:
+                if self._workers.size == 0:
+                    LOG.info("Terminating... Workers pool reached size of 0.")
+                    return
                 if self.active() < self._idle and self.passive() > 0:
                     self._active.put_nowait(self._passive.get_nowait())
                     self._passive.task_done()
-                priority_value, job = self._active.get(block=True,
-                                                       timeout=TIMEOUT)
-                LOG.debug(MESSAGE.format(job["fn"].__name__, job["id"], priority_value, "started"))
-                self._workers.spawn_n(job["fn"], job["id"])
+                job = self._active.get(block=True, timeout=TIMEOUT)
+                LOG.info(MESSAGE.format("Processing", job.idn, Priority(job.priority).name, job.fn.__name__))
+                self._workers.spawn_n(job.fn, job.idn)
                 self._active.task_done()
-            except eventlet.queue.Empty:
+            except eventlet.queue.Empty as e:
                 LOG.info("No activity for the last {} seconds.".format(TIMEOUT))
-                LOG.info("Active Queue Size={}, Passive Queue Size={}, Active Jobs={}".format(
-                    self._active.qsize(), self._passive.qsize(), self._workers.running()))
+                LOG.info("Sizes Queue[Active=%s, Passive=%s], Jobs=%s",
+                    self.active(), self.passive(), self._workers.running())
             except Exception as err:
                 # Continue on error. Otherwise the agent operation will stop
                 LOG.error(err)
@@ -187,9 +189,19 @@ class Runner(object):
 
     def stop(self):
         """ Gracefully terminates the runner instance """
+        while True:
+            a = self.active()
+            p = self.passive()
+            w = self._workers.running()
+            LOG.info("Terminating... Waiting for all active work to complete")
+            LOG.info("Sizes Queue[Active=%s, Passive=%s], Jobs=%s", a, p, w)
+            if a == 0 and p == 0:
+                break
+            eventlet.sleep(5)
+
+        self._workers.resize(0)
         self._workers.waitall()
-        self._active.join()
-        self._passive.join()
+        LOG.info("Job Queue workers terminated successfully.")
     
     def wait_active_jobs_completion(self):
         self._active.join()
