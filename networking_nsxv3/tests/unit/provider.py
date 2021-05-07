@@ -1,10 +1,9 @@
-import json
-import hashlib
 import copy
-from urlparse import urlparse, parse_qs
+import hashlib
+import json
+from urllib.parse import parse_qs, urlparse
 
 from oslo_log import log as logging
-
 
 LOG = logging.getLogger(__name__)
 
@@ -54,7 +53,7 @@ class Inventory(object):
         """
         return  hashlib.md5("{}{}".format(
             str(inventory.keys()),str(content)
-        )).hexdigest()
+        ).encode("utf-8")).hexdigest()
 
     def type(self, request, inventory, resource):
         if request.method == "GET":

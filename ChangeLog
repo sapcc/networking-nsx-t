@@ -1,8 +1,15 @@
 CHANGES
 =======
 
-* Improve logging messages
-* Clean up orphan IPSets every time when agent boots
+* General rename and refactoring
+* Really ignore order in test\_provider\_initialization
+* Fix test\_provider\_initialization by comparing to an unsorted list
+* Test all unit tests
+* This commit adds github action tox tests
+* Implement CLI interface
+* Make provider abstract class
+* Introduce Policy API support and migration capabilities
+* Introduce port aware security
 * Reduce ipset size by reconciling, fix port-not-found exception, fix special case revision detection
 * Moved inventory\_sync to own intervalloop, caused timeout for agent report\_state
 * Fix update of group members if remote security group is self-referencing

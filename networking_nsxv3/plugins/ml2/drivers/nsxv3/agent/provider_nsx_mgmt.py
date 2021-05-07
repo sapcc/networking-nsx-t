@@ -257,7 +257,7 @@ class Payload(object):
 
         if remote_ip_prefix:
             remote_ip_prefix = \
-                str(ipaddress.ip_network(unicode(remote_ip_prefix),
+                str(ipaddress.ip_network(str(remote_ip_prefix),
                                          strict=False))
 
             if remote_ip_prefix in [None, '0.0.0.0/0', '::/0']:
@@ -709,7 +709,7 @@ class Provider(abs.Provider):
 
     def _sg_rules_realize(self, os_sg, meta_sg, meta_sg_rules, meta_sg_rules_remote):
 
-        sg_id = meta_sg.items()[0][0]
+        sg_id = list(meta_sg.items())[0][0]
         sg_rules = {o.get("id"):o for o in os_sg.get("rules")}
 
         sec_id = meta_sg.get(sg_id).get("id")

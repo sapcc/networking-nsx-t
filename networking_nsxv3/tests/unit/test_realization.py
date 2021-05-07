@@ -1,29 +1,22 @@
+import json
+import re
 import sys
 
+import eventlet
 import mock
+import requests
 import responses
 import testtools
 from mock import patch
 from networking_nsxv3.common import config
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
+    agent, provider_nsx_mgmt, realization)
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.realization import \
     AgentRealizer
+from networking_nsxv3.tests.unit import openstack, provider
 from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
-
-
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import realization
-
-from networking_nsxv3.tests.unit import provider
-from networking_nsxv3.tests.unit import openstack
-
-import re
-import json
-import eventlet
-import requests
-
 
 LOG = logging.getLogger(__name__)
 
@@ -95,7 +88,8 @@ class TestAgentRealizer(base.BaseTestCase):
 
     def setUpResponsesActivated(self):
         self.rpc = openstack.TestNSXv3ServerRpcApi(self.openstack_inventory)
-        self.manager = agent.NSXv3Manager(rpc=self.rpc, monitoring=False)
+        self.manager = agent.NSXv3Manager(rpc=self.rpc, synchronization=True, 
+                                          monitoring=False)
         rpc = self.manager.get_rpc_callbacks(None, None, None)
         notifier = openstack.TestNSXv3AgentManagerRpcCallBackBase(rpc)
         self.openstack_inventory.register(notifier)
@@ -193,10 +187,10 @@ class TestAgentRealizer(base.BaseTestCase):
         LOG.info(json.dumps(self.openstack_inventory.inventory, indent=4))
         LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))        
         
-        self.assertEqual(p_inv.inventory.get(p_inv.NSGROUPS).keys(), [])
-        self.assertEqual(p_inv.inventory.get(p_inv.SECTIONS).keys(), [])
-        self.assertEqual(p_inv.inventory.get(p_inv.IPSETS).keys(), [])
-        self.assertEqual(p_inv.inventory.get(p_inv.PORTS).keys(), [])
+        self.assertEqual(len(p_inv.inventory.get(p_inv.NSGROUPS).keys()), 0)
+        self.assertEqual(len(p_inv.inventory.get(p_inv.SECTIONS).keys()), 0)
+        self.assertEqual(len(p_inv.inventory.get(p_inv.IPSETS).keys()), 0)
+        self.assertEqual(len(p_inv.inventory.get(p_inv.PORTS).keys()), 0)
         # Default IP-Discovery and Spoofguard
         self.assertEqual(len(p_inv.inventory.get(p_inv.PROFILES).keys()), 2)
 
