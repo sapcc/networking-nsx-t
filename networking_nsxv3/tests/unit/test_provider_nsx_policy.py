@@ -1,21 +1,24 @@
+import copy
+import hashlib
+import json
+import re
+from urllib.parse import parse_qs, urlparse
+
 import requests
 import responses
-import re
-import json
-import hashlib
-import copy
-from urlparse import urlparse, parse_qs
 from networking_nsxv3.common import config
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
-from oslo_config import cfg
-from neutron.tests import base
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import \
+    provider_nsx_policy
 from networking_nsxv3.tests.unit.provider import Inventory
-
+from neutron.tests import base
+from oslo_config import cfg
 from oslo_log import log as logging
+
 LOG = logging.getLogger(__name__)
 
 
-# TODO - introduce responses.add_passthru(re.compile('https://percy.io/\\w+'))
+# INFO - Can introduce responses to directly run the tests against live NSX-T
+# responses.add_passthru(re.compile('https://nsxm-l-01a.corp.local/\\w+'))
 
 def get_url(path):
     return "https://nsxm-l-01a.corp.local:443{}".format(path)

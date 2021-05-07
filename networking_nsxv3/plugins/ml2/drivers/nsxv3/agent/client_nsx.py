@@ -15,10 +15,10 @@ LOG = logging.getLogger(__name__)
 
 
 def is_not_found(response):
-    return re.search("The path.*is invalid", response.content)
+    return re.search("The path.*is invalid", response.text)
 
 def is_atomic_request_error(response):
-    return response.status_code == 400 and re.search("The object AtomicRequest", response.content)
+    return response.status_code == 400 and re.search("The object AtomicRequest", response.text)
 
 
 class RetryPolicy(object):

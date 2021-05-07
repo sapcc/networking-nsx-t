@@ -97,7 +97,7 @@ class Inventory(object):
         return copy.deepcopy(resource) if resource else None
 
     def get_all(self, resource_type):
-        return copy.deepcopy(self.inventory.get(resource_type,{}).items())
+        return copy.deepcopy(list(self.inventory.get(resource_type,{}).items()))
 
     def port_create(self, name, segmentation_id, parent_name=None, 
                     qos_name=None, security_group_names=[],
