@@ -41,13 +41,13 @@ class Identifier(object):
         self.retry = 0
         self._retry_max = cfg.CONF.AGENT.retry_on_failure_max
         self._retry_delay = cfg.CONF.AGENT.retry_on_failure_delay
-    
+
     def encode(self):
         return json.dumps({
             "id": self.identifier,
             "retry": self.retry
         })
-    
+
     @staticmethod
     def decode(identifier):
         try:
@@ -57,7 +57,7 @@ class Identifier(object):
         obj = Identifier(options["id"])
         obj.retry = options["retry"]
         return obj
-    
+
     def retry_next(self):
         if self.retry <= self._retry_max:
             self.retry += 1
