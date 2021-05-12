@@ -1,5 +1,6 @@
 import itertools
 import json
+import time
 
 from networking_nsxv3.common.locking import LockManager
 from oslo_config import cfg
@@ -16,6 +17,7 @@ class AgentRealizer(object):
         self.kpi = kpi
         self.provider = provider
         self.legacy_provider = legacy_provider
+        self.age = int(time.time())
         # Initializing metadata
         self.all(dryrun=True)
 
@@ -28,7 +30,7 @@ class AgentRealizer(object):
             meta.update({k:v for (k,v) in query(step, offset)})
         return meta
 
-    def _all(self, list_aged):
+    def refresh(self, list_aged):
         p = self.provider
 
         for o in list_aged:
@@ -68,6 +70,8 @@ class AgentRealizer(object):
             qos_outdated, qos_current = p.outdated(p.QOS, qos_meta)
             # There is not way to revision group members but can 'age' them
             sgm_outdated, _ = p.outdated(p.SG_MEMBERS, dict())
+            # Only force networks refresh
+            p.outdated(p.NETWORK, dict())
 
             if dryrun:
                 LOG.info("Dryrun:%s. Metadata refresh completed.", dryrun)
@@ -103,15 +107,21 @@ class AgentRealizer(object):
             current += p.age(p.QOS, qos_current)
 
             def get_rev(o):
-                return int(o[2]) if o[2].isdigit() else 0
+                return int(o[2]) if str(o[2]).isdigit() else 0
 
             current = sorted(current, key=get_rev)
+
+            if len(current) > 1 and current[0][2] > self.age:
+                LOG.info("Sanitizing provider")
+                # Sanitize based on age cycles
+                self.callback("sanitize", self.provider.sanitize)
+                self.age = int(time.time())
 
             if len(current) > slice:
                 current = set(itertools.islice(current, slice))
 
             LOG.info("Refreshing %s of least updated resources", len(current))
-            self._all(current)
+            self.refresh(current)
 
 
     def security_group_members(self, os_id, reference=False):

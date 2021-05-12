@@ -140,4 +140,18 @@ class Provider:
         :provider_rules_meta: -- Provider rules metadata
         :delete: bool -- If True will remove Security Group Rules
         """
+
+    def network_realize(self, segmentation_id):
+        """
+        Realize OpenStack Network in provider 
+
+        :segmentation_id: number - VLAN network segment ID
+        """
+
+    @abc.abstractmethod
+    def sanitize(self):
+        """
+        Performs various cleanup tasks. Executed only once after agent boots
+        when all provider objects have been brought into desired state.
+        """
     

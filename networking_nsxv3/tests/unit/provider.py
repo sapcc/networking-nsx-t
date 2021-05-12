@@ -105,6 +105,10 @@ class Inventory(object):
         if request.method == "DELETE":
             if o:
                 del inventory[id]
+                inventory_dump = json.dumps(self.inventory, indent=2)
+                if id in inventory_dump:
+                    inventory[id] = o
+                    return self.resp(417, "Object with ID:{} still in use Inventory:{}".format(id, inventory_dump))
             return self.resp(200) if o else self.resp(404)
     
     def _version(self, request):

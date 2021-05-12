@@ -203,7 +203,7 @@ class TestProvider(base.BaseTestCase):
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg[0]["id"])
         for k,v in sg[1].items():
             if k == "tags":
-                tags = set([(t["scope"],t["tag"]) for t in sg_section.get(k)])
+                tags = set([(t["scope"],t["tag"]) for t in sg_section.get(k, dict())])
                 tags_exp = set([(t["scope"],t["tag"]) for t in sg[1].get(k)])
                 self.assertEquals(tags_exp.intersection(tags), tags_exp)
             else:
@@ -815,8 +815,8 @@ class TestProvider(base.BaseTestCase):
         self.assertNotEqual(meta_parent_port, None)
         self.assertNotEqual(meta_child_port, None)
 
-        provider.port_realize(os_port_parent, dict(), delete=True)
         provider.port_realize(os_port_child, dict(), delete=True)
+        provider.port_realize(os_port_parent, dict(), delete=True)
 
         self.assertEquals(list(self.inventory.inventory[Inventory.PORTS].keys()), [])
 
@@ -941,6 +941,37 @@ class TestProvider(base.BaseTestCase):
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
         qos = self.get_result_by_name(result, os_qos.get("id"))
         self.assertEquals(qos, None)
+    
+    @responses.activate
+    def test_create_network(self):
+        segmentation_id = "3200"
+        provider = provider_nsx_mgmt.Provider()
+        meta = provider.network_realize(segmentation_id)
+
+        inv = self.inventory.inventory
+        net = inv[Inventory.SWITCHES].get(meta.get(segmentation_id).get("id"))
+        self.assertEquals(net.get("vlan"), segmentation_id)
+        self.assertEquals(net.get("transport_zone_id"), provider.zone_id)
+        self.assertEquals(net.get("display_name"), "{}-{}".format(provider.zone_name, segmentation_id))
+
+    @responses.activate
+    def test_reuse_network(self):
+        segmentation_id = "3200"
+        segmentation_id2 = "3201"
+        provider = provider_nsx_mgmt.Provider()
+
+        inv = self.inventory.inventory
+
+        meta = provider.network_realize(segmentation_id)
+        self.assertEquals(len(inv[Inventory.SWITCHES]), 1)
+
+        meta1 = provider.network_realize(segmentation_id)
+        self.assertEquals(len(inv[Inventory.SWITCHES]), 1)
+
+        self.assertEquals(meta, meta1)
+
+        meta = provider.network_realize(segmentation_id2)
+        self.assertEquals(len(inv[Inventory.SWITCHES]), 2)
 
     @responses.activate
     def test_outdated(self):
@@ -966,6 +997,102 @@ class TestProvider(base.BaseTestCase):
 
         outdated,current = provider.outdated(provider.SG_RULES, meta)
 
+        LOG.info(json.dumps(self.inventory.inventory, indent=4))
+
         self.assertEquals(outdated, set(["2","3","4"]))
         self.assertEquals(current, set(["1"]))
 
+
+    @responses.activate
+    def test_remote_prefix_orphan_cleanup(self):
+        sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": []
+        }
+
+        rule = {
+            "id": "1",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "0.0.0.0/16",
+            "security_group_id": sg.get("id"),
+            "port_range_min": "443",
+            "port_range_max": "443",
+            "protocol": "tcp",
+        }
+
+        sg["rules"].append(rule)
+
+        p = provider_nsx_mgmt.Provider()
+        inv = self.inventory.inventory
+
+        # IPSets with no tags
+        for i in range(1,10):
+            data = {
+                "resource_type": "IPSet",
+                "display_name": "0000{}".format(i),
+                "ip_addresses": ["0.0.0.0/{}".format(i)]
+            }
+            p.client.post(path=provider_nsx_mgmt.API.IPSETS, data=data)
+
+        self.assertEquals(len(inv[self.inventory.IPSETS]), 9)
+        
+        p.sg_rules_realize(sg, dict())
+
+        p.sanitize()
+        self.assertEquals(len(inv[self.inventory.IPSETS]), 1)
+
+        sg_section = self.get_by_name(inv[self.inventory.SECTIONS], sg["id"])
+        sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
+        sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
+
+        self.assertNotEquals(sg_rule_ipset, None)
+
+
+    @responses.activate
+    def test_remote_prefix_ambiguity_cleanup(self):
+        sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": []
+        }
+
+        rule = {
+            "id": "1",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "0.0.0.0/16",
+            "security_group_id": sg.get("id"),
+            "port_range_min": "443",
+            "port_range_max": "443",
+            "protocol": "tcp",
+        }
+
+        sg["rules"].append(rule)
+
+        p = provider_nsx_mgmt.Provider()
+        p.sg_rules_realize(sg, dict())
+
+        inv = self.inventory.inventory
+
+        data = provider_nsx_mgmt.Payload().sg_rule_remote_ip(rule, None)
+
+        # Duplicate IPSets
+        for i in range(1,10):
+            p.client.post(path=provider_nsx_mgmt.API.IPSETS, data=data)
+
+        # 1 for the referenced remote prefix and 10 duplicated
+        self.assertEquals(len(inv[self.inventory.IPSETS]), 10)
+        p.sanitize()
+        self.assertEquals(len(inv[self.inventory.IPSETS]), 1)
+
+        sg_section = self.get_by_name(inv[self.inventory.SECTIONS], sg["id"])
+        sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
+        sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
+
+        self.assertNotEquals(sg_rule_ipset, None)

@@ -223,3 +223,6 @@ class Provider(provider_nsx_mgmt.Provider):
         }
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
+    
+    def sanitize(self):
+        pass

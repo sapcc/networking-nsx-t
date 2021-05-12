@@ -2,6 +2,7 @@ import copy
 import ipaddress
 import json
 import time
+from contextlib import suppress
 
 import eventlet
 import netaddr
@@ -46,7 +47,7 @@ class Payload(object):
         tags = {
             NSXV3_REVISION_SCOPE: os_obj.get("revision_number"),
             NSXV3_AGENT_SCOPE: cfg.CONF.AGENT.agent_id,
-            NSXV3_GENERATION_SCOPE: int(time.time())
+            NSXV3_AGE_SCOPE: int(time.time())
         }
         tags.update(more)
         return [{"scope": s, "tag": t} for s, t in tags.items()]
@@ -68,6 +69,19 @@ class Payload(object):
             "resource_type": "SpoofGuardSwitchingProfile",
             "white_list_providers": ["LPORT_BINDINGS"],
             "display_name": os_id
+        }
+    
+    def network(self, os_net, provider_net):
+        return {
+            "resource_type": "LogicalSwitch",
+            "vlan": os_net.get("segmentation_id"),
+            "transport_zone_id": provider_net.get("transport_zone_id"),
+            "address_bindings": [],
+            "admin_state": "UP",
+            "description": "",
+            "display_name": os_net.get("id"),
+            "hybrid": False,
+            "switching_profile_ids": [],
         }
     
     def qos(self, os_qos, provider_qos):
@@ -177,7 +191,7 @@ class Payload(object):
         }
     
     def sg_rules_container(self, os_sg, provider_sg):
-        return {
+        section = {
             "resource_type": "FirewallSection",
             "display_name": os_sg.get("id"),
             "section_type": "LAYER3",
@@ -190,11 +204,14 @@ class Payload(object):
                     "target_id": provider_sg.get("applied_tos"),
                     "target_type": "NSGroup"
                 }
-            ],
-            "tags": self.tags(os_sg, more={
-                NSXV3_SECURITY_GROUP_SCOPE: os_sg.get("id")
-            })
+            ]
         }
+
+        if provider_sg.get("tags_update"):
+            tags = {NSXV3_SECURITY_GROUP_SCOPE: os_sg.get("id")}
+            section["tags"] = self.tags(os_sg, more=tags)
+
+        return section
 
     def sg_rule(self, os_rule, provider_rule):
         id = os_rule["id"]
@@ -345,17 +362,18 @@ class Provider(abs.Provider):
         self.client = Client()
         self.payload = self._payload()
 
-        self.zone_id = None
         self.switch_profiles = []
 
-        zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
-        LOG.info("Looking for TransportZone with name %s.", zone_name)
+        self.zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        self.zone_id = None
+
+        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
         for zone in self.client.get_all(path=API.ZONES):
-            if zone.get("display_name") == zone_name:
+            if zone.get("display_name") == self.zone_name:
                 self.zone_id = zone.get("id")
         
         if not self.zone_id:
-            raise Exception("Not found Transport Zone {}".format(zone_name))
+            raise Exception("Not found Transport Zone {}".format(self.zone_name))
 
         sg = self.payload.spoofguard()
         ip = self.payload.ip_discovery()
@@ -428,6 +446,9 @@ class Provider(abs.Provider):
             }
         }
 
+    def _tags(self, o):
+        return {t.get("scope"):t.get("tag") for t in o.get("tags", [])}
+
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         os_id = os_o.get("id")
         
@@ -460,7 +481,7 @@ class Provider(abs.Provider):
                     return self.metadata_update(resource_type, o.json())
         else:
             if not delete:
-                LOG.info(report, "updated")
+                LOG.info(report, "created")
                 o = self.client.post(path=path, data=convertor(os_o, provider_o))
                 return self.metadata_update(resource_type, o.json())
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
@@ -491,15 +512,15 @@ class Provider(abs.Provider):
                     # This is RULE specific IPSet
                     continue
             
-            # Set generation to most recent for NSGroups, always skip update
-            gen = int(time.time()) if provider == API.NSGROUPS \
-                else tags.get(NSXV3_GENERATION_SCOPE)
+            # Set age to most recent for NSGroups to always skip update
+            age = int(time.time()) if provider == API.NSGROUPS \
+                else tags.get(NSXV3_AGE_SCOPE)
 
             # TODO - check for collisions (Ambiguously) and perform actions
             meta[o.get("display_name")] = {
                 "id": o.get("id"), 
                 "rev": tags.get(NSXV3_REVISION_SCOPE), # empty set for NSGroup
-                "gen": gen,
+                "age": age,
                 "_revision": o.get("_revision")
             }
         return meta
@@ -547,6 +568,9 @@ class Provider(abs.Provider):
     def _metadata_update(self, resource_type, provider_object):
         os_id = provider_object.get("display_name")
 
+        if resource_type == self.NETWORK:
+            os_id = os_id.replace("{}-".format(self.zone_name), "")
+
         tags = {
             t.get("scope"):t.get("tag") for t in provider_object.get("tags", [])
         }
@@ -554,10 +578,9 @@ class Provider(abs.Provider):
         meta = {
             "id": provider_object.get("id"),
             "rev": tags.get(NSXV3_REVISION_SCOPE),
-            "gen": tags.get(NSXV3_GENERATION_SCOPE),
+            "age": tags.get(NSXV3_AGE_SCOPE),
             "_revision": provider_object.get("_revision")
         }
-
         
         self._cache.get(resource_type).get("resources")[os_id] = meta
         backup = self._cache.get(resource_type).get("backup")
@@ -628,7 +651,7 @@ class Provider(abs.Provider):
     def age(self, resource_type, os_ids):
         type = resource_type
         meta = self._cache.get(resource_type).get("resources")
-        return [(type,id,meta.get(id, {}).get("age", "0")) for id in os_ids]
+        return [(type,id,meta.get(id, {}).get(NSXV3_AGE_SCOPE, "0")) for id in os_ids]
 
     def port_realize(self, os_port, meta=None, delete=False):
         if delete:
@@ -701,10 +724,16 @@ class Provider(abs.Provider):
             provider_sg.update({
                 "applied_tos": meta_nsg.get(os_sg.get("id")).get("id")
             })
+            # Create/update section keeping existing tags(revision)
             meta_sec = self._realize(*sec_args)
 
+            # CRUD rules
             self._sg_rules_realize(\
                 os_sg, meta_sec, provider_rules_meta, meta_sg_rules_ipsets)
+
+            # Update section tags(revision) when all rules applied successfully
+            provider_sg["tags_update"] = True
+            self._realize(*sec_args)
 
 
     def _sg_rules_realize(self, os_sg, meta_sg, meta_sg_rules, meta_sg_rules_remote):
@@ -723,7 +752,7 @@ class Provider(abs.Provider):
 
         os_rules_add = sg_rules_ids.difference(sec_rules_ids)
         os_rules_remove = sec_rules_ids.difference(sec_rules_ids)
-        os_rules_enable = sec_rules_ids.intersection(sec_rules_ids)
+        os_rules_existing = sec_rules_ids.intersection(sec_rules_ids)
         
         pool_size = cfg.CONF.NSXV3.nsxv3_max_records_per_query
         # NSX-T 3.0.2 API limit is 1k rules per request
@@ -752,13 +781,21 @@ class Provider(abs.Provider):
                     LOG.error("Security Group rules creation has failed. Error: %s", err)
                 data["rules"] = []
         
-        for id in os_rules_enable:
+        for id in os_rules_existing:
             data = sec_rules.get(id)
             if data.get("disabled"):
                 path=API.RULE.format(sec_id, sec_rule.get("id"))
                 data["disabled"] = False
                 resp = self.client.put(path=path,data=data)
                 sec_rev = resp.json().get("rules")[0].get("_revision")
+                self._set_sg_remote_ipset(sg_rules.get(id), 
+                                          sec_rules_ipsets.get(id))
+
+        if not self._tags(meta_sg.get(sg_id)).get(NSXV3_AGE_SCOPE):
+            # Update legacy IPSets for remote ip prefix 0.0.0.0/x
+            for id in os_rules_existing:
+                self._set_sg_remote_ipset(sg_rules.get(id), 
+                                        sec_rules_ipsets.get(id))
         
         for id in os_rules_remove:
             path=API.RULE.format(sec_id, sec_rules.get(id).get("id"))
@@ -772,6 +809,14 @@ class Provider(abs.Provider):
         resp = self.client.get(path=API.SECTION.format(sec_id))
         self.metadata_update(Provider.SG_RULES, resp.json())
             
+    def _set_sg_remote_ipset(self, os_rule, provider_rule_ipset_id):
+        if provider_rule_ipset_id:
+            path = API.IPSET.format(provider_rule_ipset_id)
+            o = self.client.get(path=path).json()
+
+            if NSXV3_AGE_SCOPE not in self._tags(o):
+                data = self.payload.sg_rule_remote_ip(os_rule, {})
+                self.client.put(path=path, data=data)
 
     def _get_sg_remote_ipsets(self, provider_rules_meta):
         meta_ipsets = dict()
@@ -782,7 +827,6 @@ class Provider(abs.Provider):
                     ref.get("target_display_name") == os_sg_rule_id:
                         meta_ipsets[os_sg_rule_id] = ref.get("target_id")
         return meta_ipsets
-
 
     def _get_sg_provider_rule(self, os_rule, provider_rule_remote_id):
         cidr = os_rule.get("remote_ip_prefix")
@@ -822,3 +866,43 @@ class Provider(abs.Provider):
         a.sort()
         b.sort()
         return a != b
+
+    def network_realize(self, segmentation_id):
+        meta = self.metadata(self.NETWORK, segmentation_id)
+        if not meta:
+            os_net = {
+                "id": "{}-{}".format(self.zone_name, segmentation_id),
+                "segmentation_id": segmentation_id
+            }
+            provider_net = {"transport_zone_id": self.zone_id}
+
+            data = self.payload.network(os_net, provider_net)
+            o = self.client.post(path=API.SWITCHES, data=data).json()
+            meta = self.metadata_update(self.NETWORK, o)
+        return meta
+
+    def sanitize(self):
+        cache = dict()
+        delete = set()
+        for o in self.client.get_all(API.IPSETS):
+            tags = self._tags(o)
+            if NSXV3_SECURITY_GROUP_SCOPE not in tags:
+                if NSXV3_SECURITY_GROUP_REMOTE_SCOPE in tags:
+                    os_sg_id = tags[NSXV3_SECURITY_GROUP_REMOTE_SCOPE]
+                    if os_sg_id in self._cache[Provider.SG_RULES].get("resources"):
+                        rule_id = o["display_name"]
+                        if rule_id in cache:
+                            delete.add(cache[rule_id]["id"])
+                        else:
+                            cache[rule_id] = o
+                            continue
+                # The assumption here is that all IPSets have already been
+                # Updated with NSXV3_SECURITY_GROUP_REMOTE_SCOPE
+                with suppress(Exception):
+                    self.client.delete(path=API.IPSET.format(o["id"]))
+        
+        # In case of ambiguity remove all IPSets, NSX-T will prevent removing
+        # the real reference
+        for id in delete:
+            with suppress(Exception):
+                self.client.delete(path=API.IPSET.format(o["id"]))
