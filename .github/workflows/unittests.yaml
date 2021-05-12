@@ -5,12 +5,12 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ stable/ussuri-m3 ]
+    branches: [ stable/quuens-m3 ]
   pull_request:
-    branches: [ stable/ussuri-m3 ]
+    branches: [ stable/queens-m3 ]
 
 env:
-  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/ussuri-m3/upper-constraints.txt
+  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/queens-m3/upper-constraints.txt
   VIRTUALENV_PIP: "20.2.3"
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: [3.6]
+        python: [2.7]
 
     steps:
       - uses: actions/checkout@v2
