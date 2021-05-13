@@ -5,7 +5,7 @@ name: Unit Tests
 
 on:
   push:
-    branches: [ stable/quuens-m3 ]
+    branches: [ stable/queens-m3 ]
   pull_request:
     branches: [ stable/queens-m3 ]
 
