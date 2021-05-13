@@ -133,6 +133,7 @@ class Runner(object):
         self._passive = UniqPriorityQueue(maxsize=passive_size)
         self._workers = eventlet.greenpool.GreenPool(size=workers_size)
         self._idle = workers_size
+        self._state = "not started"
 
     def run(self, priority, ids, fn):
         """ Submit a job with priority
@@ -142,6 +143,11 @@ class Runner(object):
         ids -- list of IDs (identifiers) that will be passed to the 'fn'
         fn -- a function about to be executed by the runner with an argument ID
         """
+        if self._state != "started":
+            report = MESSAGE.format("Skipping", ids, priority.name, fn.__name__)
+            LOG.warn("Runner is in State:%s .%s", self._state, report )
+            return
+
         for jid in ids:
             try:
                 LOG.info(MESSAGE.format("Enqueued", jid, priority.name, fn.__name__))
@@ -185,10 +191,12 @@ class Runner(object):
 
     def start(self):
         """ Initialize the runner instance """
+        self._state = "started"
         eventlet.greenthread.spawn_n(self._start)
 
     def stop(self):
         """ Gracefully terminates the runner instance """
+        self._state = "stopping"
         while True:
             a = self.active()
             p = self.passive()
@@ -201,6 +209,7 @@ class Runner(object):
 
         self._workers.resize(0)
         self._workers.waitall()
+        self._state = "stopped"
         LOG.info("Job Queue workers terminated successfully.")
     
     def wait_active_jobs_completion(self):
