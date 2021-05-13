@@ -87,7 +87,7 @@ class TestProvider(base.BaseTestCase):
 
 
     @responses.activate
-    def test_security_group_members_creation_compact_cidrs(self):
+    def test_security_group_members_creation_compact_ipv4_cidrs(self):
         sg = ({
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.0.0/16"],
@@ -103,6 +103,23 @@ class TestProvider(base.BaseTestCase):
         for k,v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
     
+    @responses.activate
+    def test_security_group_members_creation_compact_ipv6_cidrs(self):
+        sg = ({
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "cidrs": ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370/128"],
+            "revision_number": 2
+        },{
+            "resource_type": "IPSet",
+            "ip_addresses": ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370"]
+        })
+
+        provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
+        inv = self.inventory.inventory
+        sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
+        for k,v in sg[1].items():
+            self.assertEquals(sg_ipset.get(k), sg[1].get(k))
+
     @responses.activate
     def test_security_group_members_update(self):
         sg = {

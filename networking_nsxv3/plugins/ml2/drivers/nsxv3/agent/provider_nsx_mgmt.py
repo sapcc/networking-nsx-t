@@ -42,6 +42,20 @@ class API(object):
 
 class Payload(object):
 
+    def get_compacted_cidrs(self, os_cidrs):
+        """
+        Reduce number of CIDRs based on the netmask overlapping
+        """
+        compacted_cidrs = []
+        for cidr in netaddr.IPSet(os_cidrs).iter_cidrs():
+            if cidr.version == 4 and cidr.prefixlen == 32:
+                compacted_cidrs.append(str(cidr.ip))
+            elif cidr.version == 6 and cidr.prefixlen == 128:
+                compacted_cidrs.append(str(cidr.ip))
+            else:
+                compacted_cidrs.append(str(cidr))
+        return compacted_cidrs
+
     def tags(self, os_obj, more=dict()):
         tags = {
             NSXV3_REVISION_SCOPE: os_obj.get("revision_number"),
@@ -158,8 +172,7 @@ class Payload(object):
         return port
 
     def sg_members_container(self, os_sg, provider_sg):
-        cidrs = [str(ip).replace("/32", "") for ip in netaddr.IPSet(
-            os_sg.get("cidrs")).iter_cidrs()]
+        cidrs = self.get_compacted_cidrs(os_sg.get("cidrs"))
 
         return {
             "resource_type": "IPSet",

@@ -76,7 +76,7 @@ class TestProvider(base.BaseTestCase):
             ["172.16.1.1", "172.16.1.2", "172.16.2.0/24", "172.16.5.0/24"])
 
     @responses.activate
-    def test_security_group_members_creation_compact_cidrs(self):
+    def test_security_group_members_creation_compact_ipv4_cidrs(self):
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.0.0/16"],
@@ -94,6 +94,26 @@ class TestProvider(base.BaseTestCase):
                 ip_addresses = e.get("ip_addresses")
                 break
         self.assertEquals(ip_addresses, ["172.16.0.0/16"])
+    
+    @responses.activate
+    def test_security_group_members_creation_compact_ipv6_cidrs(self):
+        sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "cidrs": ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370/128"],
+            "revision_number": 0
+        }
+
+        provider_nsx_policy.Provider().sg_members_realize(sg)
+        
+        inv = self.inventory.inventory
+        sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
+
+        ip_addresses = []
+        for e in sg_group.get("expression"):
+            if e.get("ip_addresses"):
+                ip_addresses = e.get("ip_addresses")
+                break
+        self.assertEquals(ip_addresses, ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370"])
 
 
     @responses.activate

@@ -24,18 +24,6 @@ class API(provider_nsx_mgmt.API):
 
 class Payload(provider_nsx_mgmt.Payload):
 
-    def get_compacted_cidrs(self, os_cidrs):
-        """
-        Reduce number of CIDRs based on the netmask overlapping
-        """
-        compacted_cidrs = []
-        for cidr in netaddr.IPSet(os_cidrs).iter_cidrs():
-            if cidr.version == 4 and cidr.prefixlen == 32:
-                compacted_cidrs.append(str(cidr.ip))
-            else:
-                compacted_cidrs.append(str(cidr))
-        return compacted_cidrs
-
     def sg_members_container(self, os_sg, provider_sg):
         sg = {
             "display_name": os_sg.get("id"),
