@@ -1,3 +1,4 @@
+import datetime
 import itertools
 import json
 import time
@@ -23,11 +24,12 @@ class AgentRealizer(object):
 
     def _os_meta(self, query):
         step = cfg.CONF.AGENT.rpc_max_records_per_query
-        offset = -1
+        created_after = datetime.datetime(1970, 1, 1)
         meta = dict()
-        while offset != len(meta):
-            offset = len(meta)
-            meta.update({k:v for (k,v) in query(step, offset)})
+        while created_after:
+            result = query(step, created_after)
+            meta.update({k:v for (k,v,_) in result})
+            created_after = result[-1][2] if len(result) >= step else None
         return meta
 
     def refresh(self, list_aged):

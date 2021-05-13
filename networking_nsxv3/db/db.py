@@ -15,40 +15,51 @@ from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
 
 
-def get_ports_with_revisions(context, host, limit, offset):
+def _get_datetime(datetime_value):
+    if isinstance(datetime_value, datetime):
+        return datetime_value
+    elif isinstance(datetime_value, basestring):
+        return datetime.strptime(datetime_value, '%Y-%m-%dT%H:%M:%S.%f')
+    else:
+        raise Exception(
+            "datetime_value object should be datetime or string in isoformat")
+
+def get_ports_with_revisions(context, host, limit, created_after):
     return context.session.query(
         Port.id,
         StandardAttribute.revision_number,
+        StandardAttribute.created_at
     ).join(
         StandardAttribute,
         PortBindingLevel
     ).filter(
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
+        StandardAttribute.created_at >= _get_datetime(created_after)
     ).limit(
         limit
-    ).offset(
-        offset
     ).all()
 
 
-def get_qos_policies_with_revisions(context, host, limit, offset):
+def get_qos_policies_with_revisions(context, host, limit, created_after):
     return context.session.query(
         QosPolicy.id,
         StandardAttribute.revision_number,
+        StandardAttribute.created_at
     ).join(
         StandardAttribute
+    ).filter(
+        StandardAttribute.created_at >= _get_datetime(created_after)
     ).limit(
         limit
-    ).offset(
-        offset
     ).all()
 
 
-def get_security_groups_with_revisions(context, host, limit, offset):
+def get_security_groups_with_revisions(context, host, limit, created_after):
     return context.session.query(
         sg_db.SecurityGroup.id,
         StandardAttribute.revision_number,
+        StandardAttribute.created_at
     ).join(
         sg_db.SecurityGroupPortBinding
     ).join(
@@ -57,10 +68,9 @@ def get_security_groups_with_revisions(context, host, limit, offset):
     ).filter(
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
+        StandardAttribute.created_at >= _get_datetime(created_after)
     ).limit(
         limit
-    ).offset(
-        offset
     ).all()
 
 
@@ -286,21 +296,24 @@ def get_port_id_by_sec_group_id(context, security_group_id):
     ).all()
 
 
-def get_security_groups_for_host(context, host, limit, offset):
+def get_security_groups_for_host(context, host, limit, created_after):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.security_group_id,
+        StandardAttribute.created_at
     ).join(
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
     ).filter(
         PortBindingLevel.host == host,
-        PortBindingLevel.driver == nsxv3_constants.NSXV3
-    ).distinct().limit(limit).offset(offset).all()
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+        StandardAttribute.created_at >= _get_datetime(created_after)
+    ).distinct().limit(limit).all()
 
 
-def get_remote_security_groups_for_host(context, host, limit, offset):
+def get_remote_security_groups_for_host(context, host, limit, created_after):
     return context.session.query(
         sg_db.SecurityGroupRule.remote_group_id,
+        StandardAttribute.created_at
     ).join(
         sg_db.SecurityGroupPortBinding,
         sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroupRule.security_group_id
@@ -310,8 +323,9 @@ def get_remote_security_groups_for_host(context, host, limit, offset):
     ).filter(
         sg_db.SecurityGroupRule.remote_group_id.isnot(None),
         PortBindingLevel.host == host,
-        PortBindingLevel.driver == nsxv3_constants.NSXV3
-    ).distinct().limit(limit).offset(offset).all()
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+        StandardAttribute.created_at >= _get_datetime(created_after)
+    ).distinct().limit(limit).all()
 
 
 def has_security_group_used_by_host(context, host, security_group_id):
