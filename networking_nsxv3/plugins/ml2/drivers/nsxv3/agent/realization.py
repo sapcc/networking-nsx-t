@@ -167,7 +167,7 @@ class AgentRealizer(object):
                 # Create Members Container
                 self.security_group_members(os_id, reference=True)
 
-                os_sg["rules"] = self.rpc.get_rules_for_security_groups_id(os_id)
+                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(os_id)
 
                 for os_rule in os_sg["rules"]:
                     remote_id = os_rule["remote_group_id"]

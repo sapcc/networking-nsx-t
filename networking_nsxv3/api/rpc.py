@@ -123,9 +123,9 @@ class NSXv3ServerRpcApi(object):
         return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
 
     @log_helpers.log_method_call
-    def get_rules_for_security_groups_id(self, security_group_id):
+    def get_rules_for_security_group_id(self, security_group_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_rules_for_security_groups_id',
+        return cctxt.call(self.context, 'get_rules_for_security_group_id',
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
@@ -195,8 +195,8 @@ class NSXv3ServerRpcCallback(object):
             }
 
     @log_helpers.log_method_call
-    def get_rules_for_security_groups_id(self, context, security_group_id):
-        return db.get_rules_for_security_groups_id(context, security_group_id)
+    def get_rules_for_security_group_id(self, context, security_group_id):
+        return db.get_rules_for_security_group_id(context, security_group_id)
 
     @log_helpers.log_method_call
     def get_security_group_members_effective_ips(self, context, security_group_id):

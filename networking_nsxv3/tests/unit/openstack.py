@@ -289,7 +289,7 @@ class TestNSXv3ServerRpcApi(object):
         sg["ports"] = [o.get("id") for _,o in id_o if os_id in o.get("security_groups")]
         return sg
 
-    def get_rules_for_security_groups_id(self, os_id):
+    def get_rules_for_security_group_id(self, os_id):
         id_o = self.inventory.get_all(Inventory.SECURITY_GROUP_RULE)
         return [o for _,o in id_o if os_id == o.get("security_group_id")]
 

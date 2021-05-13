@@ -270,7 +270,7 @@ def _get_latest_changes(context, resource_type, updated_at):
     ).all()
 
 
-def get_rules_for_security_groups_id(context, security_group_id):
+def get_rules_for_security_group_id(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroupRule
     ).filter(
