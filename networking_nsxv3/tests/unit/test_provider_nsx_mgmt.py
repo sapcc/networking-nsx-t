@@ -2,7 +2,6 @@ import copy
 import hashlib
 import json
 import re
-from urllib.parse import parse_qs, urlparse
 
 import requests
 import responses

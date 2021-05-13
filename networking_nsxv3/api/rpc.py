@@ -3,9 +3,9 @@ from datetime import datetime
 import oslo_messaging
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
+from neutron.common import rpc, topics
 from neutron_lib import context as neutron_context
-from neutron_lib import exceptions, rpc
-from neutron_lib.agent import topics
+from neutron_lib import exceptions
 from neutron_lib.plugins import directory
 from oslo_config import cfg
 from oslo_log import helpers as log_helpers

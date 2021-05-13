@@ -106,10 +106,12 @@ class AgentRealizer(object):
             current += p.age(p.SG_MEMBERS, sgm_outdated)
             current += p.age(p.QOS, qos_current)
 
-            def get_rev(o):
-                return int(o[2]) if str(o[2]).isdigit() else 0
+            def compare(a,b):
+                ar = int(a[2]) if str(a[2]).isdigit() else 0
+                br = int(b[2]) if str(b[2]).isdigit() else 0
+                return ar - br
 
-            current = sorted(current, key=get_rev)
+            current = sorted(current, cmp=compare)
 
             if len(current) > 1 and current[0][2] > self.age:
                 LOG.info("Sanitizing provider")

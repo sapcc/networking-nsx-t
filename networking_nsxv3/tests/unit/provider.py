@@ -1,9 +1,9 @@
 import copy
 import hashlib
 import json
-from urllib.parse import parse_qs, urlparse
 
 from oslo_log import log as logging
+from urlparse import parse_qs, urlparse
 
 LOG = logging.getLogger(__name__)
 

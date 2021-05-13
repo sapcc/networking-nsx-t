@@ -2,7 +2,6 @@ import copy
 import ipaddress
 import json
 import time
-from contextlib import suppress
 
 import eventlet
 import netaddr
@@ -274,7 +273,7 @@ class Payload(object):
 
         if remote_ip_prefix:
             remote_ip_prefix = \
-                str(ipaddress.ip_network(str(remote_ip_prefix),
+                str(ipaddress.ip_network(unicode(remote_ip_prefix),
                                          strict=False))
 
             if remote_ip_prefix in [None, '0.0.0.0/0', '::/0']:
@@ -738,7 +737,7 @@ class Provider(abs.Provider):
 
     def _sg_rules_realize(self, os_sg, meta_sg, meta_sg_rules, meta_sg_rules_remote):
 
-        sg_id = list(meta_sg.items())[0][0]
+        sg_id = meta_sg.items()[0][0]
         sg_rules = {o.get("id"):o for o in os_sg.get("rules")}
 
         sec_id = meta_sg.get(sg_id).get("id")
@@ -898,11 +897,15 @@ class Provider(abs.Provider):
                             continue
                 # The assumption here is that all IPSets have already been
                 # Updated with NSXV3_SECURITY_GROUP_REMOTE_SCOPE
-                with suppress(Exception):
+                try:
                     self.client.delete(path=API.IPSET.format(o["id"]))
+                except:
+                    pass
         
         # In case of ambiguity remove all IPSets, NSX-T will prevent removing
         # the real reference
         for id in delete:
-            with suppress(Exception):
-                self.client.delete(path=API.IPSET.format(o["id"]))
+            try:
+                self.client.delete(path=API.IPSET.format(id))
+            except:
+                pass
