@@ -25,24 +25,24 @@ class TestNSXv3AgentManagerRpcCallBackBase(Notifier):
     def notify(self, resource_type, resource, operation):
         o = copy.deepcopy(resource)
 
-        if resource_type == Inventory.PORT:
+        if resource_type == NeutronMock.PORT:
             # Ports are created by Nova -> vCenter
             if operation != self.ADD:
                 self.rpc.port_update(None, port=o)
             self.rpc.security_groups_member_updated(None, security_groups=o.get("security_groups"))
 
-        if resource_type == Inventory.QOS:
+        if resource_type == NeutronMock.QOS:
             # Create and update RPC calls are handled also by update_policy
             self.rpc.update_policy(None, o)
 
-        if resource_type == Inventory.SECURITY_GROUP:
+        if resource_type == NeutronMock.SECURITY_GROUP:
             self.rpc.security_groups_rule_updated(None, security_groups=[o.get("id")])
 
-        if resource_type == Inventory.SECURITY_GROUP_RULE:
+        if resource_type == NeutronMock.SECURITY_GROUP_RULE:
             self.rpc.security_groups_rule_updated(None, security_groups=[o.get("security_group_id")])
 
 
-class Inventory(object):
+class NeutronMock(object):
 
     PORT = "port"
     QOS = "qos"
@@ -223,54 +223,54 @@ class TestNSXv3ServerRpcApi(object):
 
     def get_qos_policies_with_revisions(self, limit, offset):
         qos_policies = set()
-        for _,port in self.inventory.get_all(Inventory.PORT):
+        for _,port in self.inventory.get_all(NeutronMock.PORT):
             qos_id = port.get("qos_policy_id")
             if qos_id:
                 qos_policies.update(qos_id)
 
         effective_qos_policies = []
-        for id,rev in self._get_revisions(Inventory.QOS):
+        for id,rev in self._get_revisions(NeutronMock.QOS):
             if id in qos_policies:
                 effective_qos_policies.append((id, rev))
 
         return effective_qos_policies
 
     def get_ports_with_revisions(self, limit, offset):
-        return self._get_revisions(Inventory.PORT)
+        return self._get_revisions(NeutronMock.PORT)
 
     def get_security_groups_with_revisions(self, limit, offset):
         sgs = set()
-        for _,port in self.inventory.get_all(Inventory.PORT):
+        for _,port in self.inventory.get_all(NeutronMock.PORT):
             port_sgs = port.get("security_groups")
             if port_sgs:
                 sgs.update(port_sgs)
         
         effective_sgs = []
-        for id,rev in self._get_revisions(Inventory.SECURITY_GROUP):
+        for id,rev in self._get_revisions(NeutronMock.SECURITY_GROUP):
             if id in sgs:
                 effective_sgs.append((id, rev))
         return effective_sgs
 
     def has_security_group_used_by_host(self, os_id):
         sgs = set()
-        for _,port in self.inventory.get_all(Inventory.PORT):
+        for _,port in self.inventory.get_all(NeutronMock.PORT):
             port_sgs = port.get("security_groups")
             if port_sgs:
                 sgs.update(port_sgs)
         if os_id in sgs:
             return True
 
-        for _,rule in self.inventory.get_all(Inventory.SECURITY_GROUP_RULE):
+        for _,rule in self.inventory.get_all(NeutronMock.SECURITY_GROUP_RULE):
             if rule.get("remote_group_id") == os_id and rule.get("security_group_id") in sgs:
                 return True
         return False
 
     def get_security_group_members_effective_ips(self, os_id):
-        sg = self.inventory.get_by_id(Inventory.SECURITY_GROUP, os_id)
+        sg = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, os_id)
         if not sg:
             return []
         effective_ips = []
-        id_o = self.inventory.get_all(Inventory.PORT)
+        id_o = self.inventory.get_all(NeutronMock.PORT)
         for _,o in id_o:
             if os_id in o.get("security_groups"):
                 ips_bindings = o.get("address_bindings")
@@ -282,24 +282,24 @@ class TestNSXv3ServerRpcApi(object):
         return effective_ips
 
     def get_security_group(self, os_id):
-        sg = self.inventory.get_by_id(Inventory.SECURITY_GROUP, os_id)
+        sg = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, os_id)
         if not sg:
             return None
-        id_o = self.inventory.get_all(Inventory.PORT)
+        id_o = self.inventory.get_all(NeutronMock.PORT)
         sg["ports"] = [o.get("id") for _,o in id_o if os_id in o.get("security_groups")]
         return sg
 
     def get_rules_for_security_group_id(self, os_id):
-        id_o = self.inventory.get_all(Inventory.SECURITY_GROUP_RULE)
+        id_o = self.inventory.get_all(NeutronMock.SECURITY_GROUP_RULE)
         return [o for _,o in id_o if os_id == o.get("security_group_id")]
 
     def get_port(self, id):
-        return self.inventory.get_by_id(Inventory.PORT, id)
+        return self.inventory.get_by_id(NeutronMock.PORT, id)
 
     def get_qos(self, os_id):
         """
         Return QoS only if associated with port
         """
-        id_o = self.inventory.get_all(Inventory.PORT)
+        id_o = self.inventory.get_all(NeutronMock.PORT)
         if [o for _,o in id_o if o.get("qos_policy_id") == os_id]:
-            return self.inventory.get_by_id(Inventory.QOS, os_id)
+            return self.inventory.get_by_id(NeutronMock.QOS, os_id)

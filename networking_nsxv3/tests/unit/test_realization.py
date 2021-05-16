@@ -80,19 +80,19 @@ class TestAgentRealizer(base.BaseTestCase):
         cfg.CONF.set_override("nsxv3_cache_refresh_window", 0, "NSXV3")
 
         self.provider_inventory = provider.Inventory("https://nsxm-l-01a.corp.local:443")
-        self.openstack_inventory = openstack.Inventory()
+        self.neutron_inventory = openstack.NeutronMock()
 
         r = responses
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
             r.add_callback(m, re.compile(r".*"), callback=self.provider_inventory.api)
 
     def setUpResponsesActivated(self):
-        self.rpc = openstack.TestNSXv3ServerRpcApi(self.openstack_inventory)
+        self.rpc = openstack.TestNSXv3ServerRpcApi(self.neutron_inventory)
         self.manager = agent.NSXv3Manager(rpc=self.rpc, synchronization=True, 
                                           monitoring=False)
         rpc = self.manager.get_rpc_callbacks(None, None, None)
         notifier = openstack.TestNSXv3AgentManagerRpcCallBackBase(rpc)
-        self.openstack_inventory.register(notifier)
+        self.neutron_inventory.register(notifier)
 
 
     @responses.activate
@@ -100,12 +100,12 @@ class TestAgentRealizer(base.BaseTestCase):
         self.setUpResponsesActivated()
 
         # Simulate Port Binding
-        port = self.openstack_inventory.port_create("p1", "3200")
+        port = self.neutron_inventory.port_create("p1", "3200")
         nova_port_creation(port.get("id"))
         
-        port = self.openstack_inventory.port_update("p1", security_group_names=[])
-        child_port = self.openstack_inventory.port_create("p1-1", "3201", parent_name="p1")
-        child_port = self.openstack_inventory.port_update("p1-1", security_group_names=[])
+        port = self.neutron_inventory.port_update("p1", security_group_names=[])
+        child_port = self.neutron_inventory.port_create("p1-1", "3201", parent_name="p1")
+        child_port = self.neutron_inventory.port_update("p1-1", security_group_names=[])
 
         eventlet.sleep(5.0)
 
@@ -124,37 +124,37 @@ class TestAgentRealizer(base.BaseTestCase):
     def test_ports_add_remove_end_to_end(self):
         self.setUpResponsesActivated()
 
-        qos_01 = self.openstack_inventory.qos_create("qos-01")
-        sg_01 = self.openstack_inventory.security_group_create("sg-01", tags=["capability_tcp_strict"])
-        sg_02 = self.openstack_inventory.security_group_create("sg-02", tags=["capability_tcp_strict"])
-        self.openstack_inventory.security_group_rule_add(
+        qos_01 = self.neutron_inventory.qos_create("qos-01")
+        sg_01 = self.neutron_inventory.security_group_create("sg-01", tags=["capability_tcp_strict"])
+        sg_02 = self.neutron_inventory.security_group_create("sg-02", tags=["capability_tcp_strict"])
+        self.neutron_inventory.security_group_rule_add(
             sg_02.get("name"), "1", 
             protocol="tcp", ethertype="IPv4", direction="ingress", 
             remote_ip_prefix="192.168.0.0/16", port_range_min=443)
-        self.openstack_inventory.security_group_rule_add(
+        self.neutron_inventory.security_group_rule_add(
             sg_02.get("name"), "2", 
             protocol="tcp", ethertype="IPv4", direction="ingress",
             remote_group_id=sg_01.get("id"), port_range_min=443)
-        sg_02_rule = self.openstack_inventory.security_group_rule_add(
+        sg_02_rule = self.neutron_inventory.security_group_rule_add(
             sg_02.get("name"), "3", 
             protocol="tcp", ethertype="IPv4", direction="ingress", 
             remote_ip_prefix="0.0.0.0/16", port_range_min=443)
 
         # Simulate Port Binding
-        port = self.openstack_inventory.port_create("p1", "3200")
+        port = self.neutron_inventory.port_create("p1", "3200")
         nova_port_creation(port.get("id"))
         
-        self.openstack_inventory.port_update("p1", qos_name=qos_01.get("name"), security_group_names=[sg_02.get("name")])
+        self.neutron_inventory.port_update("p1", qos_name=qos_01.get("name"), security_group_names=[sg_02.get("name")])
 
         # Wait for async jobs to apply the desired state
         eventlet.sleep(10)
 
         p_inv = self.provider_inventory
-        # o_inv = self.openstack_inventory.inventory
+        # o_inv = self.neutron_inventory.inventory
         # c_inv = self.manager.realizer.provider._cache
 
         LOG.info(json.dumps(self.provider_inventory.inventory, indent=4))
-        LOG.info(json.dumps(self.openstack_inventory.inventory, indent=4))
+        LOG.info(json.dumps(self.neutron_inventory.inventory, indent=4))
         LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))
 
         self.assertNotEqual(p_inv.lookup(p_inv.NSGROUPS, sg_02.get("id")), None)
@@ -168,23 +168,23 @@ class TestAgentRealizer(base.BaseTestCase):
         sgs = []
         for i in range(1,3):
             name = "sg-{}".format(i)
-            sgs.append(self.openstack_inventory.security_group_create(name, tags=[]).get("name"))
-            self.openstack_inventory.security_group_rule_add(
+            sgs.append(self.neutron_inventory.security_group_create(name, tags=[]).get("name"))
+            self.neutron_inventory.security_group_rule_add(
                 name, str(i), 
                 protocol="tcp", ethertype="IPv4", direction="ingress", 
                 remote_ip_prefix="192.168.{}.0/24".format(i), port_range_min=1000+i)
         
 
-        self.openstack_inventory.port_update("p1", qos_name=qos_01.get("name"), security_group_names=sgs)
+        self.neutron_inventory.port_update("p1", qos_name=qos_01.get("name"), security_group_names=sgs)
 
         eventlet.sleep(10)
 
-        self.openstack_inventory.port_delete("p1")
+        self.neutron_inventory.port_delete("p1")
         
         eventlet.sleep(10)
 
         LOG.info(json.dumps(self.provider_inventory.inventory, indent=4))
-        LOG.info(json.dumps(self.openstack_inventory.inventory, indent=4))
+        LOG.info(json.dumps(self.neutron_inventory.inventory, indent=4))
         LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))        
         
         self.assertEqual(len(p_inv.inventory.get(p_inv.NSGROUPS).keys()), 0)
