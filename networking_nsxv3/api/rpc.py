@@ -89,22 +89,22 @@ class NSXv3ServerRpcApi(object):
         self.host = cfg.CONF.host        
 
     @log_helpers.log_method_call
-    def get_ports_with_revisions(self, limit, created_after):
+    def get_ports_with_revisions(self, limit, cursor):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_ports_with_revisions',
-                          host=self.host, limit=limit, created_after=created_after)
+                          host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
-    def get_qos_policies_with_revisions(self, limit, created_after):
+    def get_qos_policies_with_revisions(self, limit, cursor):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_qos_policies_with_revisions',
-                          host=self.host, limit=limit, created_after=created_after)
+                          host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
-    def get_security_groups_with_revisions(self, limit, created_after):
+    def get_security_groups_with_revisions(self, limit, cursor):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_security_groups_with_revisions',
-                          host=self.host, limit=limit, created_after=created_after)
+                          host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
     def get_security_group(self, security_group_id):
@@ -136,16 +136,16 @@ class NSXv3ServerRpcApi(object):
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_groups_for_host(self, limit, created_after):
+    def get_security_groups_for_host(self, limit, cursor):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_security_groups_for_host',
-                          host=self.host, limit=limit, created_after=created_after)
+                          host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
-    def get_remote_security_groups_for_host(self, limit, created_after):
+    def get_remote_security_groups_for_host(self, limit, cursor):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_remote_security_groups_for_host',
-                          host=self.host, limit=limit, created_after=created_after)
+                          host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
     def has_security_group_used_by_host(self, security_group_id):
@@ -171,16 +171,16 @@ class NSXv3ServerRpcCallback(object):
         return self._plugin
 
     @log_helpers.log_method_call
-    def get_ports_with_revisions(self, context, host, limit, created_after):
-        return db.get_ports_with_revisions(context, host, limit, created_after)
+    def get_ports_with_revisions(self, context, host, limit, cursor):
+        return db.get_ports_with_revisions(context, host, limit, cursor)
 
     @log_helpers.log_method_call
-    def get_qos_policies_with_revisions(self, context, host, limit, created_after):
-        return db.get_qos_policies_with_revisions(context, host, limit, created_after)
+    def get_qos_policies_with_revisions(self, context, host, limit, cursor):
+        return db.get_qos_policies_with_revisions(context, host, limit, cursor)
     
     @log_helpers.log_method_call
-    def get_security_groups_with_revisions(self, context, host, limit, created_after):
-        return db.get_security_groups_with_revisions(context, host, limit, created_after)
+    def get_security_groups_with_revisions(self, context, host, limit, cursor):
+        return db.get_security_groups_with_revisions(context, host, limit, cursor)
 
     @log_helpers.log_method_call
     def get_security_group(self, context, security_group_id):
@@ -205,12 +205,12 @@ class NSXv3ServerRpcCallback(object):
             db.get_security_group_members_address_bindings_ips(context, security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_groups_for_host(self, context, host, limit, created_after):
-        return db.get_security_groups_for_host(context, host, limit, created_after)
+    def get_security_groups_for_host(self, context, host, limit, cursor):
+        return db.get_security_groups_for_host(context, host, limit, cursor)
 
     @log_helpers.log_method_call
-    def get_remote_security_groups_for_host(self, context, host, limit, created_after):
-        return db.get_remote_security_groups_for_host(context, host, limit, created_after)
+    def get_remote_security_groups_for_host(self, context, host, limit, cursor):
+        return db.get_remote_security_groups_for_host(context, host, limit, cursor)
     
     @log_helpers.log_method_call
     def has_security_group_used_by_host(self, context, host, security_group_id):

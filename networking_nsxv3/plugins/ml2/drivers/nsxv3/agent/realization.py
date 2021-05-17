@@ -24,12 +24,12 @@ class AgentRealizer(object):
 
     def _os_meta(self, query):
         step = cfg.CONF.AGENT.rpc_max_records_per_query
-        created_after = datetime.datetime(1970, 1, 1)
+        cursor = 0
         meta = dict()
-        while created_after:
-            result = query(step, created_after)
-            meta.update({k:v for (k,v,_) in result})
-            created_after = result[-1][2] if len(result) >= step else None
+        while cursor != -1:
+            result = query(step, cursor)
+            meta.update({k:v for (k,v) in result})
+            cursor = result[-1][2] if len(result) >= step else -1
         return meta
 
     def refresh(self, list_aged):
