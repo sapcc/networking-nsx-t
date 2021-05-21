@@ -139,8 +139,8 @@ class Client:
                 resp = requests.post(**self._params(path=self._login_path,
                                                     data=self._login_data,
                                                     verify=self._session.verify))
-                if resp.status_code != requests.codes.ok:
-                    resp.raise_for_status()
+                
+                resp.raise_for_status()
 
                 self._session.headers["Cookie"] = \
                     resp.headers.get("Set-Cookie")
