@@ -230,10 +230,6 @@ class NeutronMock(object):
 
         port["vif_details"] = vif
 
-         
-
-
-
 
 class TestNSXv3ServerRpcApi(object):
 
@@ -242,7 +238,7 @@ class TestNSXv3ServerRpcApi(object):
 
     def _get_revisions(self, resource_type):
         id_o = self.inventory.get_all(resource_type)
-        return [(id,o.get("revision_number")) for id,o in id_o]
+        return [(id,o.get("revision_number"), None) for id,o in id_o]
 
     def get_qos_policies_with_revisions(self, limit, offset):
         qos_policies = set()
@@ -252,9 +248,9 @@ class TestNSXv3ServerRpcApi(object):
                 qos_policies.add(qos_id)
 
         effective_qos_policies = []
-        for id,rev in self._get_revisions(NeutronMock.QOS):
+        for id,rev,cursor in self._get_revisions(NeutronMock.QOS):
             if id in qos_policies:
-                effective_qos_policies.append((id, rev))
+                effective_qos_policies.append((id, rev, cursor))
 
         return effective_qos_policies
 
@@ -269,9 +265,9 @@ class TestNSXv3ServerRpcApi(object):
                 sgs.update(port_sgs)
         
         effective_sgs = []
-        for id,rev in self._get_revisions(NeutronMock.SECURITY_GROUP):
+        for id,rev,cursor in self._get_revisions(NeutronMock.SECURITY_GROUP):
             if id in sgs:
-                effective_sgs.append((id, rev))
+                effective_sgs.append((id, rev, cursor))
         return effective_sgs
 
     def has_security_group_used_by_host(self, os_id):

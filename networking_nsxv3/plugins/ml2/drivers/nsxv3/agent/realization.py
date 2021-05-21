@@ -28,7 +28,7 @@ class AgentRealizer(object):
         meta = dict()
         while cursor != -1:
             result = query(step, cursor)
-            meta.update({k:v for (k,v) in result})
+            meta.update({id:rev for id,rev,_ in result})
             cursor = result[-1][2] if len(result) >= step else -1
         return meta
 
