@@ -27,4 +27,5 @@ testtools>=2.2.0 # MIT
 testrepository>=0.0.18
 responses>=0.13.2
 requests
-
+pudb
+pytest-pudb

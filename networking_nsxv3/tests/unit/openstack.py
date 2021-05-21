@@ -51,12 +51,7 @@ class NeutronMock(object):
 
     def __init__(self):
         self.notifier = Notifier()
-        self.inventory = {
-            self.PORT: {},
-            self.QOS: {},
-            self.SECURITY_GROUP: {},
-            self.SECURITY_GROUP_RULE: {}
-        }
+        self.reload_inventory()
     
     def _get_by_name(self, resource_type, name):
         resources = [o for id,o in self.inventory.get(resource_type, {}).items() if o.get("name") == name]
@@ -89,6 +84,14 @@ class NeutronMock(object):
             del self.inventory[resource_type][resource["id"]]
             self.notifier.notify(resource_type, resource, operation=self.notifier.DELETE)
 
+    def reload_inventory(self, inventory=None):
+        self.inventory = inventory if inventory else {
+            self.PORT: {},
+            self.QOS: {},
+            self.SECURITY_GROUP: {},
+            self.SECURITY_GROUP_RULE: {}
+        }
+
     def register(self, notifier):
         self.notifier = notifier
 
@@ -110,10 +113,6 @@ class NeutronMock(object):
             "qos_policy_id": self._get_by_name(self.QOS, qos_name).get("id") if qos_name else None,
             "security_groups": [self._get_by_name(self.SECURITY_GROUP, gname).get("id") for gname in security_group_names],
             "address_bindings": address_bindings,
-            "vif_details": {
-                "nsx-logical-switch-id": "712CAD71-B3F5-4AA0-8C3F-8D453DCBF2F2",
-                "segmentation_id": segmentation_id
-            },
             "_allowed_address": allowed_address
         })
         return self._get_by_name(self.PORT, name)
@@ -210,6 +209,30 @@ class NeutronMock(object):
     def security_group_delete(self, name):
         self._delete(self.SECURITY_GROUP, name)
 
+    def port_bind(self, name, segmentation_id):
+        port = self._get_by_name(NeutronMock.PORT, name)
+
+        vif = self.notifier.rpc.realizer.network(segmentation_id)
+
+        if not vif.get("external-id"):
+            raise Exception("Unable to bind Port:{} VIF:{}".format(name, vif))
+
+        client = self.notifier.rpc.realizer.provider.client
+        client.post("/api/v1/logical-ports", data={
+            "logical_switch_id": vif.get("external-id"),
+            "display_name": port.get("id"),
+            "attachment": {
+                "attachment_type": "VIF",
+                "id": port.get("id")
+            },
+            "admin_state": "UP"
+        })
+
+        port["vif_details"] = vif
+
+         
+
+
 
 
 class TestNSXv3ServerRpcApi(object):
@@ -226,7 +249,7 @@ class TestNSXv3ServerRpcApi(object):
         for _,port in self.inventory.get_all(NeutronMock.PORT):
             qos_id = port.get("qos_policy_id")
             if qos_id:
-                qos_policies.update(qos_id)
+                qos_policies.add(qos_id)
 
         effective_qos_policies = []
         for id,rev in self._get_revisions(NeutronMock.QOS):
@@ -273,7 +296,7 @@ class TestNSXv3ServerRpcApi(object):
         id_o = self.inventory.get_all(NeutronMock.PORT)
         for _,o in id_o:
             if os_id in o.get("security_groups"):
-                ips_bindings = o.get("address_bindings")
+                ips_bindings = [b["ip_address"] for b in o.get("address_bindings", [])]
                 ips_allowed = o.get("_allowed_address")
                 if ips_bindings:
                     effective_ips.extend(ips_bindings)

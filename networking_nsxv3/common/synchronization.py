@@ -171,7 +171,7 @@ class Runner(object):
                     self._passive.task_done()
                 job = self._active.get(block=True, timeout=TIMEOUT)
                 LOG.info(MESSAGE.format("Processing", job.idn, Priority(job.priority).name, job.fn.__name__))
-                self._workers.spawn_n(job.fn, job.idn)
+                self._workers.spawn(job.fn, job.idn)
                 self._active.task_done()
             except eventlet.queue.Empty as e:
                 LOG.info("No activity for the last {} seconds.".format(TIMEOUT))

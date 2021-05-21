@@ -1,9 +1,7 @@
 import copy
-import ipaddress
-import json
 import time
+from os import pardir
 
-import eventlet
 import netaddr
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
@@ -39,6 +37,120 @@ class API(object):
     SECTIONS = "/api/v1/firewall/sections"
     SECTION = "/api/v1/firewall/sections/{}"
 
+    PARAMS_GET_DEFAULT_PROFILES = {
+        "switching_profile_type": "IpDiscoverySwitchingProfile,SpoofGuardSwitchingProfile"
+    }
+
+    PARAMS_GET_QOS_PROFILES = {
+        "switching_profile_type": "QosSwitchingProfile"
+    }
+
+
+class Meta(object):
+    """
+    Resource mapping between OpenStack and Provider objects
+
+    Meta is refreshed by __enter__, reset, add, __exit__
+    """
+
+    def __init__(self):
+        self.meta = dict()
+        self.meta_transaction = None
+    
+    def __enter__(self):
+        self.meta_transaction = dict()
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.meta.update(self.meta_transaction)
+        self.meta_transaction = None
+
+    def rest(self):
+        self.meta = dict()
+
+    def keys(self):
+        keys = self.meta.keys()
+        if self.meta_transaction:
+            keys += self.meta_transaction.keys()
+        return keys
+
+    def add(self, resource):
+        old_meta = self.meta.get(resource.os_id)
+        self.meta[resource.os_id] = resource.meta
+        return old_meta
+
+    def get(self, os_id):
+        meta = self.meta.get(os_id)
+        if not meta and self.meta_transaction:
+            meta = self.meta_transaction.get(os_id)
+        return meta
+
+    def rm(self, os_id):
+        meta = self.meta.get(os_id)
+        if meta:
+            del self.meta[os_id]
+        if self.meta_transaction:
+            meta = self.meta_transaction.rm(os_id)
+        return meta
+
+
+class MetaProvider(object):
+
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        self.meta = Meta()
+
+
+class ResourceMeta(object):
+
+    def __init__(self, id, rev, age, _revision):
+        self.id = id
+        self.rev = rev
+        self.age = age
+        self._revision = _revision
+
+
+class Resource(object):
+
+    def __init__(self, resource):
+        self.resource = resource
+
+    @property
+    def is_managed(self):
+        return self.resource.get("_create_user") == "admin"
+    
+    @property
+    def type(self):
+        return self.resource.get("resource_type")
+
+    @property
+    def id(self):
+        return self.resource.get("id")
+    
+    @property
+    def os_id(self):
+        os_id = self.resource.get("display_name")
+        if self.type == "LogicalSwitch":
+            os_id = os_id.split("-")[-1]
+        if self.type == "LogicalPort":
+            os_id = self.resource["attachment"]["id"]
+        return os_id
+    
+    @property
+    def tags(self):
+        return {t.get("scope"):t.get("tag") for t in self.resource.get("tags", [])}
+
+    @property
+    def meta(self):
+        tags = self.tags
+        # Set age to most recent and rev to 0 NSGroups to always skip the update
+        return ResourceMeta(
+            id = self.id, 
+            rev = tags.get(NSXV3_REVISION_SCOPE), # empty set for NSGroup
+            age = int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
+            _revision = self.resource.get("_revision")
+        )
+
 
 class Payload(object):
 
@@ -58,10 +170,11 @@ class Payload(object):
 
     def tags(self, os_obj, more=dict()):
         tags = {
-            NSXV3_REVISION_SCOPE: os_obj.get("revision_number"),
             NSXV3_AGENT_SCOPE: cfg.CONF.AGENT.agent_id,
             NSXV3_AGE_SCOPE: int(time.time())
         }
+        if os_obj:
+            tags[NSXV3_REVISION_SCOPE] = os_obj.get("revision_number")
         tags.update(more)
         return [{"scope": s, "tag": t} for s, t in tags.items()]
 
@@ -145,23 +258,24 @@ class Payload(object):
             "admin_state": "UP",
             "switching_profile_ids": pp.get("switching_profile_ids"),
             "address_bindings": p.get("address_bindings"),
-            "context": {
-                "resource_type": "VifAttachmentContext",
-                "vif_type": "PARENT"
+            "attachment": {
+                "attachment_type": "VIF",
+                "id": os_port.get("id"),
+                "context": {
+                    "resource_type": "VifAttachmentContext",
+                    "vif_type": "PARENT",
+                    "traffic_tag": \
+                        p.get("vif_details").get("segmentation_id")
+                }
             },
             "tags": self.tags(os_port, more={NSXV3_SECURITY_GROUP_SCOPE:os_id \
                 for os_id in p.get("security_groups")})
         }
 
         if p_ppid:
-            port["attachment"] = {
-                "attachment_type": "VIF",
-                "id": p.get("id")
-            }
-            port["context"]["vif_type"] = "CHILD"
-            port["context"]["parent_vif_id"] = p_ppid
-            port["context"]["traffic_tag"] = \
-                p.get("vif_details").get("segmentation_id")
+            port["attachment"]["id"] = p.get("id")
+            port["attachment"]["context"]["vif_type"] = "CHILD"
+            port["attachment"]["context"]["parent_vif_id"] = os_port.get("parent_id")
         
         if p_qid:
             port["switching_profile_ids"].append({
@@ -179,7 +293,8 @@ class Payload(object):
             "display_name": os_sg.get("id"),
             "ip_addresses": cidrs,
             "tags": self.tags(os_sg, more={
-                NSXV3_SECURITY_GROUP_SCOPE: os_sg.get("id")
+                NSXV3_SECURITY_GROUP_SCOPE: os_sg.get("id"),
+                NSXV3_REVISION_SCOPE: "latest"
             })
         }
     
@@ -198,7 +313,8 @@ class Payload(object):
                 }
             ],
             "tags": self.tags(os_sg, more={
-                NSXV3_SECURITY_GROUP_SCOPE: os_sg.get("id")
+                NSXV3_SECURITY_GROUP_SCOPE: os_sg.get("id"),
+                NSXV3_REVISION_SCOPE: "latest"
             })
         }
     
@@ -231,12 +347,7 @@ class Payload(object):
         direction = os_rule['direction']
 
         current = []
-        target = self._sg_rule_target(os_rule, provider_rule)
-        if not target:
-            LOG.error("Not supported target OpenStack '%s' Provider '%s'", 
-                os_rule, provider_rule)
-            return None
-        target = [target] if target else []
+        target = [self._sg_rule_target(os_rule, provider_rule)]
 
         service, err = self._sg_rule_service(os_rule, provider_rule)
         if err:
@@ -256,55 +367,39 @@ class Payload(object):
             "action": "ALLOW",
             "logged": False, # TODO selective logging
             "rule_tag": id.replace("-",""),
-            "_revision": 0
+            "_revision": provider_rule["_revision"]
         }
 
-    def sg_rule_remote_ip(self, os_rule, provider_rule):
-        # TODO NSX bug. Related IPSet to handle  0.0.0.0/x (x != 0)
+    def sg_rules_remote(self, cidr):
+        # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
         return {
             "resource_type": "IPSet",
-            "display_name": os_rule.get("id"),
-            "ip_addresses": [os_rule.get("remote_ip_prefix")],
-            "tags": self.tags(os_rule, more={
-                NSXV3_SECURITY_GROUP_REMOTE_SCOPE: os_rule.get("security_group_id")
-            })
+            "display_name": cidr,
+            "ip_addresses": [cidr],
+            "tags": self.tags(None)
         }
 
-
     def _sg_rule_target(self, os_rule, provider_rule):
-        id = os_rule["id"]
-        remote_group_id = os_rule["remote_group_id"]
-        remote_ip_prefix = os_rule["remote_ip_prefix"]
+        if os_rule.get("remote_group_id"):
+            id = provider_rule.get("remote_group_id")
+            name = os_rule["remote_group_id"]
+            type = "IPSet"
+        elif provider_rule.get("remote_ip_prefix_id"):
+            # Non-OpenStack property "remote_ip_prefix_id"
+            # Used due to limitations of NSX-T Management API
+            id = provider_rule.get("remote_ip_prefix_id")
+            name = os_rule["remote_ip_prefix"]
+            type = "IPSet"
+        else:
+            id = name = str(netaddr.IPNetwork(os_rule["remote_ip_prefix"]))
+            type = {'IPv4': 'IPv4Address', 'IPv6': 'IPv6Address'}.get(os_rule['ethertype'])
 
-        if remote_group_id:
-            return {
-                "target_type": "IPSet",
-                "target_id": provider_rule.get("remote_group_id"),
-                "is_valid": True,
-                "target_display_name": remote_group_id
-            }
-
-        if remote_ip_prefix:
-            remote_ip_prefix = \
-                str(ipaddress.ip_network(unicode(remote_ip_prefix),
-                                         strict=False))
-
-            if remote_ip_prefix in [None, '0.0.0.0/0', '::/0']:
-                return # ANY
-            
-            if remote_ip_prefix.startswith('0.0.0.0/'):
-                return {
-                    "target_type": "IPSet",
-                    "target_id": provider_rule.get("remote_ip_prefix"),
-                    "target_display_name": id
-                }
-            return {
-                "target_type": {
-                    'IPv4': 'IPv4Address', 
-                    'IPv6': 'IPv6Address'}.get(os_rule['ethertype']),
-                "target_id": remote_ip_prefix,
-                "target_display_name": remote_ip_prefix
-            }
+        return {
+            "target_type": type,
+            "target_id": id,
+            "is_valid": True,
+            "target_display_name": name
+        }
 
 
     def _sg_rule_service(self, os_rule, provider_rule, subtype="NSService"):
@@ -312,10 +407,6 @@ class Payload(object):
         max = os_rule["port_range_max"]
         protocol = os_rule["protocol"]
         ethertype = os_rule['ethertype']
-
-        port = ANY_PORT = '1-65535'
-        service = ANY_SERVICE = None
-        ANY_PROTOCOL = None
 
         if protocol == 'icmp':
             min = int(min) if str(min).isdigit() else min
@@ -342,7 +433,7 @@ class Payload(object):
                 "l4_protocol": {'tcp': "TCP", 'udp': "UDP"}.get(protocol),
                 "destination_ports": ["{}-{}".format(min, max) \
                     if min != max and max else str(min)],
-                "source_ports": [ANY_PORT]
+                "source_ports": ["1-65535"]
             }, None)
         
         if str(protocol).isdigit():
@@ -366,36 +457,37 @@ class Payload(object):
 class Provider(abs.Provider):
 
     SG_RULES_EXT = "Security Group (Rules Enforcement)"
+    SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
 
-    def __init__(self):
-        self._cache = self._cache_loader()
-        self._chache_refresh_window = cfg.CONF.NSXV3.nsxv3_cache_refresh_window
+    def __init__(self, payload=Payload):
+        self._metadata = self._metadata_loader()
         
         self.client = Client()
-        self.payload = self._payload()
-
-        self.switch_profiles = []
+        self.payload = payload()
 
         self.zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
         self.zone_id = None
+        self.switch_profiles = []
 
+        self._load_zone()
+        self._setup_default_switching_profiles()
+
+    def _load_zone(self):
         LOG.info("Looking for TransportZone with name %s.", self.zone_name)
         for zone in self.client.get_all(path=API.ZONES):
             if zone.get("display_name") == self.zone_name:
                 self.zone_id = zone.get("id")
-        
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
-
+    
+    def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
         ip = self.payload.ip_discovery()
         sg_id = None
         ip_id = None
 
-        profiles = self.client.get_all(path=API.PROFILES, params={
-            "switching_profile_type": \
-                "IpDiscoverySwitchingProfile,SpoofGuardSwitchingProfile"
-        })
+        profiles = self.client.get_all(
+            path=API.PROFILES, params=API.PARAMS_GET_DEFAULT_PROFILES)
 
         LOG.info("Looking for the default Switching Profiles.")
         for p in profiles:
@@ -416,224 +508,125 @@ class Provider(abs.Provider):
             sg_id = o.get("id")
         
         self.switch_profiles = [
-            {
-                "key": "SpoofGuardSwitchingProfile",
-                "value": sg_id
-            },
-            {
-                "key": "IpDiscoverySwitchingProfile",
-                "value": ip_id
-            }
+            {"key": "SpoofGuardSwitchingProfile", "value": sg_id},
+            {"key": "IpDiscoverySwitchingProfile", "value": ip_id}
         ]
 
-    def _payload(self):
-        return Payload()
-
-    def _cache_loader(self):
-        # Resource := {os_id: {"id": id, "rev": revision}, ...}
+    def _metadata_loader(self):
         return {
-            Provider.PORT: {
-                "provider": API.PORTS,
-                "resources": dict()
-            },
-            Provider.QOS: {
-                "provider": API.PROFILES,
-                "resources": dict()
-            },
-            Provider.SG_MEMBERS: {
-                "provider": API.IPSETS,
-                "resources": dict()
-            },
-            Provider.SG_RULES: {
-                "provider": API.SECTIONS,
-                "resources": dict()
-            },
-            Provider.SG_RULES_EXT: {
-                "provider": API.NSGROUPS,
-                "resources": dict()
-            },
-            Provider.NETWORK: {
-                "provider": API.SWITCHES,
-                "resources": dict()
-            }
+            Provider.PORT: MetaProvider(API.PORTS),
+            Provider.QOS: MetaProvider(API.PROFILES),
+            Provider.SG_MEMBERS: MetaProvider(API.IPSETS),
+            Provider.SG_RULES: MetaProvider(API.SECTIONS),
+            Provider.SG_RULES_EXT: MetaProvider(API.NSGROUPS),
+            Provider.SG_RULES_REMOTE_PREFIX: MetaProvider(API.IPSETS),
+            Provider.NETWORK: MetaProvider(API.SWITCHES)
         }
 
-    def _tags(self, o):
-        return {t.get("scope"):t.get("tag") for t in o.get("tags", [])}
+    def metadata_refresh(self, resource_type, params=dict()):
 
-    def _realize(self, resource_type, delete, convertor, os_o, provider_o):
-        os_id = os_o.get("id")
-        
-        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
-
-        path = self._cache.get(resource_type).get("provider")
-
-        meta = self.metadata(resource_type, os_id)
-        if meta:
-            path = "{}/{}".format(path, meta.get(os_id).get("id"))
-            if delete:
-                LOG.info(report, "deleted")
-                params = {"cascade": True} if resource_type == Provider.SG_RULES else dict()
-                self.client.delete(path=path, params=params)
-                return self.metadata_delete(resource_type, os_id)
-            else:
-                LOG.info(report, "updated")
-                data = convertor(os_o, provider_o)
-                revision = meta.get(os_id).get("_revision")
-                if revision != None:
-                    data["_revision"] = revision
-                if resource_type == Provider.SG_MEMBERS:
-                    if self._sg_members_require_update(self.client.get(path).json(), data):
-                        o = self.client.put(path=path, data=data)
-                        return self.metadata_update(resource_type, o.json())
-                    else:
-                        return meta
-                else:
-                    o = self.client.put(path=path, data=data)
-                    return self.metadata_update(resource_type, o.json())
-        else:
-            if not delete:
-                LOG.info(report, "created")
-                o = self.client.post(path=path, data=convertor(os_o, provider_o))
-                return self.metadata_update(resource_type, o.json())
-            LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
-
-    def _metadata_refresh(self, provider):
-        meta = dict()
-        params = {"switching_profile_type": "QosSwitchingProfile"}\
-            if provider == API.PROFILES else dict()
-        
-        # NSX does not allow to filter by custom property
-        # Search API has hard limit of 50k objects (with cursor)
-        result = self.client.get_all(path=provider, params=params)
-
-        for o in result:
-            if o.get("_create_user") != "admin":
-                continue
-
-            tags = {t.get("scope"):t.get("tag") for t in o.get("tags", [])}
-
-            # TODO - enable for multiple Agents for a single NSX-T Manager
-            # if NSXV3_AGENT_SCOPE not in tags or \
-            #     tags[NSXV3_AGENT_SCOPE] != cfg.CONF.AGENT.agent_id:
-            #     continue
-
-            if provider == API.IPSETS:
-                cidrs = o.get("ip_addresses")
-                if len(cidrs) == 1 and "0.0.0.0" in cidrs[0]:
-                    # This is RULE specific IPSet
-                    continue
-            
-            # Set age to most recent for NSGroups to always skip update
-            age = int(time.time()) if provider == API.NSGROUPS \
-                else tags.get(NSXV3_AGE_SCOPE)
-
-            # TODO - check for collisions (Ambiguously) and perform actions
-            meta[o.get("display_name")] = {
-                "id": o.get("id"), 
-                "rev": tags.get(NSXV3_REVISION_SCOPE), # empty set for NSGroup
-                "age": age,
-                "_revision": o.get("_revision")
-            }
-        return meta
-
-    def metadata_refresh(self, resource_type):
-        if resource_type == Provider.SG_RULE:
-            return # Not cached
-        
-        resources = self._cache.get(resource_type)
-        backup = dict()
-        resources["backup"] = backup
-        eventlet.sleep(self._chache_refresh_window)
-
-        with LockManager.get_lock(resource_type):
-            LOG.info("Fetching NSX-T inventory metadata for resource type %s.",
-                     resource_type)
-
-            meta = self._metadata_refresh(resources.get("provider"))
-            meta.update(backup)
-            del resources["backup"] 
-            resources["resources"] = meta
+        if resource_type != Provider.SG_RULE:
+            provider = self._metadata[resource_type]
+            with provider.meta:
+                LOG.info("Fetching NSX-T metadata for Type:%s.", resource_type)
+                if provider.endpoint == API.PROFILES: 
+                    params = API.PARAMS_GET_QOS_PROFILES
+                resources = self.client.get_all(path=provider.endpoint, params=params)
+                with LockManager.get_lock(resource_type):
+                    provider.meta.rest()
+                    for o in resources:
+                        res = Resource(o)
+                        if not res.is_managed:
+                            continue
+                        if resource_type == Provider.SG_MEMBERS:
+                            if NSXV3_REVISION_SCOPE not in res.tags:
+                                continue
+                        if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
+                            if NSXV3_REVISION_SCOPE in res.tags:
+                                continue
+                        provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
-        if resource_type == Provider.SG_RULE:
-            pass
-
-        with LockManager.get_lock(resource_type):
-            resources = self._cache.get(resource_type).get("resources")
-            backup = self._cache.get(resource_type).get("backup")
-            
-            if backup and os_id in backup:
-                del backup[os_id]
-            if os_id in resources:
-                meta = resources[os_id]
-                del resources[os_id]
-                return meta
+        if resource_type != Provider.SG_RULE:
+            with LockManager.get_lock(resource_type):
+                self._metadata[resource_type].meta.rm(os_id)
 
     def metadata_update(self, resource_type, provider_object):
-        if resource_type == Provider.SG_RULE:
-            pass
-
-        with LockManager.get_lock(resource_type):
-            return self._metadata_update(resource_type, provider_object)
-    
-    def _metadata_update(self, resource_type, provider_object):
-        os_id = provider_object.get("display_name")
-
-        if resource_type == self.NETWORK:
-            os_id = os_id.replace("{}-".format(self.zone_name), "")
-
-        tags = {
-            t.get("scope"):t.get("tag") for t in provider_object.get("tags", [])
-        }
-
-        meta = {
-            "id": provider_object.get("id"),
-            "rev": tags.get(NSXV3_REVISION_SCOPE),
-            "age": tags.get(NSXV3_AGE_SCOPE),
-            "_revision": provider_object.get("_revision")
-        }
-        
-        self._cache.get(resource_type).get("resources")[os_id] = meta
-        backup = self._cache.get(resource_type).get("backup")
-        if backup:
-            backup[os_id] = meta
-        return {os_id: meta}
+        if resource_type != Provider.SG_RULE:
+            with LockManager.get_lock(resource_type):
+                res = Resource(provider_object)
+                self._metadata[resource_type].meta.add(res)
+                return res.meta
 
     def metadata(self, resource_type, os_id):
         if resource_type == Provider.SG_RULE:
             with LockManager.get_lock(Provider.SG_RULES):
-                meta = self._cache.get(\
-                    Provider.SG_RULES).get("resources").get(os_id)
+                meta = self._metadata[Provider.SG_RULES].meta.get(os_id)
                 if meta: 
-                    rules = self.client.get_all(\
-                        API.RULES.format(meta.get("id")))
-                    return {rule.get("display_name"):rule for rule in rules}
-                return dict()
+                    rules = self.client.get_all(API.RULES.format(meta.id))
+                    meta = {Resource(o).os_id:o for o in rules}
+                return meta
 
         with LockManager.get_lock(resource_type):
-            meta = self._cache.get(resource_type).get("resources").get(os_id)
-            if not meta and resource_type == Provider.PORT:
-                # Parent ports are created externally and need to be looked up
-                port = self._get_port(os_id)
-                if port:
-                    # Updating the name to use _metadata_update 
-                    port["display_name"] = os_id
-                    return self._metadata_update(resource_type, port)
-            return { os_id: meta } if meta else None
+            return self._metadata[resource_type].meta.get(os_id)
 
-    def _get_port(self, os_id):
-        # TODO - the only way to be optimized is via unofficial search API
-        provider_ports = self.client.get_all(API.PORTS)
-        for port in provider_ports:
-            if os_id in str(port.get("attachment", {}).get("id", "")):
-                return port
+    def _realize(self, resource_type, delete, convertor, os_o, provider_o):
+        os_id = os_o.get("id")
+        
+        begin_report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
+        end_report = "Resource:{} with ID:{} have been %s.".format(resource_type, os_id)
+
+        path = self._metadata.get(resource_type).endpoint
+
+        meta = self.metadata(resource_type, os_id)
+
+        if meta:
+            path = "{}/{}".format(path, meta.id)
+            if delete:
+                LOG.info(begin_report, "deleted")
+
+                if resource_type == Provider.SG_RULES:
+                    params = {"cascade": True}
+                elif resource_type == Provider.PORT:
+                    params = {"detach": True}
+                elif resource_type == Provider.QOS:
+                    params = {"unbind": True}
+                else:
+                    params = dict()
+                self.client.delete(path=path, params=params)
+                
+                LOG.info(end_report, "deleted")
+
+                return self.metadata_delete(resource_type, os_id)
+            else:
+                LOG.info(begin_report, "updated")
+                if resource_type == Provider.SG_RULES_EXT:
+                    LOG.debug("Skipping update of NSGroup:%s",)
+                    pass
+                data = convertor(os_o, provider_o)
+                revision = meta._revision
+                if revision != None:
+                    data["_revision"] = revision
+                o = self.client.put(path=path, data=data)
+                LOG.info(end_report, "updated")
+                return self.metadata_update(resource_type, o.json())
+        else:
+            if not delete:
+                LOG.info(begin_report, "created")
+                o = self.client.post(path=path, data=convertor(os_o, provider_o))
+                LOG.info(end_report, "created")
+                return self.metadata_update(resource_type, o.json())
+            LOG.info(end_report, "already deleted")
+
 
     def outdated(self, resource_type, os_meta):
         self.metadata_refresh(resource_type)
+
         if resource_type == Provider.SG_RULES:
             self.metadata_refresh(Provider.SG_RULES_EXT)
-        meta = self._cache.get(resource_type).get("resources")
+            self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
+        
+        meta = self._metadata.get(resource_type).meta
 
         k1 = set(os_meta.keys())
         k2 = set(meta.keys())
@@ -644,12 +637,13 @@ class Provider(abs.Provider):
 
         # Add revision outdated 
         for id in k1.intersection(k2):
-            if str(os_meta[id]) != str(meta[id].get("rev")):
+            if str(os_meta[id]) != str(meta.get(id).rev):
+                r = meta.get(id)
                 outdated.add(id)
 
         if resource_type == Provider.SG_RULES:
             # NSGroups not matching Sections concidered as outdated SG
-            groups = self._cache.get(Provider.SG_RULES_EXT).get("resources")
+            groups = self._metadata.get(Provider.SG_RULES_EXT).meta
             outdated.update(set(groups.keys()).difference(k1))
 
         LOG.info("The number of outdated resources for Type:%s Is:%s.", 
@@ -661,60 +655,59 @@ class Provider(abs.Provider):
         return outdated, current
 
     def age(self, resource_type, os_ids):
-        type = resource_type
-        meta = self._cache.get(resource_type).get("resources")
-        return [(type,id,meta.get(id, {}).get(NSXV3_AGE_SCOPE, "0")) for id in os_ids]
+        return [(resource_type,id,self.metadata(resource_type, id).age) for id in os_ids]
 
-    def port_realize(self, os_port, meta=None, delete=False):
-        if delete:
-            self._realize(Provider.PORT, delete, None, os_port, None)
-            return
-
-        os_pid = os_port.get("id")
-        os_ppid = os_port.get("parent_id")
-        os_qid = os_port.get("qos_policy_id")
-        
+    def port_realize(self, os_port, delete=False):
         provider_port = dict()
 
-        if os_ppid:
-            meta_pport = self.metadata(Provider.PORT, os_ppid)
-            if not meta_pport:
-                LOG.error("Parent port '%s' not found for Child '%s'",
-                    os_ppid, os_pid)
-                return
-            provider_port["parent_id"] = meta_pport.get(os_ppid).get("id")
-
-        meta_port = self.metadata(Provider.PORT, os_pid)
-        
-        if not meta_port and not os_ppid:
-            LOG.error("Port port '%s' not found", os_pid)
+        if delete:
+            self._realize(Provider.PORT, delete, None, os_port, provider_port)
             return
-        
-        if meta_port:
-            provider_port["id"] = meta_port.get(os_pid).get("id")
 
-        if os_qid:
-            meta_qos = self.metadata(Provider.QOS, os_qid)
-            if not meta_qos:
-                LOG.error("QoS '%s' not found for Port '%s'", os_qid, os_pid)
+        def get(os_id):
+            port = self.client.get_unique(path=API.PORTS, params={"attachment_id": os_id})
+            if port:
+                return self.metadata_update(Provider.PORT, port)
+
+        port = get(os_port.get("id"))
+
+        if os_port.get("parent_id"):
+            # Child port always created internally
+            parent_port = get(os_port.get("parent_id"))
+            if parent_port:
+                provider_port["parent_id"] = parent_port.id
             else:
-                provider_port["qos_policy_id"] = meta_qos.get(os_qid).get("id")
+                LOG.error("Not found. Parent Port:%s", os_port.get("parent_id"))
+                return
+        else:
+            # Parent port always created externally
+            if port:
+                provider_port["id"] = port.id
+            else:
+                LOG.error("Not found. Port:%s", os_port.get("id"))
+                return
+        
+        if os_port.get("qos_policy_id"):
+            meta_qos = self.metadata(Provider.QOS, os_port.get("qos_policy_id"))
+            if meta_qos:
+                provider_port["qos_policy_id"] = meta_qos.id
+            else:
+                LOG.error("Not found. QoS:%s for Port:%s", 
+                          os_port.get("qos_policy_id"), os_port.get("id"))
 
         provider_port["switching_profile_ids"] = copy.deepcopy(self.switch_profiles)
 
         return self._realize(Provider.PORT, delete, 
-                             self.payload.port, os_port, provider_port )
+                             self.payload.port, os_port, provider_port)
 
-    def qos_realize(self, qos, meta=None, delete=False):
+    def qos_realize(self, qos, delete=False):
         return self._realize(Provider.QOS, delete, self.payload.qos, qos, dict())
     
-    def sg_members_realize(self, sg, meta=None, delete=False):
-        # Members sill be updated only if ip_addressess differs
+    def sg_members_realize(self, sg, delete=False):
         return self._realize(Provider.SG_MEMBERS, delete,
                              self.payload.sg_members_container, sg, dict())
 
-
-    def sg_rules_realize(self, os_sg, provider_rules_meta=None, delete=False):
+    def sg_rules_realize(self, os_sg, delete=False):
         provider_sg = dict()
 
         nsg_args = [Provider.SG_RULES_EXT, delete, \
@@ -722,162 +715,100 @@ class Provider(abs.Provider):
         sec_args = [Provider.SG_RULES, delete, \
             self.payload.sg_rules_container, os_sg, provider_sg]
 
-        meta_sg_rules_ipsets = self._get_sg_remote_ipsets(provider_rules_meta)
-
-        # Apply Security Group Desired State
         if delete:
             meta_sec = self._realize(*sec_args)
             meta_nsg = self._realize(*nsg_args)
-            
-            for _,provider_ipset_id in meta_sg_rules_ipsets.items():
-                self.client.delete(path=API.IPSET.format(provider_ipset_id))
-        else:
-            meta_nsg = self._realize(*nsg_args)
-            provider_sg.update({
-                "applied_tos": meta_nsg.get(os_sg.get("id")).get("id")
-            })
-            # Create/update section keeping existing tags(revision)
-            meta_sec = self._realize(*sec_args)
+            return
+        
+        meta_nsg = self._realize(*nsg_args)
+        provider_sg.update({"applied_tos": meta_nsg.id})
+        # Create/update/delete section keeping existing tags(revision)
+        meta_sec = self._realize(*sec_args)
 
-            # CRUD rules
-            self._sg_rules_realize(\
-                os_sg, meta_sec, provider_rules_meta, meta_sg_rules_ipsets)
+        # CRUD rules
+        self._sg_rules_realize(os_sg, meta_sec)
 
-            # Update section tags(revision) when all rules applied successfully
-            provider_sg["tags_update"] = True
-            self._realize(*sec_args)
+        # Update section tags(revision) when all rules applied successfully
+        provider_sg["tags_update"] = True
+        self._realize(*sec_args)
+        
 
+    def _sg_rules_realize(self, os_sg, meta_sg):
 
-    def _sg_rules_realize(self, os_sg, meta_sg, meta_sg_rules, meta_sg_rules_remote):
-
-        sg_id = meta_sg.items()[0][0]
         sg_rules = {o.get("id"):o for o in os_sg.get("rules")}
 
-        sec_id = meta_sg.get(sg_id).get("id")
-        sec_rev = meta_sg.get(sg_id).get("_revision")
+        if len(sg_rules) > 1000:
+            LOG.error("Unable to update Security Group:%s with more than 1K rules.", 
+                      os_sg.get("id"))
+            return
 
-        sec_rules = meta_sg_rules
-        sec_rules_ipsets = meta_sg_rules_remote
+        sec_id = meta_sg.id
+        sec_rev = meta_sg._revision
+
+        sec_rules = self.metadata(Provider.SG_RULE, os_sg.get("id"))
 
         sec_rules_ids = set(sec_rules.keys())
         sg_rules_ids = set(sg_rules.keys())
 
         os_rules_add = sg_rules_ids.difference(sec_rules_ids)
-        os_rules_remove = sec_rules_ids.difference(sec_rules_ids)
-        os_rules_existing = sec_rules_ids.intersection(sec_rules_ids)
-        
-        pool_size = cfg.CONF.NSXV3.nsxv3_max_records_per_query
-        # NSX-T 3.0.2 API limit is 1k rules per request
-        pool_size = 1000 if pool_size >= 1000 else pool_size
+        os_rules_remove = sec_rules_ids.difference(sg_rules_ids)
+        os_rules_existing = sg_rules_ids.intersection(sec_rules_ids)
+
+        for id in os_rules_remove:
+            path=API.RULE.format(sec_id, sec_rules.get(id).get("id"))
+            self.client.delete(path=path)
+
+        sec_rev = self.client.get(path=API.SECTION.format(sec_id)).json().get("_revision")
 
         data = {"rules": []}
         while os_rules_add:
             id = os_rules_add.pop()
             rule = sg_rules.get(id)
 
-            sec_rule = self._get_sg_provider_rule(rule, sec_rules_ipsets.get(id))
+            sec_rule = self._get_sg_provider_rule(rule, sec_rev)
             sec_rule = self.payload.sg_rule(rule, sec_rule)
-
-            if not sec_rule:
-                LOG.error("Not supported rule %s", rule)
-                if len(data["rules"]) % pool_size == 0:
-                    continue
-            else:
+            if sec_rule:
                 data["rules"].append(sec_rule)
-            if len(data["rules"]) % pool_size == 0 or not os_rules_add:
-                path = API.RULES_CREATE.format(sec_id)
-                try:
-                    resp = self.client.post(path=path, data=data)
-                    sec_rev = resp.json().get("rules")[0].get("_revision")
-                except Exception as err:
-                    LOG.error("Security Group rules creation has failed. Error: %s", err)
-                data["rules"] = []
         
+        if data["rules"]:
+            path = API.RULES_CREATE.format(sec_id)
+            resp = self.client.post(path=path, data=data)
+            sec_rev = resp.json().get("rules")[0].get("_revision")
+
         for id in os_rules_existing:
             data = sec_rules.get(id)
-            if data.get("disabled"):
-                path=API.RULE.format(sec_id, sec_rule.get("id"))
-                data["disabled"] = False
+            if data.get("disabled") or not meta_sg.age:
+                rule = sg_rules.get(id)
+                path = API.RULE.format(sec_id, data.get("id"))
+                data = self.payload.sg_rule(rule, self._get_sg_provider_rule(rule, sec_rev))
                 resp = self.client.put(path=path,data=data)
-                sec_rev = resp.json().get("rules")[0].get("_revision")
-                self._set_sg_remote_ipset(sg_rules.get(id), 
-                                          sec_rules_ipsets.get(id))
-
-        if not self._tags(meta_sg.get(sg_id)).get(NSXV3_AGE_SCOPE):
-            # Update legacy IPSets for remote ip prefix 0.0.0.0/x
-            for id in os_rules_existing:
-                self._set_sg_remote_ipset(sg_rules.get(id), 
-                                        sec_rules_ipsets.get(id))
-        
-        for id in os_rules_remove:
-            path=API.RULE.format(sec_id, sec_rules.get(id).get("id"))
-            self.client.delete(path=path)
-
-        # NSX-T Needs some time to detect that dependent rules are removed
-        for id in os_rules_remove:
-            path=API.IPSET.format(sec_rules_ipsets.get(id))
-            self.client.delete(path=path)
+                sec_rev = resp.json().get("_revision")
 
         resp = self.client.get(path=API.SECTION.format(sec_id))
         self.metadata_update(Provider.SG_RULES, resp.json())
-            
-    def _set_sg_remote_ipset(self, os_rule, provider_rule_ipset_id):
-        if provider_rule_ipset_id:
-            path = API.IPSET.format(provider_rule_ipset_id)
-            o = self.client.get(path=path).json()
 
-            if NSXV3_AGE_SCOPE not in self._tags(o):
-                data = self.payload.sg_rule_remote_ip(os_rule, {})
-                self.client.put(path=path, data=data)
-
-    def _get_sg_remote_ipsets(self, provider_rules_meta):
-        meta_ipsets = dict()
-        for _, rule in provider_rules_meta.items():
-            os_sg_rule_id = rule.get("display_name")
-            for ref in rule.get("sources",[]) + rule.get("destinations",[]):
-                if isinstance(ref, dict) and \
-                    ref.get("target_display_name") == os_sg_rule_id:
-                        meta_ipsets[os_sg_rule_id] = ref.get("target_id")
-        return meta_ipsets
-
-    def _get_sg_provider_rule(self, os_rule, provider_rule_remote_id):
-        cidr = os_rule.get("remote_ip_prefix")
-        group_id = os_rule.get("remote_group_id")
-
-        if cidr:
-            if cidr.startswith("0.0.0.0/") and not cidr.startswith("0.0.0.0/0"):
-                if provider_rule_remote_id:
-                    # TODO - remove the following lines after the
-                    # initial environment clean up
-                    path = path=API.IPSET.format(provider_rule_remote_id)
-                    o = self.client.get(path=path).json()
-                    tags = {t.get("scope"):t.get("tag") for t in o.get("tags", [])}
-                    if NSXV3_SECURITY_GROUP_REMOTE_SCOPE not in tags:
-                        data = self.payload.sg_rule_remote_ip(os_rule, dict())
-                        data = {"tags": data.get("tags")}
-                        o = self.client.put(path=path, data=data)
-                    return {"remote_ip_prefix": provider_rule_remote_id}
-                try:
-                    data = self.payload.sg_rule_remote_ip(os_rule, dict())
-                    o = self.client.post(path=API.IPSETS, data=data)
-                    return {"remote_ip_prefix": o.json().get("id")}
-                except Exception as err:
-                    LOG.error(err)
-        if group_id:
-            meta = self.metadata(Provider.SG_MEMBERS, group_id)
+    def _get_sg_provider_rule(self, os_rule, revision):
+        provider_rule = dict()
+        if os_rule.get("remote_ip_prefix"):
+            net = netaddr.IPSet([os_rule["remote_ip_prefix"]]).pop()
+            meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
+            if net.ip in meta_addr:
+                cidr = str(net)
+                with LockManager.get_lock(cidr):
+                    meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
+                    if not meta:
+                        o = self.client.post(
+                            path=API.IPSETS,
+                            data=self.payload.sg_rules_remote(cidr)).json()
+                        meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
+                provider_rule["remote_ip_prefix_id"] = meta.id
+        elif os_rule.get("remote_group_id"):
+            meta = self.metadata(Provider.SG_MEMBERS, os_rule["remote_group_id"])
             if meta:
-                return {"remote_group_id": meta.get(group_id).get("id")}
-            else:
-                LOG.error("Cannot resolve remote security group %s", group_id)
-        return None
-
-
-    def _sg_members_require_update(self, current_payload, new_payload):
-        a = current_payload.get("ip_addresses")
-        b = new_payload.get("ip_addresses")
-        a.sort()
-        b.sort()
-        return a != b
+                provider_rule["remote_group_id"] = meta.id
+        
+        provider_rule["_revision"] = revision
+        return provider_rule
 
     def network_realize(self, segmentation_id):
         meta = self.metadata(self.NETWORK, segmentation_id)
@@ -893,32 +824,22 @@ class Provider(abs.Provider):
             meta = self.metadata_update(self.NETWORK, o)
         return meta
 
-    def sanitize(self):
-        cache = dict()
-        delete = set()
-        for o in self.client.get_all(API.IPSETS):
-            tags = self._tags(o)
-            if NSXV3_SECURITY_GROUP_SCOPE not in tags:
-                if NSXV3_SECURITY_GROUP_REMOTE_SCOPE in tags:
-                    os_sg_id = tags[NSXV3_SECURITY_GROUP_REMOTE_SCOPE]
-                    if os_sg_id in self._cache[Provider.SG_RULES].get("resources"):
-                        rule_id = o["display_name"]
-                        if rule_id in cache:
-                            delete.add(cache[rule_id]["id"])
-                        else:
-                            cache[rule_id] = o
-                            continue
-                # The assumption here is that all IPSets have already been
-                # Updated with NSXV3_SECURITY_GROUP_REMOTE_SCOPE
-                try:
-                    self.client.delete(path=API.IPSET.format(o["id"]))
-                except:
-                    pass
+    def sanitize(self, slice):
+        if slice <= 0:
+            return ([], None)
+        self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
+
+        meta = self._metadata.get(Provider.SG_RULES_REMOTE_PREFIX).meta
+        ids = []
+        for os_id in meta.keys():
+            # After all sections meet certain NSXV3_AGE_SCOPE all their rules
+            # are going to reference static IPSets, thus remove the rest
+            if "0.0.0.0/" not in os_id and "::/" not in os_id:
+                if len(ids) >= slice:
+                    break
+                ids.append(meta.get(os_id).id)
         
-        # In case of ambiguity remove all IPSets, NSX-T will prevent removing
-        # the real reference
-        for id in delete:
-            try:
-                self.client.delete(path=API.IPSET.format(id))
-            except:
-                pass
+        def remove_orphan_ipsets(provider_id):
+            self.client.delete(path=API.IPSET.format(provider_id))
+        
+        return (ids, remove_orphan_ipsets)

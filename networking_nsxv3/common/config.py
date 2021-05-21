@@ -163,11 +163,6 @@ nsxv3_opts = [
         default='NONE',
         help="NSXv3 Manager DFW connectivity strategy: {}"\
             .format(str(nsxv3_dfw_connectivity_strategy))
-    ),
-    cfg.IntOpt(
-        'nsxv3_cache_refresh_window',
-        default=30,
-        help="Amount of seconds transferred from cache history on refresh"
     )
 ]
 

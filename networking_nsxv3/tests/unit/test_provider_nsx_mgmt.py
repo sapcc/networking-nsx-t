@@ -45,7 +45,6 @@ class TestProvider(base.BaseTestCase):
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
-        cfg.CONF.set_override("nsxv3_cache_refresh_window", 0, "NSXV3")
 
         self.inventory = Inventory("https://nsxm-l-01a.corp.local:443")
         r = responses
@@ -665,7 +664,7 @@ class TestProvider(base.BaseTestCase):
             "logical_switch_id": "419e0f47-7ff5-40c8-8256-0bd9173a4e1f",
             "attachment": {
                 "attachment_type": "VIF",
-                "id": "something@80372EA3-5F58-4B06-8456-3067D60B3023"
+                "id": "80372EA3-5F58-4B06-8456-3067D60B3023"
             },
             "admin_state": "UP",
             "address_bindings": [],
@@ -1058,7 +1057,7 @@ class TestProvider(base.BaseTestCase):
         
         p.sg_rules_realize(sg, dict())
 
-        p.sanitize()
+        p.sanitize(None)
         self.assertEquals(len(inv[self.inventory.IPSETS]), 1)
 
         sg_section = self.get_by_name(inv[self.inventory.SECTIONS], sg["id"])
@@ -1104,7 +1103,7 @@ class TestProvider(base.BaseTestCase):
 
         # 1 for the referenced remote prefix and 10 duplicated
         self.assertEquals(len(inv[self.inventory.IPSETS]), 10)
-        p.sanitize()
+        p.sanitize(None)
         self.assertEquals(len(inv[self.inventory.IPSETS]), 1)
 
         sg_section = self.get_by_name(inv[self.inventory.SECTIONS], sg["id"])

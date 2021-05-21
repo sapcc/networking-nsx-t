@@ -113,7 +113,7 @@ class Provider:
         """
 
     @abc.abstractmethod
-    def sg_rules_realize(self, os_sg, provider_rules_meta=dict(), delete=False):
+    def sg_rules_realize(self, os_sg, delete=False):
         """
         Realize OpenStack Security Group Rules in provider
 
@@ -137,7 +137,6 @@ class Provider:
         }
 
         :os_sg: SG_Rules -- OpenStack Security Group Rules
-        :provider_rules_meta: -- Provider rules metadata
         :delete: bool -- If True will remove Security Group Rules
         """
 
@@ -149,9 +148,11 @@ class Provider:
         """
 
     @abc.abstractmethod
-    def sanitize(self):
+    def sanitize(self, slice):
         """
-        Performs various cleanup tasks. Executed only once after agent boots
-        when all provider objects have been brought into desired state.
+        Mark provider resources target of cleanup.
+
+        :slice: number - the number of objects that can be cleaned up at this time
+        :returns: (list, function) - list of IDs target of removal and remove function accepting single ID
         """
     

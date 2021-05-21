@@ -29,7 +29,7 @@ def nova_port_creation(os_port_id):
         "logical_switch_id": "419e0f47-7ff5-40c8-8256-0bd9173a4e1f",
         "attachment": {
             "attachment_type": "VIF",
-            "id": "machine@{}".format(os_port_id)
+            "id": os_port_id
         },
         "admin_state": "UP",
         "address_bindings": [],
@@ -77,7 +77,6 @@ class TestAgentRealizer(base.BaseTestCase):
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
-        cfg.CONF.set_override("nsxv3_cache_refresh_window", 0, "NSXV3")
 
         self.provider_inventory = provider.Inventory("https://nsxm-l-01a.corp.local:443")
         self.neutron_inventory = openstack.NeutronMock()

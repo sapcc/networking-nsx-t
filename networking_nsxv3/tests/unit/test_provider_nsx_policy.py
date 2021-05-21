@@ -45,7 +45,6 @@ class TestProvider(base.BaseTestCase):
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
-        cfg.CONF.set_override("nsxv3_cache_refresh_window", 0, "NSXV3")
 
         self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.0.2")
         r = responses

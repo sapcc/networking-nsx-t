@@ -106,23 +106,14 @@ class Payload(provider_nsx_mgmt.Payload):
 
 class Provider(provider_nsx_mgmt.Provider):
 
-    def __init__(self):
-        super(Provider, self).__init__()
+    def __init__(self, payload=Payload):
+        super(Provider, self).__init__(payload=payload)
 
-    def _payload(self):
-        return Payload()
-
-    def _cache_loader(self):
-        cache = super(Provider, self)._cache_loader()
-        cache[Provider.SG_MEMBERS] = {
-            "provider": API.GROUPS,
-            "resources": dict()
-        }
-        cache[Provider.SG_RULES] = {
-            "provider": API.POLICIES,
-            "resources": dict()
-        }
-        return cache
+    def _metadata_loader(self):
+        metadata = super(Provider, self)._metadata_loader()
+        metadata[Provider.SG_MEMBERS] = provider_nsx_mgmt.MetaProvider(API.GROUPS)
+        metadata[Provider.SG_RULES] = provider_nsx_mgmt.MetaProvider(API.POLICIES)
+        return metadata
 
     
     def _wait_to_realize(self, resource_type, os_id):
@@ -149,8 +140,9 @@ class Provider(provider_nsx_mgmt.Provider):
 
 
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
-        path = self._cache.get(resource_type).get("provider")
+        path = self._metadata.get(resource_type).endpoint
         if "policy" not in path:
+            # Handle QoS and Ports
             return super(Provider, self)._realize(resource_type, delete, convertor, os_o, provider_o)
 
         os_id = provider_id = os_o.get("id")
@@ -161,9 +153,12 @@ class Provider(provider_nsx_mgmt.Provider):
         meta = self.metadata(resource_type, os_id)
         if meta:
             if delete:
+                LOG.info(report, "deleted")
+                LOG.info(" >>>>>>>> %s", path)
                 self.client.delete(path=path)
                 return self.metadata_delete(resource_type, os_id)
             else:
+                LOG.info(report, "updated")
                 data = convertor(os_o, provider_o)
                 self.client.patch(path=path, data=data)
                 data["id"] = provider_id
@@ -173,6 +168,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 return meta
         else:
             if not delete:
+                LOG.info(report, "created")
                 data = convertor(os_o, provider_o)
                 self.client.put(path=path, data=data)
                 data["id"] = provider_id
@@ -183,11 +179,12 @@ class Provider(provider_nsx_mgmt.Provider):
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
 
 
-    def sg_rules_realize(self, os_sg, meta_rules=None, delete=False):
-        os_id = provider_id = os_sg.get("id")
+    def sg_rules_realize(self, os_sg, delete=False):
+        os_id = os_sg.get("id")
 
         if delete:
             self._realize(Provider.SG_RULES, delete, None, os_sg, dict())
+            return
 
         provider_rules = []
         for rule in os_sg.get("rules"):
@@ -211,6 +208,21 @@ class Provider(provider_nsx_mgmt.Provider):
         }
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
-    
-    def sanitize(self):
-        pass
+
+    def sanitize(self, slice):
+        if slice <= 0:
+            return ([], None)
+
+        meta = self._metadata.get(Provider.SG_MEMBERS).meta
+        
+        ids = []
+        for group in self.client.get_all(path=API.GROUPS):
+            if not meta.get(group.get("id")): 
+                if len(ids) >= slice:
+                    break
+                ids.append(group.get("id"))
+        
+        def remove_orphan_groups(provider_id):
+            self.client.delete(path=API.GROUP.format(provider_id))
+        
+        return (ids, remove_orphan_groups)

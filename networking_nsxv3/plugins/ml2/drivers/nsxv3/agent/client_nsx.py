@@ -49,8 +49,10 @@ class RetryPolicy(object):
                 try:
                     response = func(self, *args, **kwargs)
 
-                    if 200 <= response.status_code < 300 or \
-                        response.status_code in [404]:
+                    if response.status_code in [404]:
+                        LOG.error("Error Code=%s Message=%s", response.status_code, response.content)
+
+                    if 200 <= response.status_code < 300 or response.status_code in [404]:
                         return response
 
                     last_err = "Error Code={} Message={}"\
@@ -176,19 +178,31 @@ class Client:
     def put(self, path, data):
         with self._api_scheduler:
             return self._session.put(**self._params(path=path, json=data))
+    
+    @RetryPolicy()
+    def delete(self, path, params=dict()):
+        with self._api_scheduler:
+            return self._session.delete(**self._params(path=path, params=params))
 
     @RetryPolicy()
     def get(self, path, params=dict()):
         with self._api_scheduler:
             return self._session.get(**self._params(path=path, params=params))
 
-    @RetryPolicy()
-    def delete(self, path, params=dict()):
-        with self._api_scheduler:
-            return self._session.delete(**self._params(path=path,
-                                                       params=params))
+    def get_unique(self, path, params=dict()):
+        results = self.get(path=path, params=params).json().get("results")
+        if isinstance(results, list):
+            if results:
+                result = results.pop()
+                if results:
+                    LOG.warning("Ambiguous. %s", results)
+                return result
+        elif results:
+            return results
 
     def get_all(self, path, params=dict(), cursor=""):
+        # FYI - NSX does not allow to filter by custom property
+        # Search API has hard limit of 50k objects (with cursor)
         PAGE_SIZE = cfg.CONF.NSXV3.nsxv3_max_records_per_query
         params.update({"page_size": PAGE_SIZE, "cursor": cursor})
 
