@@ -158,11 +158,6 @@ def get_port(context, host, port_id):
         PortBinding.host,
         PortBinding.vif_details,
         trunk_model.Trunk.port_id
-    ).select_from(
-        Port
-    ).filter(
-        Port.id == port_id,
-        PortBindingLevel.host == host
     ).join(
         StandardAttribute,
         PortBinding
@@ -173,7 +168,11 @@ def get_port(context, host, port_id):
         trunk_model.SubPort,
         trunk_model.SubPort.port_id == port_id
     ).outerjoin(
-        trunk_model.Trunk
+        trunk_model.Trunk,
+        trunk_model.Trunk.id == trunk_model.SubPort.trunk_id
+    ).filter(
+        Port.id == port_id,
+        PortBindingLevel.host == host
     ).one_or_none()
 
     if not result:
@@ -193,7 +192,7 @@ def get_port(context, host, port_id):
         "address_bindings": [],
         "revision_number": rev,
         "binding:host_id": binding_host,
-        "vif_details": json.loads(vif_details),
+        "vif_details": json.loads(vif_details) if vif_details else vif_details,
         portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
         portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
     }
