@@ -193,7 +193,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
         c = cfg.CONF.NSXV3
         return {
-            'nsxv3_policy_migration_limit': c.nsxv3_policy_migration_limit,
             'nsxv3_connection_retry_count': c.nsxv3_connection_retry_count,
             'nsxv3_connection_retry_sleep': c.nsxv3_connection_retry_sleep,
             'nsxv3_request_timeout': c.nsxv3_request_timeout,
