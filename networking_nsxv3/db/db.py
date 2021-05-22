@@ -217,8 +217,7 @@ def get_port_allowed_pairs(context, port_id):
 
 def get_port_addresses(context, port_id):
     return context.session.query(
-        IPAllocation.ip_address,
-        IPAllocation.subnet_id
+        IPAllocation.ip_address
     ).filter(
         IPAllocation.port_id == port_id
     ).all()
