@@ -370,12 +370,11 @@ def get_security_group_members_address_bindings_ips(context,
                                                     security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
-    return list(
-        context.session.query(
+    return context.session.query(
             AllowedAddressPair.ip_address
         ).join(
             sg_db.SecurityGroupPortBinding,
             AllowedAddressPair.port_id == port_id
         ).filter(
             security_group_id == group_id
-        ).all())
+        ).all()
