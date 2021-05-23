@@ -347,9 +347,9 @@ class Payload(object):
         direction = os_rule['direction']
 
         current = []
-        target = [self._sg_rule_target(os_rule, provider_rule)]
+        target = self._sg_rule_target(os_rule, provider_rule)
 
-        service, err = self._sg_rule_service(os_rule, provider_rule)
+        services, err = self._sg_rule_service(os_rule, provider_rule)
         if err:
             LOG.error("Not supported service %s", os_rule)
             return None
@@ -361,9 +361,7 @@ class Payload(object):
             "destinations": current if direction in 'ingress' else target,
             "disabled": False,
             "display_name": id,
-            "services": [{
-                "service": service
-            }],
+            "services": services,
             "action": "ALLOW",
             "logged": False, # TODO selective logging
             "rule_tag": id.replace("-",""),
@@ -380,6 +378,7 @@ class Payload(object):
         }
 
     def _sg_rule_target(self, os_rule, provider_rule):
+
         if os_rule.get("remote_group_id"):
             id = provider_rule.get("remote_group_id")
             name = os_rule["remote_group_id"]
@@ -390,16 +389,19 @@ class Payload(object):
             id = provider_rule.get("remote_ip_prefix_id")
             name = os_rule["remote_ip_prefix"]
             type = "IPSet"
-        else:
+        elif os_rule.get("remote_ip_prefix"):
             id = name = str(netaddr.IPNetwork(os_rule["remote_ip_prefix"]))
             type = {'IPv4': 'IPv4Address', 'IPv6': 'IPv6Address'}.get(os_rule['ethertype'])
+        else:
+            # Any
+            return []
 
-        return {
+        return [{
             "target_type": type,
             "target_id": id,
             "is_valid": True,
             "target_display_name": name
-        }
+        }]
 
 
     def _sg_rule_service(self, os_rule, provider_rule, subtype="NSService"):
@@ -407,6 +409,12 @@ class Payload(object):
         max = os_rule["port_range_max"]
         protocol = os_rule["protocol"]
         ethertype = os_rule['ethertype']
+
+        def service(service, err):
+            services = []
+            if service:
+                services.append({"service": service})
+            return (services, err)
 
         if protocol == 'icmp':
             min = int(min) if str(min).isdigit() else min
@@ -417,7 +425,7 @@ class Payload(object):
                 return \
                     (None, "Not supported ICMP Range {}-{}".format(min, max))
 
-            return ({
+            return service({
                 "resource_type": "ICMPType{}".format(subtype),
                 "icmp_type": str(min) if min else None,
                 "icmp_code": str(max) if max else None,
@@ -428,7 +436,7 @@ class Payload(object):
             }, None)
 
         if protocol in ["tcp", "udp"]:
-            return ({
+            return service({
                 "resource_type": "L4PortSet{}".format(subtype),
                 "l4_protocol": {'tcp': "TCP", 'udp': "UDP"}.get(protocol),
                 "destination_ports": ["{}-{}".format(min, max) \
@@ -437,21 +445,21 @@ class Payload(object):
             }, None)
         
         if str(protocol).isdigit():
-            return ({
+            return service({
                 "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(protocol)
             }, None)
 
         if protocol and protocol in IP_PROTOCOL_NUMBERS:
-            return ({
+            return service({
                 "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(IP_PROTOCOL_NUMBERS.get(protocol))
             }, None)
         
         if not protocol: # ANY
-            return (None, None)
+            return service(None, None)
         
-        return (None,"Unsupported protocol {}.".format(protocol))
+        return service(None,"Unsupported protocol {}.".format(protocol))
 
 
 class Provider(abs.Provider):
