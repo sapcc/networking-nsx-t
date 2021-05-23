@@ -172,8 +172,9 @@ def get_port(context, host, port_id):
         trunk_model.Trunk.id == trunk_model.SubPort.trunk_id
     ).filter(
         Port.id == port_id,
-        PortBindingLevel.host == host
-    ).one_or_none()
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3
+    ).distinct(Port.id).one_or_none()
 
     if not result:
         return None
