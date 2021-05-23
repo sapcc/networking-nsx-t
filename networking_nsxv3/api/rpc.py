@@ -200,9 +200,10 @@ class NSXv3ServerRpcCallback(object):
 
     @log_helpers.log_method_call
     def get_security_group_members_effective_ips(self, context, security_group_id):
-        return \
-            db.get_security_group_members_ips(context, security_group_id) + \
-            db.get_security_group_members_address_bindings_ips(context, security_group_id)
+        a = db.get_security_group_members_ips(context, security_group_id)
+        b = db.get_security_group_members_address_bindings_ips(context, security_group_id)
+        return [ips[0] for ips in a + b]
+            
 
     @log_helpers.log_method_call
     def get_security_groups_for_host(self, context, host, limit, cursor):
@@ -225,15 +226,15 @@ class NSXv3ServerRpcCallback(object):
         for ip in db.get_port_addresses(context, port_id):
             if "/" in ip:
                 continue
-            port["address_bindings"].append({"ip_address": ip,  "mac_address": port["mac_address"]})
+            port["address_bindings"].append({"ip_address": ip[0],  "mac_address": port["mac_address"]})
 
         for ip, mac in db.get_port_allowed_pairs(context, port_id):
             if "/" in ip:
                 continue
-            port["address_bindings"].append({"ip_address": ip, "mac_address": mac})
+            port["address_bindings"].append({"ip_address": ip[0], "mac_address": mac})
 
-        for sg_id,_ in db.get_port_security_groups(context, port_id):
-            port["security_groups"].append(sg_id)
+        for sg_id in db.get_port_security_groups(context, port_id):
+            port["security_groups"].append(sg_id[0])
         
         return port
 
@@ -251,3 +252,4 @@ class NSXv3ServerRpcCallback(object):
 
         for dir, bps, burst in db.get_qos_bwl_rules(context, qos_id):
             qos["rules"].append({"direction": dir,"max_kbps": bps, "max_burst_kbps": burst})
+        return qos
