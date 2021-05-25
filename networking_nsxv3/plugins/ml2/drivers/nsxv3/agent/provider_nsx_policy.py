@@ -83,9 +83,12 @@ class Payload(provider_nsx_mgmt.Payload):
             target = ["ANY"]
 
         service, err = self._sg_rule_service(os_rule, provider_rule, subtype="ServiceEntry")
-        if not service and err:
-            LOG.error("Not supported Rule ID:%s. Error:%s", os_id, err)
+        if err:
+            LOG.error("Not supported service for Rule:%s. Error:%s", os_id, err)
             return
+        
+        service_entries = [service] if service else []
+
 
         return {
             "id": os_id,
@@ -95,7 +98,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "destination_groups": current if direction in 'ingress' else target,
             "disabled": False,
             "display_name": os_id,
-            "service_entries": [service],
+            "service_entries": service_entries,
             "action": "ALLOW",
             "logged": False,  # TODO selective logging
             "tag": os_id.replace("-",""),
@@ -154,7 +157,6 @@ class Provider(provider_nsx_mgmt.Provider):
         if meta:
             if delete:
                 LOG.info(report, "deleted")
-                LOG.info(" >>>>>>>> %s", path)
                 self.client.delete(path=path)
                 return self.metadata_delete(resource_type, os_id)
             else:

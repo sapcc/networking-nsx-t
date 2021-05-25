@@ -350,10 +350,11 @@ class Payload(object):
         current = []
         target = self._sg_rule_target(os_rule, provider_rule)
 
-        services, err = self._sg_rule_service(os_rule, provider_rule)
+        service, err = self._sg_rule_service(os_rule, provider_rule)
         if err:
             LOG.error("Not supported service %s", os_rule)
             return None
+        services = [{"service": service}] if service else None
 
         return {
             "direction": {'ingress': 'IN', 'egress': 'OUT'}.get(direction),
@@ -411,12 +412,6 @@ class Payload(object):
         protocol = os_rule["protocol"]
         ethertype = os_rule['ethertype']
 
-        def service(service, err):
-            services = []
-            if service:
-                services.append({"service": service})
-            return (services, err)
-
         if protocol == 'icmp':
             min = int(min) if str(min).isdigit() else min
             max = int(max) if str(max).isdigit() else max
@@ -426,7 +421,7 @@ class Payload(object):
                 return \
                     (None, "Not supported ICMP Range {}-{}".format(min, max))
 
-            return service({
+            return ({
                 "resource_type": "ICMPType{}".format(subtype),
                 "icmp_type": str(min) if min else None,
                 "icmp_code": str(max) if max else None,
@@ -437,7 +432,7 @@ class Payload(object):
             }, None)
 
         if protocol in ["tcp", "udp"]:
-            return service({
+            return ({
                 "resource_type": "L4PortSet{}".format(subtype),
                 "l4_protocol": {'tcp': "TCP", 'udp': "UDP"}.get(protocol),
                 "destination_ports": ["{}-{}".format(min, max) \
@@ -446,21 +441,21 @@ class Payload(object):
             }, None)
         
         if str(protocol).isdigit():
-            return service({
+            return ({
                 "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(protocol)
             }, None)
 
         if protocol and protocol in IP_PROTOCOL_NUMBERS:
-            return service({
+            return ({
                 "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(IP_PROTOCOL_NUMBERS.get(protocol))
             }, None)
         
         if not protocol: # ANY
-            return service(None, None)
+            return (None, None)
         
-        return service(None,"Unsupported protocol {}.".format(protocol))
+        return (None,"Unsupported protocol {}.".format(protocol))
 
 
 class Provider(abs.Provider):
