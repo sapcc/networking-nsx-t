@@ -117,7 +117,8 @@ class Resource(object):
 
     @property
     def is_managed(self):
-        return self.resource.get("_create_user") == "admin"
+        # TODO - check if there is case when NSX-T has non Agent Ports
+        return self.resource.get("_create_user") == "admin" or self.type == "LogicalPort"
     
     @property
     def type(self):
