@@ -4,6 +4,7 @@ import os
 import eventlet
 import netaddr
 from networking_nsxv3.common.constants import *
+from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from oslo_config import cfg
@@ -13,6 +14,8 @@ LOG = logging.getLogger(__name__)
 
 
 class API(provider_nsx_mgmt.API):
+    POLICY_BASE = "/policy/api/v1"
+
     POLICIES = "/policy/api/v1/infra/domains/default/security-policies"
     POLICY = "/policy/api/v1/infra/domains/default/security-policies/{}"
 
@@ -51,6 +54,17 @@ class Payload(provider_nsx_mgmt.Payload):
             })
         return sg
 
+    def sg_rules_remote(self, cidr):
+        # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
+        return {
+            "display_name": cidr,
+            "expression": [{
+                "resource_type": "IPAddressExpression",
+                "ip_addresses": [cidr]   
+            }],
+            "tags": self.tags(None)
+        }
+
     def sg_rules_container(self, os_sg, provider_sg):
         return {
             "category": "Application",
@@ -77,8 +91,10 @@ class Payload(provider_nsx_mgmt.Payload):
         current = ["ANY"]
         if os_rule.get("remote_group_id"):
             target = [group_ref(provider_rule.get("remote_group_id"))]
+        elif provider_rule.get("remote_ip_prefix_id"):
+            target = [group_ref(provider_rule.get("remote_ip_prefix_id"))]
         elif os_rule.get("remote_ip_prefix"):
-            target = provider_rule.get("remote_ip_prefix")
+            target = [os_rule.get("remote_ip_prefix")]
         else:
             target = ["ANY"]
 
@@ -115,13 +131,23 @@ class Provider(provider_nsx_mgmt.Provider):
     def _metadata_loader(self):
         metadata = super(Provider, self)._metadata_loader()
         metadata[Provider.SG_MEMBERS] = provider_nsx_mgmt.MetaProvider(API.GROUPS)
+        metadata[Provider.SG_RULES_REMOTE_PREFIX] = provider_nsx_mgmt.MetaProvider(API.GROUPS)
         metadata[Provider.SG_RULES] = provider_nsx_mgmt.MetaProvider(API.POLICIES)
         return metadata
 
     
     def _wait_to_realize(self, resource_type, os_id):
+
+        path = None
+        if resource_type == Provider.SG_RULES:
+            path = API.POLICY.format(os_id)
+        elif resource_type == Provider.SG_MEMBERS:
+            path = API.GROUP.format(os_id)
+        else:
+            return
+
         params = {
-            "intent_path": "/infra/domains/default/security-policies/{}".format(os_id)
+            "intent_path": path.replace(API.POLICY_BASE, "")
         }
 
         until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
@@ -149,12 +175,12 @@ class Provider(provider_nsx_mgmt.Provider):
             return super(Provider, self)._realize(resource_type, delete, convertor, os_o, provider_o)
 
         os_id = provider_id = os_o.get("id")
-        path = "{}/{}".format(path, provider_id) 
         
         report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)        
 
         meta = self.metadata(resource_type, os_id)
         if meta:
+            path = "{}/{}".format(path, meta.id)
             if delete:
                 LOG.info(report, "deleted")
                 self.client.delete(path=path)
@@ -170,6 +196,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 return meta
         else:
             if not delete:
+                path = "{}/{}".format(path, os_id)
                 LOG.info(report, "created")
                 data = convertor(os_o, provider_o)
                 self.client.put(path=path, data=data)
@@ -190,15 +217,8 @@ class Provider(provider_nsx_mgmt.Provider):
 
         provider_rules = []
         for rule in os_sg.get("rules"):
-            provider_rule = dict()
-            if rule.get("remote_group_id"):
-                group_id = rule.get("remote_group_id")
-                group = self.metadata(Provider.SG_MEMBERS, group_id)
-                provider_rule["remote_group_id"] = group.get(group_id).get("id")
-            if rule.get("remote_ip_prefix"):
-                provider_rule["remote_ip_prefix"] = self.payload.get_compacted_cidrs([rule.get("remote_ip_prefix")])
-
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
+            provider_rule = self._get_sg_provider_rule(rule, None)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
             if provider_rule:
@@ -211,20 +231,11 @@ class Provider(provider_nsx_mgmt.Provider):
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
 
-    def sanitize(self, slice):
-        if slice <= 0:
-            return ([], None)
+    def _create_sg_provider_rule_remote_prefix(self, cidr):
+        id = cidr.replace(".", "-").replace("/","-")
+        return self.client.put(path=API.GROUP.format(id),
+                               data=self.payload.sg_rules_remote(cidr)).json()
+    
+    def _delete_sg_provider_rule_remote_prefix(self, id):
+        self.client.delete(path=API.GROUP.format(id))
 
-        meta = self._metadata.get(Provider.SG_MEMBERS).meta
-        
-        ids = []
-        for group in self.client.get_all(path=API.GROUPS):
-            if not meta.get(group.get("id")): 
-                if len(ids) >= slice:
-                    break
-                ids.append(group.get("id"))
-        
-        def remove_orphan_groups(provider_id):
-            self.client.delete(path=API.GROUP.format(provider_id))
-        
-        return (ids, remove_orphan_groups)

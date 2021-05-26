@@ -117,8 +117,16 @@ class Resource(object):
 
     @property
     def is_managed(self):
-        # TODO - check if there is case when NSX-T has non Agent Ports
-        return self.resource.get("_create_user") == "admin" or self.type == "LogicalPort"
+        if not self.resource.get("locked"):
+            user = self.resource.get("_create_user")
+            if user == "admin":
+                return True
+
+            if self.type == "LogicalPort":
+                att_id = self.resource.get("attachment", {}).get("id")
+                if user != "nsx_policy" and att_id:
+                    return True
+        return False
     
     @property
     def type(self):
@@ -134,7 +142,7 @@ class Resource(object):
         if self.type == "LogicalSwitch":
             os_id = os_id.split("-")[-1]
         if self.type == "LogicalPort":
-            os_id = self.resource["attachment"]["id"]
+            os_id = self.resource.get("attachment", {}).get("id")
         return os_id
     
     @property
@@ -423,8 +431,8 @@ class Payload(object):
 
             return ({
                 "resource_type": "ICMPType{}".format(subtype),
-                "icmp_type": str(min) if min else None,
-                "icmp_code": str(max) if max else None,
+                "icmp_type": str(min),
+                "icmp_code": str(max),
                 "protocol": { 
                     'IPv4': "ICMPv4", 
                     'IPv6': "ICMPv6"
@@ -597,6 +605,20 @@ class Provider(abs.Provider):
                     params = {"unbind": True}
                 else:
                     params = dict()
+
+                if resource_type == Provider.PORT:
+                    o = self.client.get(path=path).json()
+                    if o.get("attachment", {}).get("context", {})\
+                        .get("vif_type") != "CHILD":
+
+                        stamp = int(o.get("_last_modified_time")) / 1000
+
+                        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
+
+                        if (time.time() - stamp) / 3600 < delay:
+                            LOG.info(end_report, "rescheduled for deletion")
+                            return meta
+
                 self.client.delete(path=path, params=params)
                 
                 LOG.info(end_report, "deleted")
@@ -708,6 +730,10 @@ class Provider(abs.Provider):
         return self._realize(Provider.QOS, delete, self.payload.qos, qos, dict())
     
     def sg_members_realize(self, sg, delete=False):
+        if delete and self.metadata(Provider.SG_RULES, sg.get("id")):
+            LOG.debug("Resource:%s with ID:%s deletion is rescheduled due to dependency.",
+                      Provider.SG_MEMBERS, sg.get("id"))
+            return
         return self._realize(Provider.SG_MEMBERS, delete,
                              self.payload.sg_members_container, sg, dict())
 
@@ -801,9 +827,7 @@ class Provider(abs.Provider):
                 with LockManager.get_lock(cidr):
                     meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
                     if not meta:
-                        o = self.client.post(
-                            path=API.IPSETS,
-                            data=self.payload.sg_rules_remote(cidr)).json()
+                        o = self._create_sg_provider_rule_remote_prefix(cidr)
                         meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
                 provider_rule["remote_ip_prefix_id"] = meta.id
         elif os_rule.get("remote_group_id"):
@@ -813,6 +837,13 @@ class Provider(abs.Provider):
         
         provider_rule["_revision"] = revision
         return provider_rule
+
+    def _create_sg_provider_rule_remote_prefix(self, cidr):
+        return self.client.post(path=API.IPSETS,
+                                data=self.payload.sg_rules_remote(cidr)).json()
+    
+    def _delete_sg_provider_rule_remote_prefix(self, id):
+        self.client.delete(path=API.IPSET.format(id))
 
     def network_realize(self, segmentation_id):
         meta = self.metadata(self.NETWORK, segmentation_id)
@@ -843,7 +874,7 @@ class Provider(abs.Provider):
                     break
                 ids.append(meta.get(os_id).id)
         
-        def remove_orphan_ipsets(provider_id):
-            self.client.delete(path=API.IPSET.format(provider_id))
+        def remove_orphan_remote_prefixes(provider_id):
+            self._delete_sg_provider_rule_remote_prefix(provider_id)
         
-        return (ids, remove_orphan_ipsets)
+        return (ids, remove_orphan_remote_prefixes)
