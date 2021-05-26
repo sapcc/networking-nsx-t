@@ -1,19 +1,13 @@
-import json
+import copy
+import os
 import re
-import sys
 
 import eventlet
-import mock
-import requests
 import responses
-import testtools
-from mock import patch
-from networking_nsxv3.common import config
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    agent, provider_nsx_mgmt, realization)
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.realization import \
-    AgentRealizer
-from networking_nsxv3.tests.unit import openstack, provider
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
+from networking_nsxv3.tests.datasets import coverage
+from networking_nsxv3.tests.environment import Environment
+from networking_nsxv3.tests.unit import provider
 from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -21,177 +15,170 @@ from oslo_log import log as logging
 LOG = logging.getLogger(__name__)
 
 
-NSX_URL="https://nsxm-l-01a.corp.local:443"
-
-
-def nova_port_creation(os_port_id):
-    requests.post("{}/api/v1/logical-ports".format(NSX_URL), data=json.dumps({
-        "logical_switch_id": "419e0f47-7ff5-40c8-8256-0bd9173a4e1f",
-        "attachment": {
-            "attachment_type": "VIF",
-            "id": os_port_id
-        },
-        "admin_state": "UP",
-        "address_bindings": [],
-        "switching_profile_ids": [
-            {
-                "key": "SwitchSecuritySwitchingProfile",
-                "value": "fbc4fb17-83d9-4b53-a286-ccdf04301888"
-            },
-            {
-                "key": "SpoofGuardSwitchingProfile",
-                "value": "fad98876-d7ff-11e4-b9d6-1681e6b88ec1"
-            },
-            {
-                "key": "IpDiscoverySwitchingProfile",
-                "value": "0c403bc9-7773-4680-a5cc-847ed0f9f52e"
-            },
-            {
-                "key": "MacManagementSwitchingProfile",
-                "value": "1e7101c8-cfef-415a-9c8c-ce3d8dd078fb"
-            },
-            {
-                "key": "PortMirroringSwitchingProfile",
-                "value": "93b4b7e8-f116-415d-a50c-3364611b5d09"
-            },
-            {
-                "key": "QosSwitchingProfile",
-                "value": "f313290b-eba8-4262-bd93-fab5026e9495"
-            }
-        ],
-        "ignore_address_bindings": [],
-        "resource_type": "LogicalPort",
-        "display_name": os_port_id,
-        "description": "",
-        "tags": []
-    }))
-
+# TODO - replace static wait/sleep with active polling
 
 class TestAgentRealizer(base.BaseTestCase):
     
     def setUp(self):
         super(TestAgentRealizer, self).setUp()
 
-        # How To Overwrite cfg
-        # cfg.CONF.set_override("nsxv3_login_user", "admin", "NSXV3")
+        hostname = "nsxm-l-01a.corp.local"
+        port = "443"
 
+        o = cfg.CONF.set_override
+        g = os.environ.get
+
+        o('debug', True)
         logging.setup(cfg.CONF, "demo")
-        logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
-        self.provider_inventory = provider.Inventory("https://nsxm-l-01a.corp.local:443")
-        self.neutron_inventory = openstack.NeutronMock()
+        o("nsxv3_login_hostname", hostname, "NSXV3")
+        o("nsxv3_login_port", port, "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", "0", "NSXV3")
 
-        r = responses
+        self.url = "https://{}:{}".format(hostname, port)
+
+
+    def _mock(self, r):
+        self.inventory = provider.Inventory(self.url)
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
-            r.add_callback(m, re.compile(r".*"), callback=self.provider_inventory.api)
+            r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
-    def setUpResponsesActivated(self):
-        self.rpc = openstack.TestNSXv3ServerRpcApi(self.neutron_inventory)
-        self.manager = agent.NSXv3Manager(rpc=self.rpc, synchronization=True, 
-                                          monitoring=False)
-        rpc = self.manager.get_rpc_callbacks(None, None, None)
-        notifier = openstack.TestNSXv3AgentManagerRpcCallBackBase(rpc)
-        self.neutron_inventory.register(notifier)
+    
+    def test_creation(self):
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
+            self._mock(resp)
+            c = coverage
 
+            env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+            with env:
+                LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
 
-    @responses.activate
-    def test_child_port_update(self):
-        self.setUpResponsesActivated()
+                i = env.openstack_inventory
+                i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
+                i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
+                i.port_bind(c.PORT_BACKEND["name"], "3200")
+                i.port_bind(c.PORT_DB["name"], "3200")
 
-        # Simulate Port Binding
-        port = self.neutron_inventory.port_create("p1", "3200")
-        nova_port_creation(port.get("id"))
+                eventlet.sleep(30)
+
+                LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
+
+        provider = p = env.manager.realizer.provider
+
+        metadata = m = env.dump_provider_inventory(printable=False)
+
+        # Validate network creation
+        self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
+        self.assertEquals("3200" in m[p.NETWORK]["meta"], True)
+
+        # Validate QoS State
+        self.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], True)
+        self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], True)
+        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in m[p.QOS]["meta"], False)
+
+        # Validate Security Groups Members
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+
+        # Validate Security Group Rules Sections
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+
+        if env.is_management_api_mode():
+            # Validate Security Group Rules NSGroups
+            self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
         
-        port = self.neutron_inventory.port_update("p1", security_group_names=[])
-        child_port = self.neutron_inventory.port_create("p1-1", "3201", parent_name="p1")
-        child_port = self.neutron_inventory.port_update("p1-1", security_group_names=[])
-
-        eventlet.sleep(5.0)
-
-        p_inv = self.provider_inventory
-        LOG.info(json.dumps(p_inv.inventory, indent=4))
-        LOG.info(json.dumps(p_inv.inventory, indent=4))
+        # Validate Security Group Remote Prefix IPSets
+        for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
 
+    def test_cleanup(self):
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
+            self._mock(resp)
 
-        provider_ports = [o.get("display_name") for _,o in p_inv.inventory.get(p_inv.PORTS).items()]
-        self.assertEqual(set(provider_ports), set([port.get("id"), child_port.get("id")]))
+            c = coverage
 
-        self.manager.shutdown()
+            env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+            with env:
+                inventory = i = env.openstack_inventory
+                provider = p = env.manager.realizer.provider
 
-    @responses.activate
-    def test_ports_add_remove_end_to_end(self):
-        self.setUpResponsesActivated()
+                i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
+                i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
+                i.port_bind(c.PORT_BACKEND["name"], "3200")
+                i.port_bind(c.PORT_DB["name"], "3200")
 
-        qos_01 = self.neutron_inventory.qos_create("qos-01")
-        sg_01 = self.neutron_inventory.security_group_create("sg-01", tags=["capability_tcp_strict"])
-        sg_02 = self.neutron_inventory.security_group_create("sg-02", tags=["capability_tcp_strict"])
-        self.neutron_inventory.security_group_rule_add(
-            sg_02.get("name"), "1", 
-            protocol="tcp", ethertype="IPv4", direction="ingress", 
-            remote_ip_prefix="192.168.0.0/16", port_range_min=443)
-        self.neutron_inventory.security_group_rule_add(
-            sg_02.get("name"), "2", 
-            protocol="tcp", ethertype="IPv4", direction="ingress",
-            remote_group_id=sg_01.get("id"), port_range_min=443)
-        sg_02_rule = self.neutron_inventory.security_group_rule_add(
-            sg_02.get("name"), "3", 
-            protocol="tcp", ethertype="IPv4", direction="ingress", 
-            remote_ip_prefix="0.0.0.0/16", port_range_min=443)
+                eventlet.sleep(30)
 
-        # Simulate Port Binding
-        port = self.neutron_inventory.port_create("p1", "3200")
-        nova_port_creation(port.get("id"))
-        
-        self.neutron_inventory.port_update("p1", qos_name=qos_01.get("name"), security_group_names=[sg_02.get("name")])
+                LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
 
-        # Wait for async jobs to apply the desired state
-        eventlet.sleep(10)
+                # Add orphan IPSets
+                p.client.post(path="/api/v1/ip-sets",
+                            data=p.payload.sg_rule_remote("192.168.0.0/12"))
+                p.client.post(path="/api/v1/ip-sets",
+                            data=p.payload.sg_rule_remote("::ffff/64"))
 
-        p_inv = self.provider_inventory
-        # o_inv = self.neutron_inventory.inventory
-        # c_inv = self.manager.realizer.provider._cache
+                i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
+                eventlet.sleep(10)
+                i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
+                eventlet.sleep(40)
 
-        LOG.info(json.dumps(self.provider_inventory.inventory, indent=4))
-        LOG.info(json.dumps(self.neutron_inventory.inventory, indent=4))
-        LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))
+                LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
+    
+        metadata = m = env.dump_provider_inventory(printable=False)
 
-        self.assertNotEqual(p_inv.lookup(p_inv.NSGROUPS, sg_02.get("id")), None)
-        self.assertNotEqual(p_inv.lookup(p_inv.SECTIONS, sg_02.get("id")), None)
-        self.assertNotEqual(p_inv.lookup(p_inv.IPSETS, sg_01.get("id")), None)
-        self.assertNotEqual(p_inv.lookup(p_inv.IPSETS, sg_02_rule.get("id")), None)
-        self.assertEqual(len(p_inv.lookup(p_inv.SECTIONS, sg_02.get("id")).get("_").get("rules").keys()), 3)
-        self.assertEqual(len(p_inv.inventory.get(p_inv.IPSETS).keys()), 3)
-        self.assertNotEqual(p_inv.lookup(p_inv.PROFILES, qos_01.get("id")), None)
+        # Validate network creation
+        self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
+        self.assertEquals("3200" in m[p.NETWORK]["meta"], True)
 
-        sgs = []
-        for i in range(1,3):
-            name = "sg-{}".format(i)
-            sgs.append(self.neutron_inventory.security_group_create(name, tags=[]).get("name"))
-            self.neutron_inventory.security_group_rule_add(
-                name, str(i), 
-                protocol="tcp", ethertype="IPv4", direction="ingress", 
-                remote_ip_prefix="192.168.{}.0/24".format(i), port_range_min=1000+i)
-        
+        # Validate QoS State
+        self.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], False)
+        self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], False)
+        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in m[p.QOS]["meta"], False)
 
-        self.neutron_inventory.port_update("p1", qos_name=qos_01.get("name"), security_group_names=sgs)
+        # Validate Security Groups Members
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
 
-        eventlet.sleep(10)
+        # Validate Security Group Rules Sections
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
 
-        self.neutron_inventory.port_delete("p1")
-        
-        eventlet.sleep(10)
+        # Validate Security Group Rules NSGroups
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
 
-        LOG.info(json.dumps(self.provider_inventory.inventory, indent=4))
-        LOG.info(json.dumps(self.neutron_inventory.inventory, indent=4))
-        LOG.info(json.dumps(self.manager.realizer.provider._cache, indent=4))        
-        
-        self.assertEqual(len(p_inv.inventory.get(p_inv.NSGROUPS).keys()), 0)
-        self.assertEqual(len(p_inv.inventory.get(p_inv.SECTIONS).keys()), 0)
-        self.assertEqual(len(p_inv.inventory.get(p_inv.IPSETS).keys()), 0)
-        self.assertEqual(len(p_inv.inventory.get(p_inv.PORTS).keys()), 0)
-        # Default IP-Discovery and Spoofguard
-        self.assertEqual(len(p_inv.inventory.get(p_inv.PROFILES).keys()), 2)
-
-        self.manager.shutdown()
+        # Validate Security Group Remote Prefix IPSets
+        for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 

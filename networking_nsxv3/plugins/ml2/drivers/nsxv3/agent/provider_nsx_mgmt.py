@@ -378,7 +378,7 @@ class Payload(object):
             "_revision": provider_rule["_revision"]
         }
 
-    def sg_rules_remote(self, cidr):
+    def sg_rule_remote(self, cidr):
         # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
         return {
             "resource_type": "IPSet",
@@ -840,7 +840,7 @@ class Provider(abs.Provider):
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         return self.client.post(path=API.IPSETS,
-                                data=self.payload.sg_rules_remote(cidr)).json()
+                                data=self.payload.sg_rule_remote(cidr)).json()
     
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.IPSET.format(id))

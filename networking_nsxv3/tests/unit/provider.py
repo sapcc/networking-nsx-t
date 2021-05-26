@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import time
 
 from oslo_log import log as logging
 from urlparse import parse_qs, urlparse
@@ -67,6 +68,7 @@ class Inventory(object):
         if request.method == "POST":
             resource["id"] = self.identifier(inventory, resource)
             resource["_create_user"] = "admin"
+            resource["_last_modified_time"] = int(time.time() * 1000)
             inventory[resource["id"]] = resource
             if resource.get("_revision"):
                 resource["_revision"] = int(resource["_revision"])+1
@@ -84,7 +86,8 @@ class Inventory(object):
                     inventory[id] = resource
                     resource["id"] = id
                     resource["_create_user"] = "admin"
-                    return self.resp(200, o)
+                    resource["_last_modified_time"] = int(time.time() * 1000)
+                    return self.resp(200, resource)
             if o:
                 if resource.get("id") and resource.get("id") != id:
                     self.resp(422)
@@ -99,7 +102,7 @@ class Inventory(object):
             else:
                 if "policy" in request.url:
                     inventory[id] = resource
-                    return self.resp(200, o)
+                    return self.resp(200, resource)
                 else:
                     return self.resp(404)
         if request.method == "DELETE":

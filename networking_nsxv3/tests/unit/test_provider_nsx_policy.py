@@ -175,7 +175,7 @@ class TestProvider(base.BaseTestCase):
             "rules": []
         }
 
-        provider_nsx_policy.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_policy.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -266,7 +266,7 @@ class TestProvider(base.BaseTestCase):
         inv = self.inventory.inventory
         provider = provider_nsx_policy.Provider()
         
-        provider.sg_rules_realize(sg1, dict())
+        provider.sg_rules_realize(sg1)
         LOG.info(json.dumps(inv, indent=4))
         policy1 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"):r for r in policy1.get("rules")}
@@ -277,7 +277,7 @@ class TestProvider(base.BaseTestCase):
         self.assertEquals(rules[rule1["id"]].get("service_entries")[0].get("icmp_code"), "1")
         self.assertEquals(rules[rule2["id"]].get("service_entries")[0].get("protocol_number"), 0)
 
-        provider.sg_rules_realize(sg2, dict())
+        provider.sg_rules_realize(sg2)
         LOG.info(json.dumps(inv, indent=4))
         policy2 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"):r for r in policy2.get("rules")}
@@ -287,7 +287,7 @@ class TestProvider(base.BaseTestCase):
         self.assertEquals(rules[rule1["id"]].get("service_entries")[0].get("icmp_code"), "2")
         self.assertEquals(rules[rule3["id"]].get("service_entries")[0].get("protocol_number"), 1)
 
-        provider.sg_rules_realize(sg3, dict())
+        provider.sg_rules_realize(sg3)
         LOG.info(json.dumps(inv, indent=4))
         policy3 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"):r for r in policy3.get("rules")}
@@ -327,7 +327,7 @@ class TestProvider(base.BaseTestCase):
 
         provider = provider_nsx_policy.Provider()
         provider.sg_members_realize(sg_remote)
-        provider.sg_rules_realize(sg, dict())
+        provider.sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -365,7 +365,7 @@ class TestProvider(base.BaseTestCase):
 
         sg["rules"].append(rule)
 
-        provider_nsx_policy.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_policy.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -427,7 +427,7 @@ class TestProvider(base.BaseTestCase):
         sg["rules"].append(rule_hopopt)
         sg["rules"].append(rule_0)
 
-        provider_nsx_policy.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_policy.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -482,7 +482,7 @@ class TestProvider(base.BaseTestCase):
         sg["rules"].append(rule_valid)
         sg["rules"].append(rule_invalid)
 
-        provider_nsx_policy.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_policy.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -516,10 +516,10 @@ class TestProvider(base.BaseTestCase):
         }
 
         provider = provider_nsx_policy.Provider()
-        provider.sg_rules_realize(sg[0], dict())
-        provider.sg_rules_realize(sg[1], dict())
-        provider.sg_rules_realize(sg[2], dict())
-        provider.sg_rules_realize(sg[3], dict())
+        provider.sg_rules_realize(sg[0])
+        provider.sg_rules_realize(sg[1])
+        provider.sg_rules_realize(sg[2])
+        provider.sg_rules_realize(sg[3])
 
         LOG.info(json.dumps(self.inventory.inventory, indent=4))
 

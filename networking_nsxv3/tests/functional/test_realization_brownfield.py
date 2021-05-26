@@ -1,3 +1,4 @@
+import copy
 import os
 
 import eventlet
@@ -51,7 +52,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.cleanup()
         c = coverage
 
-        env = Environment(inventory=coverage.OPENSTACK_INVENTORY)
+        env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
         with env:
             LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
             LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
@@ -114,7 +115,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.cleanup()
         c = coverage
 
-        env = Environment(inventory=coverage.OPENSTACK_INVENTORY)
+        env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
         with env:
             inventory = i = env.openstack_inventory
             provider = p = env.manager.realizer.provider
@@ -131,9 +132,9 @@ class TestAgentRealizer(base.BaseTestCase):
 
             # Add orphan IPSets
             p.client.post(path="/api/v1/ip-sets",
-                          data=p.payload.sg_rules_remote("192.168.0.0/12"))
+                          data=p.payload.sg_rule_remote("192.168.0.0/12"))
             p.client.post(path="/api/v1/ip-sets",
-                          data=p.payload.sg_rules_remote("::ffff/64"))
+                          data=p.payload.sg_rule_remote("::ffff/64"))
 
             i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
             eventlet.sleep(10)

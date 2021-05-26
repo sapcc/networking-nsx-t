@@ -211,7 +211,7 @@ class TestProvider(base.BaseTestCase):
             ]
         })
 
-        provider_nsx_mgmt.Provider().sg_rules_realize(sg[0], dict())
+        provider_nsx_mgmt.Provider().sg_rules_realize(sg[0])
 
         inv = self.inventory.inventory
 
@@ -228,7 +228,8 @@ class TestProvider(base.BaseTestCase):
         for k,v in sg[2].items():
             if k == "tags":
                 tags = set([(t["scope"],t["tag"]) for t in sg_nsgroup.get(k)])
-                tags_exp = set([(t["scope"],t["tag"]) for t in sg[2].get(k)])
+                # NS Group should not have revision tag
+                tags_exp = set([(t["scope"],t["tag"]) for t in sg[2].get(k) if t["scope"] != "revision_number"])
                 self.assertEquals(tags_exp.intersection(tags), tags_exp)
             else:
                 self.assertEquals(sg_nsgroup.get(k), sg[2].get(k))
@@ -310,16 +311,16 @@ class TestProvider(base.BaseTestCase):
         inv = self.inventory.inventory
         provider = provider_nsx_mgmt.Provider()
         
-        provider.sg_rules_realize(sg1, dict())
-        provider.sg_rules_realize(sg2, dict())
-        provider.sg_rules_realize(sg3, dict())
+        provider.sg_rules_realize(sg1)
+        provider.sg_rules_realize(sg2)
+        provider.sg_rules_realize(sg3)
 
         LOG.info(json.dumps(inv, indent=4))
 
         sg_meta_rules = provider.metadata(provider.SG_RULE, sg1.get("id"))
         self.assertEquals(len(sg_meta_rules.keys()), 2)
 
-        provider.sg_rules_realize(sg2, provider_rules_meta=sg_meta_rules)
+        provider.sg_rules_realize(sg2)
         sg_meta_rules = provider.metadata(provider.SG_RULE, sg2.get("id"))
         LOG.info(json.dumps(sg_meta_rules, indent=4))
         self.assertEquals(len(sg_meta_rules.keys()), 2)
@@ -345,7 +346,7 @@ class TestProvider(base.BaseTestCase):
         self.assertEquals(sg_meta_rules.get(rule1_u.get("id")).get("services"), rule1_u_expected)
         self.assertEquals(sg_meta_rules.get(rule3.get("id")).get("services"), rule3_expected)
         
-        provider.sg_rules_realize(sg3, provider_rules_meta=sg_meta_rules)
+        provider.sg_rules_realize(sg3)
         sg_meta_rules = provider.metadata(provider.SG_RULE, sg3.get("id"))
         self.assertEquals(len(sg_meta_rules.keys()), 0)
 
@@ -362,7 +363,7 @@ class TestProvider(base.BaseTestCase):
 
         provider = provider_nsx_mgmt.Provider()
         
-        provider.sg_rules_realize(sg, dict())
+        provider.sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -370,7 +371,7 @@ class TestProvider(base.BaseTestCase):
 
         self.assertEquals(sg_section.get("display_name"), sg.get("id"))
 
-        provider.sg_rules_realize(sg, dict(), delete=True)
+        provider.sg_rules_realize(sg, delete=True)
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg.get("id"))
 
@@ -378,7 +379,7 @@ class TestProvider(base.BaseTestCase):
 
 
     @responses.activate
-    def test_security_group_rules_remote_ip_prefix_ipset(self):
+    def test_security_group_rules_remote_ip_prefix_constant_ipset(self):
 
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
@@ -402,7 +403,7 @@ class TestProvider(base.BaseTestCase):
         sg["rules"].append(rule)
 
         p = provider_nsx_mgmt.Provider()
-        p.sg_rules_realize(sg, dict())
+        p.sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -410,7 +411,6 @@ class TestProvider(base.BaseTestCase):
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
         sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
 
-        self.assertEquals(self.get_tag(sg_rule_ipset, "security_group_remote_id"), sg.get("id"))
         self.assertEquals(self.get_tag(sg_rule_ipset, "agent_id"), "nsxm-l-01a.corp.local")
         self.assertEquals(self.get_tag(sg_rule_ipset, "revision_number"), None)
         self.assertEquals(sg_rule_ipset.get("ip_addresses"), [rule.get("remote_ip_prefix")])
@@ -440,7 +440,7 @@ class TestProvider(base.BaseTestCase):
         sg["rules"].append(rule)
 
         p = provider_nsx_mgmt.Provider()
-        p.sg_rules_realize(sg, dict())
+        p.sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -485,7 +485,7 @@ class TestProvider(base.BaseTestCase):
 
         provider = provider_nsx_mgmt.Provider()
         provider.sg_members_realize(sg_remote)
-        provider.sg_rules_realize(sg, dict())
+        provider.sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -520,7 +520,7 @@ class TestProvider(base.BaseTestCase):
 
         sg["rules"].append(rule)
 
-        provider_nsx_mgmt.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -581,7 +581,7 @@ class TestProvider(base.BaseTestCase):
         sg["rules"].append(rule_hopopt)
         sg["rules"].append(rule_0)
 
-        provider_nsx_mgmt.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -639,7 +639,7 @@ class TestProvider(base.BaseTestCase):
         sg["rules"].append(rule_valid)
         sg["rules"].append(rule_invalid)
 
-        provider_nsx_mgmt.Provider().sg_rules_realize(sg, dict())
+        provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
         inv = self.inventory.inventory
 
@@ -762,19 +762,27 @@ class TestProvider(base.BaseTestCase):
         provider_port, os_sg, os_qos, os_port_parent, _ = self.port_fixture()
         provider_port_attachment = provider_port.get("attachment")
 
-        # Port crated via Nova machine provisioning
+        # Port created via Nova machine provisioning
         provider_port = requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
 
         provider = provider_nsx_mgmt.Provider()
-        provider.sg_rules_realize(os_sg, dict())
-        provider.qos_realize(os_qos, dict())
-        provider.port_realize(os_port_parent, dict())
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        provider.port_realize(os_port_parent)
 
-        meta_port = provider.metadata(provider.PORT, os_port_parent.get("id")).get(os_port_parent.get("id"))
+        meta_port = provider.metadata(provider.PORT, os_port_parent.get("id"))
 
-        self.assertEquals(meta_port.get("rev"), os_port_parent.get("revision_number"))
+        self.assertEquals(meta_port.rev, os_port_parent.get("revision_number"))
 
         provider_port = requests.get(get_url("/api/v1/logical-ports/{}".format(provider_port.get("id")))).json()
+
+        provider_port_attachment.update({
+            "context": {
+                "resource_type": "VifAttachmentContext",
+                "traffic_tag": "3200",
+                "vif_type": "PARENT"
+            }
+        })
         
         self.assertEquals(provider_port.get("attachment"), provider_port_attachment)
         self.assertEquals(provider_port.get("address_bindings"), os_port_parent.get("address_bindings"))
@@ -792,15 +800,15 @@ class TestProvider(base.BaseTestCase):
         provider_port = requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
 
         provider = provider_nsx_mgmt.Provider()
-        provider.sg_rules_realize(os_sg, dict())
-        provider.qos_realize(os_qos, dict())
-        provider.port_realize(os_port_parent, dict())
-        provider.port_realize(os_port_child, dict())
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        provider.port_realize(os_port_parent)
+        provider.port_realize(os_port_child)
 
-        meta_port = provider.metadata(provider.PORT, os_port_child.get("id")).get(os_port_child.get("id"))
+        meta_port = provider.metadata(provider.PORT, os_port_child.get("id"))
 
-        self.assertEquals(meta_port.get("rev"), os_port_child.get("revision_number"))
-        provider_port = requests.get(get_url("/api/v1/logical-ports/{}".format(meta_port.get("id")))).json()
+        self.assertEquals(meta_port.rev, os_port_child.get("revision_number"))
+        provider_port = requests.get(get_url("/api/v1/logical-ports/{}".format(meta_port.id))).json()
         
         self.assertEquals(provider_port.get("attachment").get("id"), os_port_child.get("id"))
         self.assertEquals(provider_port.get("address_bindings"), os_port_child.get("address_bindings"))
@@ -818,22 +826,22 @@ class TestProvider(base.BaseTestCase):
         provider_port = requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
 
         provider = provider_nsx_mgmt.Provider()
-        provider.sg_rules_realize(os_sg, dict())
-        provider.qos_realize(os_qos, dict())
-        provider.port_realize(os_port_parent, dict())
-        provider.port_realize(os_port_child, dict())
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        provider.port_realize(os_port_parent)
+        provider.port_realize(os_port_child)
 
-        meta_parent_port = provider.metadata(provider.PORT, os_port_parent.get("id")).get(os_port_parent.get("id"))
-        meta_child_port = provider.metadata(provider.PORT, os_port_child.get("id")).get(os_port_child.get("id"))
+        meta_parent_port = provider.metadata(provider.PORT, os_port_parent.get("id")).id
+        meta_child_port = provider.metadata(provider.PORT, os_port_child.get("id")).id
 
         self.assertEquals(len(self.inventory.inventory[Inventory.PORTS].keys()), 2)
         self.assertNotEqual(meta_parent_port, None)
         self.assertNotEqual(meta_child_port, None)
 
-        provider.port_realize(os_port_child, dict(), delete=True)
-        provider.port_realize(os_port_parent, dict(), delete=True)
+        provider.port_realize(os_port_child, delete=True)
+        provider.port_realize(os_port_parent, delete=True)
 
-        self.assertEquals(list(self.inventory.inventory[Inventory.PORTS].keys()), [])
+        self.assertEquals(list(self.inventory.inventory[Inventory.PORTS].keys()), [meta_parent_port])
 
 
     @responses.activate
@@ -859,7 +867,7 @@ class TestProvider(base.BaseTestCase):
             ]
         }
         provider = provider_nsx_mgmt.Provider()
-        provider.qos_realize(os_qos, dict())
+        provider.qos_realize(os_qos)
 
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
 
@@ -908,10 +916,10 @@ class TestProvider(base.BaseTestCase):
         }
 
         provider = provider_nsx_mgmt.Provider()
-        provider.qos_realize(os_qos, dict())
+        provider.qos_realize(os_qos)
         
         os_qos.get("rules").append(rule)
-        provider.qos_realize(os_qos, dict())
+        provider.qos_realize(os_qos)
 
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
 
@@ -947,12 +955,12 @@ class TestProvider(base.BaseTestCase):
 
         provider = provider_nsx_mgmt.Provider()
 
-        provider.qos_realize(os_qos, dict())
+        provider.qos_realize(os_qos)
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
         qos = self.get_result_by_name(result, os_qos.get("id"))
         self.assertNotEqual(qos, None)
 
-        provider.qos_realize(os_qos, dict(), delete=True)
+        provider.qos_realize(os_qos, delete=True)
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
         qos = self.get_result_by_name(result, os_qos.get("id"))
         self.assertEquals(qos, None)
@@ -964,7 +972,7 @@ class TestProvider(base.BaseTestCase):
         meta = provider.network_realize(segmentation_id)
 
         inv = self.inventory.inventory
-        net = inv[Inventory.SWITCHES].get(meta.get(segmentation_id).get("id"))
+        net = inv[Inventory.SWITCHES].get(meta.id)
         self.assertEquals(net.get("vlan"), segmentation_id)
         self.assertEquals(net.get("transport_zone_id"), provider.zone_id)
         self.assertEquals(net.get("display_name"), "{}-{}".format(provider.zone_name, segmentation_id))
@@ -983,7 +991,7 @@ class TestProvider(base.BaseTestCase):
         meta1 = provider.network_realize(segmentation_id)
         self.assertEquals(len(inv[Inventory.SWITCHES]), 1)
 
-        self.assertEquals(meta, meta1)
+        self.assertEquals(meta.id, meta1.id)
 
         meta = provider.network_realize(segmentation_id2)
         self.assertEquals(len(inv[Inventory.SWITCHES]), 2)
@@ -1005,10 +1013,10 @@ class TestProvider(base.BaseTestCase):
         }
 
         provider = provider_nsx_mgmt.Provider()
-        provider.sg_rules_realize(sg[0], dict())
-        provider.sg_rules_realize(sg[1], dict())
-        provider.sg_rules_realize(sg[2], dict())
-        provider.sg_rules_realize(sg[3], dict())
+        provider.sg_rules_realize(sg[0])
+        provider.sg_rules_realize(sg[1])
+        provider.sg_rules_realize(sg[2])
+        provider.sg_rules_realize(sg[3])
 
         outdated,current = provider.outdated(provider.SG_RULES, meta)
 
@@ -1044,70 +1052,38 @@ class TestProvider(base.BaseTestCase):
         p = provider_nsx_mgmt.Provider()
         inv = self.inventory.inventory
 
-        # IPSets with no tags
         for i in range(1,10):
             data = {
                 "resource_type": "IPSet",
-                "display_name": "0000{}".format(i),
+                "display_name": "0.0.0.0/{}".format(i),
                 "ip_addresses": ["0.0.0.0/{}".format(i)]
             }
             p.client.post(path=provider_nsx_mgmt.API.IPSETS, data=data)
-
+        
         self.assertEquals(len(inv[self.inventory.IPSETS]), 9)
         
-        p.sg_rules_realize(sg, dict())
-
-        p.sanitize(None)
-        self.assertEquals(len(inv[self.inventory.IPSETS]), 1)
-
-        sg_section = self.get_by_name(inv[self.inventory.SECTIONS], sg["id"])
-        sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
-        sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
-
-        self.assertNotEquals(sg_rule_ipset, None)
-
-
-    @responses.activate
-    def test_remote_prefix_ambiguity_cleanup(self):
-        sg = {
-            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
-            "revision_number": 2,
-            "tags": ["capability_tcp_strict"],
-            "rules": []
-        }
-
-        rule = {
-            "id": "1",
-            "ethertype": "IPv4",
-            "direction": "ingress",
-            "remote_group_id": "",
-            "remote_ip_prefix": "0.0.0.0/16",
-            "security_group_id": sg.get("id"),
-            "port_range_min": "443",
-            "port_range_max": "443",
-            "protocol": "tcp",
-        }
-
-        sg["rules"].append(rule)
-
-        p = provider_nsx_mgmt.Provider()
-        p.sg_rules_realize(sg, dict())
-
-        inv = self.inventory.inventory
-
-        data = provider_nsx_mgmt.Payload().sg_rule_remote_ip(rule, None)
-
-        # Duplicate IPSets
-        for i in range(1,10):
+        for i in range(1,3):
+            data = {
+                "resource_type": "IPSet",
+                "display_name": "192.168.0.{}".format(i),
+                "ip_addresses": ["192.168.0/{}".format(i)]
+            }
             p.client.post(path=provider_nsx_mgmt.API.IPSETS, data=data)
 
-        # 1 for the referenced remote prefix and 10 duplicated
+        self.assertEquals(len(inv[self.inventory.IPSETS]), 11)
+        
+        p.sg_rules_realize(sg)
+
+        ids, cleanup = p.sanitize(100)
+        for id in ids:
+            cleanup(id)
+
+        # /16 from the rule and /1-9
         self.assertEquals(len(inv[self.inventory.IPSETS]), 10)
-        p.sanitize(None)
-        self.assertEquals(len(inv[self.inventory.IPSETS]), 1)
 
         sg_section = self.get_by_name(inv[self.inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
         sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
 
         self.assertNotEquals(sg_rule_ipset, None)
+
