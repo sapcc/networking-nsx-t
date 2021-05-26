@@ -131,6 +131,15 @@ SECURITY_GROUP_FRONTEND = {
             "port_range_min": "22",
             "port_range_max": "22",
             "protocol": "tcp"
+        },
+        {   # ANY UDP
+            "id": "9961B0AE-53EC-4E54-95B6-2F440D243F7B",
+            "ethertype": "IPv6",
+            "direction": "egress",
+            "remote_ip_prefix": "",
+            "remote_group_id": "34B87931-F273-4C6D-96D0-B3979E30254A",
+            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+            "protocol": "udp"
         }
     ]
 }

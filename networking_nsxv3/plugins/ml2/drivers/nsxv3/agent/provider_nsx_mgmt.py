@@ -440,6 +440,9 @@ class Payload(object):
             }, None)
 
         if protocol in ["tcp", "udp"]:
+            if not min and not max:
+                min = "1"
+                max = "65535"
             return ({
                 "resource_type": "L4PortSet{}".format(subtype),
                 "l4_protocol": {'tcp': "TCP", 'udp': "UDP"}.get(protocol),

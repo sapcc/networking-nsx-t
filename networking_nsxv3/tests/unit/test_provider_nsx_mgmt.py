@@ -22,6 +22,8 @@ def get_url(path):
     return "https://nsxm-l-01a.corp.local:443{}".format(path)
 
 
+# TODO - replace intest mock data with the content from the dataset
+
 
 class TestProvider(base.BaseTestCase):
 
@@ -657,7 +659,37 @@ class TestProvider(base.BaseTestCase):
         sg_rule_invalid = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule_invalid["id"])
 
         self.assertEquals(sg_rule_invalid, None)
+    
+    @responses.activate
+    def test_security_group_rules_service_udp_any_port(self):
 
+        sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": []
+        }
+
+        rule = {
+            "id": "9961B0AE-53EC-4E54-95B6-2F440D243F7B",
+            "ethertype": "IPv6",
+            "direction": "egress",
+            "remote_ip_prefix": "",
+            "remote_group_id": "34B87931-F273-4C6D-96D0-B3979E30254A",
+            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+            "protocol": "udp"
+        }
+
+        sg["rules"].append(rule)
+
+        provider_nsx_mgmt.Provider().sg_rules_realize(sg)
+
+        inv = self.inventory.inventory
+
+        sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
+        sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
+
+        self.assertEquals(sg_rule.get("destination_ports"), ["1-65535"])
 
     def port_fixture(self):
         provider_port = {
