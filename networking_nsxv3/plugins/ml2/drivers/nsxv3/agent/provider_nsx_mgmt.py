@@ -415,10 +415,10 @@ class Payload(object):
 
 
     def _sg_rule_service(self, os_rule, provider_rule, subtype="NSService"):
-        min = os_rule["port_range_min"]
-        max = os_rule["port_range_max"]
-        protocol = os_rule["protocol"]
-        ethertype = os_rule['ethertype']
+        min = os_rule.get("port_range_min")
+        max = os_rule.get("port_range_max")
+        protocol = os_rule.get("protocol")
+        ethertype = os_rule.get('ethertype')
 
         if protocol == 'icmp':
             min = int(min) if str(min).isdigit() else min
