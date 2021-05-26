@@ -689,7 +689,7 @@ class TestProvider(base.BaseTestCase):
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
 
-        self.assertEquals(sg_rule.get("destination_ports"), ["1-65535"])
+        self.assertEquals(sg_rule["services"][0]["service"]["destination_ports"], ["1-65535"])
 
     def port_fixture(self):
         provider_port = {
