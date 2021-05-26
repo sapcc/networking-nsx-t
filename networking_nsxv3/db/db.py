@@ -292,11 +292,16 @@ def get_rules_for_security_group_id(context, security_group_id):
     ).all()
 
 
-def get_port_id_by_sec_group_id(context, security_group_id):
+def get_port_id_by_sec_group_id(context, host, security_group_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.port_id
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
     ).filter(
-        sg_db.SecurityGroupPortBinding.security_group_id == security_group_id
+        sg_db.SecurityGroupPortBinding.security_group_id == security_group_id,
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3
     ).all()
 
 

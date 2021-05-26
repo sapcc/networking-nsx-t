@@ -110,7 +110,7 @@ class NSXv3ServerRpcApi(object):
     def get_security_group(self, security_group_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_security_group',
-                          security_group_id=security_group_id)
+                          host=self.host, security_group_id=security_group_id)
 
     @log_helpers.log_method_call
     def get_qos(self, qos_id):
@@ -183,14 +183,14 @@ class NSXv3ServerRpcCallback(object):
         return db.get_security_groups_with_revisions(context, host, limit, cursor)
 
     @log_helpers.log_method_call
-    def get_security_group(self, context, security_group_id):
+    def get_security_group(self, context, host, security_group_id):
         id_rev = db.get_security_group_revision(context, security_group_id)
         if id_rev:
             return {
                 "id": id_rev[0],
                 "revision_number": id_rev[1],
                 "tags": db.get_security_group_tag(context, security_group_id),
-                "ports": db.get_port_id_by_sec_group_id(context, 
+                "ports": db.get_port_id_by_sec_group_id(context, host, 
                                                         security_group_id)
             }
 
