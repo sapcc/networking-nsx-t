@@ -147,7 +147,19 @@ class Resource(object):
     
     @property
     def tags(self):
-        return {t.get("scope"):t.get("tag") for t in self.resource.get("tags", [])}
+        tags = {}
+        for item in self.resource.get("tags", []):
+            scope = item.get("scope")
+            tag = item.get("tag")
+
+            if scope in tags:
+                if type(tags[scope]) != list:
+                    tags[scope] = [tags[scope]]
+                tags[scope].append(tag)
+            else:
+                tags[scope] = tag
+
+        return tags
 
     @property
     def meta(self):
@@ -185,7 +197,16 @@ class Payload(object):
         if os_obj:
             tags[NSXV3_REVISION_SCOPE] = os_obj.get("revision_number")
         tags.update(more)
-        return [{"scope": s, "tag": t} for s, t in tags.items()]
+
+        provider_tags = []
+        for scope, tag in tags.items():
+            if type(tag) == list:
+                for value in tag:
+                    provider_tags.append({"scope": scope, "tag": value})
+            else:
+                provider_tags.append({"scope": scope, "tag": tag})
+        
+        return provider_tags
 
     def ip_discovery(self):
         os_id = "{}-{}".format(cfg.CONF.AGENT.agent_id, "IpDiscovery")
@@ -277,8 +298,7 @@ class Payload(object):
                         p.get("vif_details").get("segmentation_id")
                 }
             },
-            "tags": self.tags(os_port, more={NSXV3_SECURITY_GROUP_SCOPE:os_id \
-                for os_id in p.get("security_groups")})
+            "tags": self.tags(os_port, more={NSXV3_SECURITY_GROUP_SCOPE:p.get("security_groups")})
         }
 
         if p_ppid:

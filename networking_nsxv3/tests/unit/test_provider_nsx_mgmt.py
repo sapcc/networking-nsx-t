@@ -38,9 +38,7 @@ class TestProviderMgmt(base.BaseTestCase):
         return result.pop(0) if result else None
 
     def get_tag(self, resource, scope):
-        for item in resource.get("tags", {}):
-            if item.get("scope") == scope:
-                return item.get("tag")
+        return provider_nsx_mgmt.Resource(resource).tags.get(scope)
 
     def setUp(self):
         super(TestProviderMgmt, self).setUp()
@@ -750,6 +748,23 @@ class TestProviderMgmt(base.BaseTestCase):
             }]
         }
 
+        os_sg_second = {
+            "id": "FB8B899A-2DAF-4DFA-9E6A-D2869C16BCD0",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [{
+                "id": "1",
+                "ethertype": "IPv4",
+                "direction": "ingress",
+                "remote_group_id": "",
+                "remote_ip_prefix": "192.168.11.0/24",
+                "security_group_id": "",
+                "port_range_min": "5",
+                "port_range_max": "1",
+                "protocol": "icmp"
+            }]
+        }
+
         os_qos = {
             "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
             "revision_number": "3",
@@ -764,7 +779,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "mac_address": "fa:16:3e:e4:11:f1",
             "admin_state_up": "UP",
             "qos_policy_id": os_qos.get("id"),
-            "security_groups": [os_sg.get("id")],
+            "security_groups": [os_sg.get("id"), os_sg_second.get("id")],
             "address_bindings": ["172.24.4.3", "172.24.4.4"],
             "vif_details": {
                 "nsx-logical-switch-id": "712CAD71-B3F5-4AA0-8C3F-8D453DCBF2F2",
@@ -787,11 +802,11 @@ class TestProviderMgmt(base.BaseTestCase):
             }
         }
 
-        return (provider_port, os_sg, os_qos, os_port_parent, os_port_child)
+        return (provider_port, os_sg, os_sg_second, os_qos, os_port_parent, os_port_child)
     
     @responses.activate
     def test_port_parent_create(self):
-        provider_port, os_sg, os_qos, os_port_parent, _ = self.port_fixture()
+        provider_port, os_sg, os_sg_second, os_qos, os_port_parent, _ = self.port_fixture()
         provider_port_attachment = provider_port.get("attachment")
 
         # Port created via Nova machine provisioning
@@ -819,14 +834,13 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(provider_port.get("attachment"), provider_port_attachment)
         self.assertEquals(provider_port.get("address_bindings"), os_port_parent.get("address_bindings"))
 
-        self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_parent.get("security_groups")[0])
+        self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_parent.get("security_groups"))
         self.assertEquals(self.get_tag(provider_port, "agent_id"), "nsxm-l-01a.corp.local")
         self.assertEquals(self.get_tag(provider_port, "revision_number"), os_port_parent.get("revision_number"))
 
     @responses.activate
     def test_port_child_create(self):
-        provider_port, os_sg, os_qos, os_port_parent, os_port_child = self.port_fixture()
-        provider_port_attachment = provider_port.get("attachment")
+        provider_port, os_sg, _, os_qos, os_port_parent, os_port_child = self.port_fixture()
 
         # Port crated via Nova machine provisioning
         provider_port = requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
@@ -845,14 +859,27 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(provider_port.get("attachment").get("id"), os_port_child.get("id"))
         self.assertEquals(provider_port.get("address_bindings"), os_port_child.get("address_bindings"))
 
-        self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_child.get("security_groups")[0])
+        self.assertEquals([self.get_tag(provider_port, "security_group")], os_port_child.get("security_groups"))
         self.assertEquals(self.get_tag(provider_port, "agent_id"), "nsxm-l-01a.corp.local")
         self.assertEquals(self.get_tag(provider_port, "revision_number"), os_port_child.get("revision_number"))
     
     @responses.activate
+    def test_port_bound_multiple_security_groups(self):
+        provider_port, _, _, _, os_port_parent, _ = self.port_fixture()
+
+        # Port created via Nova machine provisioning
+        provider_port = requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
+
+        provider = provider_nsx_mgmt.Provider()
+        provider.port_realize(os_port_parent)
+
+        provider_port = requests.get(get_url("/api/v1/logical-ports/{}".format(provider_port.get("id")))).json()
+        self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_parent.get("security_groups"))
+        self.assertEquals(len(self.get_tag(provider_port, "security_group")), 2)
+    
+    @responses.activate
     def test_port_delete(self):
-        provider_port, os_sg, os_qos, os_port_parent, os_port_child = self.port_fixture()
-        provider_port_attachment = provider_port.get("attachment")
+        provider_port, os_sg, _, os_qos, os_port_parent, os_port_child = self.port_fixture()
 
         # Port crated via Nova machine provisioning
         provider_port = requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
