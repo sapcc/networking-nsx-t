@@ -150,9 +150,9 @@ class Provider:
     @abc.abstractmethod
     def sanitize(self, slice):
         """
-        Mark provider resources target of cleanup.
+        Get provider resources target of cleanup.
 
         :slice: number - the number of objects that can be cleaned up at this time
-        :returns: (list, function) - list of IDs target of removal and remove function accepting single ID
+        :returns: list(id, callback) - where callback is a function accepting the ID
         """
     

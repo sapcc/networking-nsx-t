@@ -22,7 +22,8 @@ class TestAgentRealizer(base.BaseTestCase):
         o = cfg.CONF.set_override
         g = os.environ.get
 
-        o('debug', True)
+        if g("DEBUG") == True:
+            o('debug', True)
         logging.setup(cfg.CONF, "demo")
 
         o("nsxv3_login_hostname", g("NSXV3_LOGIN_HOSTNAME"), "NSXV3")

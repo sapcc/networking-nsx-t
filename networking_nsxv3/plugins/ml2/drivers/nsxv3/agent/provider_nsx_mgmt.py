@@ -885,19 +885,21 @@ class Provider(abs.Provider):
     def sanitize(self, slice):
         if slice <= 0:
             return ([], None)
+
+        def remove_orphan_remote_prefixes(provider_id):
+            self._delete_sg_provider_rule_remote_prefix(provider_id)
+
         self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
 
         meta = self._metadata.get(Provider.SG_RULES_REMOTE_PREFIX).meta
-        ids = []
+
+        sanitize = []
         for os_id in meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
             if "0.0.0.0/" not in os_id and "::/" not in os_id:
-                if len(ids) >= slice:
+                if len(sanitize) >= slice:
                     break
-                ids.append(meta.get(os_id).id)
+                sanitize.append((meta.get(os_id).id, remove_orphan_remote_prefixes))
         
-        def remove_orphan_remote_prefixes(provider_id):
-            self._delete_sg_provider_rule_remote_prefix(provider_id)
-        
-        return (ids, remove_orphan_remote_prefixes)
+        return sanitize

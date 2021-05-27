@@ -119,9 +119,12 @@ class AgentRealizer(object):
 
             if len(current) > 1 and current[0][2] > self.age:
                 LOG.info("Sanitizing provider based on age cycles")
-                ids, cleanup = p.sanitize(slice)
-                self.callback(ids, cleanup)
-                slice -= len(ids)
+                sanitize = p.sanitize(slice)
+
+                for id, callback in sanitize:
+                    self.callback(id, callback)
+
+                slice -= len(sanitize)
                 if slice <= 0:
                     return
 

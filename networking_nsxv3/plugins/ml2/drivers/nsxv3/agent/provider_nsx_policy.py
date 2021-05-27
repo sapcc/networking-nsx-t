@@ -239,3 +239,20 @@ class Provider(provider_nsx_mgmt.Provider):
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
 
+
+    def sanitize(self, slice):
+        if slice <= 0:
+            return ([], None)
+            
+        def remove_orphan_service(provider_id):
+            self.client.delete(path="{}/{}".format(path, provider_id))
+
+        sanitize = super(Provider, self).sanitize(slice)
+
+        if len(sanitize) < slice:
+            path = "/policy/api/v1/infra/services"
+            params = {"default_service": False} # User services only
+            for service in self.client.get_all(path=path, params=params):
+                sanitize.append((service.get("id"), remove_orphan_service))
+
+        return sanitize
