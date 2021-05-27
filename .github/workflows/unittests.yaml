@@ -34,3 +34,5 @@ jobs:
           pip install tox
       - name: Tox
         run: tox -e unit
+      - name: Tox
+        run: tox -e lint
