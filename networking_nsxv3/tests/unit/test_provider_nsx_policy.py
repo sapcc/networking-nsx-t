@@ -23,7 +23,7 @@ def get_url(path):
 
 
 
-class TestProvider(base.BaseTestCase):
+class TestProviderPolicy(base.BaseTestCase):
 
     def get_result_by_name(self, payload, display_name):
         r = [o for o in payload.get("results", []) if o.get("display_name") == display_name]
@@ -41,7 +41,7 @@ class TestProvider(base.BaseTestCase):
                 return item.get("tag")
 
     def setUp(self):
-        super(TestProvider, self).setUp()
+        super(TestProviderPolicy, self).setUp()
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])

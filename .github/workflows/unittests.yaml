@@ -33,4 +33,4 @@ jobs:
           sudo apt-get -y install build-essential netbase
           pip install tox
       - name: Tox
-        run: tox -e py
+        run: tox -e unit

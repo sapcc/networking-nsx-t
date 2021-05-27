@@ -25,7 +25,7 @@ def get_url(path):
 # TODO - replace intest mock data with the content from the dataset
 
 
-class TestProvider(base.BaseTestCase):
+class TestProviderMgmt(base.BaseTestCase):
 
     def get_result_by_name(self, payload, display_name):
         r = [o for o in payload.get("results", []) if o.get("display_name") == display_name]
@@ -43,7 +43,7 @@ class TestProvider(base.BaseTestCase):
                 return item.get("tag")
 
     def setUp(self):
-        super(TestProvider, self).setUp()
+        super(TestProviderMgmt, self).setUp()
 
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
