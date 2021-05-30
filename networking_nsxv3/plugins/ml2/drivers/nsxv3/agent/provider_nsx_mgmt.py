@@ -354,7 +354,7 @@ class Payload(object):
             "section_type": "LAYER3",
             "is_default": False,
             "stateful": True,
-            "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags"),
+            "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags", dict()),
             "applied_tos": [
                 {
                     "target_display_name": os_sg.get("id"),
@@ -672,7 +672,8 @@ class Provider(abs.Provider):
         self.metadata_refresh(resource_type)
 
         if resource_type == Provider.SG_RULES:
-            self.metadata_refresh(Provider.SG_RULES_EXT)
+            if type(self) == Provider:
+                self.metadata_refresh(Provider.SG_RULES_EXT)
             self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
         
         meta = self._metadata.get(resource_type).meta
@@ -690,7 +691,7 @@ class Provider(abs.Provider):
                 r = meta.get(id)
                 outdated.add(id)
 
-        if resource_type == Provider.SG_RULES:
+        if type(self) == Provider and resource_type == Provider.SG_RULES:
             # NSGroups not matching Sections concidered as outdated SG
             groups = self._metadata.get(Provider.SG_RULES_EXT).meta
             outdated.update(set(groups.keys()).difference(k1))

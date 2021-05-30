@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 import eventlet
 import netaddr
@@ -21,6 +22,9 @@ class API(provider_nsx_mgmt.API):
 
     GROUPS = "/policy/api/v1/infra/domains/default/groups"
     GROUP = "/policy/api/v1/infra/domains/default/groups/{}"
+
+    SERVICES = "/policy/api/v1/infra/services"
+    SERVICE = "/policy/api/v1/infra/services/{}"
 
     STATUS = "/policy/api/v1/infra/realized-state/status"
 
@@ -54,7 +58,7 @@ class Payload(provider_nsx_mgmt.Payload):
             })
         return sg
 
-    def sg_rules_remote(self, cidr):
+    def sg_rule_remote(self, cidr):
         # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
         return {
             "display_name": cidr,
@@ -70,7 +74,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "category": "Application",
             "display_name": os_sg.get("id"),
             "stateful": True,
-            "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags"),
+            "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags", dict()),
             "scope": [
                 "/infra/domains/default/groups/{}".format(
                     provider_sg.get("scope"))
@@ -129,11 +133,16 @@ class Provider(provider_nsx_mgmt.Provider):
         super(Provider, self).__init__(payload=payload)
 
     def _metadata_loader(self):
-        metadata = super(Provider, self)._metadata_loader()
-        metadata[Provider.SG_MEMBERS] = provider_nsx_mgmt.MetaProvider(API.GROUPS)
-        metadata[Provider.SG_RULES_REMOTE_PREFIX] = provider_nsx_mgmt.MetaProvider(API.GROUPS)
-        metadata[Provider.SG_RULES] = provider_nsx_mgmt.MetaProvider(API.POLICIES)
-        return metadata
+        mp = provider_nsx_mgmt.MetaProvider
+
+        return {
+            Provider.PORT: mp(API.PORTS),
+            Provider.QOS: mp(API.PROFILES),
+            Provider.SG_MEMBERS: mp(API.GROUPS),
+            Provider.SG_RULES: mp(API.POLICIES),
+            Provider.SG_RULES_REMOTE_PREFIX: mp(API.GROUPS),
+            Provider.NETWORK: mp(API.SWITCHES)
+        }
 
     
     def _wait_to_realize(self, resource_type, os_id):
@@ -232,9 +241,9 @@ class Provider(provider_nsx_mgmt.Provider):
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
-        id = cidr.replace(".", "-").replace("/","-")
+        id = re.sub(r"\.|:|\/", "-", cidr)
         return self.client.put(path=API.GROUP.format(id),
-                               data=self.payload.sg_rules_remote(cidr)).json()
+                               data=self.payload.sg_rule_remote(cidr)).json()
     
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
@@ -245,14 +254,13 @@ class Provider(provider_nsx_mgmt.Provider):
             return ([], None)
             
         def remove_orphan_service(provider_id):
-            self.client.delete(path="{}/{}".format(path, provider_id))
+            self.client.delete(path=API.SERVICE.format(provider_id))
 
         sanitize = super(Provider, self).sanitize(slice)
 
         if len(sanitize) < slice:
-            path = "/policy/api/v1/infra/services"
             params = {"default_service": False} # User services only
-            for service in self.client.get_all(path=path, params=params):
+            for service in self.client.get_all(path=API.SERVICES, params=params):
                 sanitize.append((service.get("id"), remove_orphan_service))
 
         return sanitize

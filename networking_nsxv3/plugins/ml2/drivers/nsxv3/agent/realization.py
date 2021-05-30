@@ -151,9 +151,12 @@ class AgentRealizer(object):
                     return
 
                 LOG.info("Sanitizing (Legacy) provider based on age cycles")
-                ids, cleanup = l.sanitize(slice)
-                self.callback(ids, cleanup)
-                slice -= len(ids)
+
+                sanitize = l.sanitize(slice)
+                for id, callback in sanitize:
+                    self.callback(id, callback)
+
+                slice -= len(sanitize)
                 if slice <= 0:
                     return
 

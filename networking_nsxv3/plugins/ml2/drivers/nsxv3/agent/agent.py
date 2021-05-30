@@ -87,22 +87,24 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
 
-    def __init__(self, rpc, synchronization=True, monitoring=True):
+    def __init__(self, rpc, synchronization=True, monitoring=True, force_api=None):
         super(NSXv3Manager, self).__init__()
 
         legacy_provider = provider_nsx_mgmt.Provider()
         provider = provider_nsx_policy.Provider()
 
-        # Enable Management API Provider before NSX-T version 3.0.0
         provider_version = provider.client.version
-        provider_api = "Management" if provider_version < (3, 0) else "Policy"
-        LOG.info("Detected NSX-T %s version. Switching to %s API use.", 
-                 provider_version, provider_api)
+        LOG.info("Detected NSX-T %s version.", provider_version)
 
-        if provider_version < (3, 0):
+        info = "Activating %s API in primary mode and %s API in legacy mode."
+
+        if (force_api == "Management" if force_api else provider_version < (3, 0)):
+            LOG.info(info, "Management", "Policy")
             tmp_provider = legacy_provider
             legacy_provider = provider
             provider = tmp_provider
+        else:
+            LOG.info(info, "Policy", "Management")
 
         self.runner = sync.Runner(\
             workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
@@ -115,15 +117,14 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             provider=provider,
             legacy_provider=legacy_provider)
 
-        self.synchronizer = loopingcall.FixedIntervalLoopingCall(\
-            self._sync_all)
-        if synchronization:
-            self.synchronizer.start(interval=cfg.CONF.AGENT.polling_interval)
+        self.synchronization = synchronization
+        self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
+        self.reload()
 
         if monitoring:
             eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 
                                        self.runner)
-    
+
     def _sync_all(self):
         try:
             self.realizer.all()
@@ -145,6 +146,10 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             "active": self.runner.active(),
             "passive": self.runner.passive()
         }
+
+    def reload(self):
+        if self.synchronization:
+            self.synchronizer.start(interval=cfg.CONF.AGENT.polling_interval)
 
     def shutdown(self):
         self.synchronizer.stop()

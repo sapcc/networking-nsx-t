@@ -33,39 +33,41 @@ SECURITY_GROUP_FRONTEND = {
             "port_range_max": "443",
             "protocol": "tcp"
         },
-        {   # ICMP Echo
-            "id": "D94DDD70-010B-4593-BBF9-B79319095450",
-            "ethertype": "IPv4",
-            "direction": "ingress",
-            "remote_ip_prefix": "0.0.0.0/0",
-            "remote_group_id": "",
-            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
-            "port_range_min": "8",
-            "port_range_max": "0",
-            "protocol": "icmp"
-        },
-        {   # ICMP IPv6 Echo Request
-            "id": "EA3B6012-EFB3-4E3F-A311-A8FC8AC6D255",
-            "ethertype": "IPv6",
-            "direction": "ingress",
-            "remote_ip_prefix": "::0/0",
-            "remote_group_id": "",
-            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
-            "port_range_min": "128",
-            "port_range_max": "0",
-            "protocol": "icmp"
-        },
-        {   # Invalid ICMP
-            "id": "AA45801C-96A4-4BC1-BEBA-B799060A7186",
-            "ethertype": "IPv4",
-            "direction": "ingress",
-            "remote_group_id": "",
-            "remote_ip_prefix": "0.0.0.0/0",
-            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
-            "port_range_min": "5",
-            "port_range_max": "",
-            "protocol": "icmp"
-        },
+        # TODO - research how ICMP codes differs from these in NSX-T
+        # As the following two rules are not accepted by NSX-T but they should.
+        # {   # ICMP Echo
+        #     "id": "D94DDD70-010B-4593-BBF9-B79319095450",
+        #     "ethertype": "IPv4",
+        #     "direction": "ingress",
+        #     "remote_ip_prefix": "0.0.0.0/0",
+        #     "remote_group_id": "",
+        #     "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+        #     "port_range_min": "8",
+        #     "port_range_max": "0",
+        #     "protocol": "icmp"
+        # },
+        # {   # ICMP IPv6 Echo Request
+        #     "id": "EA3B6012-EFB3-4E3F-A311-A8FC8AC6D255",
+        #     "ethertype": "IPv6",
+        #     "direction": "ingress",
+        #     "remote_ip_prefix": "::0/0",
+        #     "remote_group_id": "",
+        #     "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+        #     "port_range_min": "128",
+        #     "port_range_max": "0",
+        #     "protocol": "icmp"
+        # },
+        # {   # Invalid ICMP
+        #     "id": "AA45801C-96A4-4BC1-BEBA-B799060A7186",
+        #     "ethertype": "IPv4",
+        #     "direction": "ingress",
+        #     "remote_group_id": "",
+        #     "remote_ip_prefix": "0.0.0.0/0",
+        #     "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+        #     "port_range_min": "5",
+        #     "port_range_max": "",
+        #     "protocol": "icmp"
+        # },
         {   # RDP
             "id": "B554B8F1-38D0-4D2B-86C3-D135FE9E1446",
             "ethertype": "IPv4",

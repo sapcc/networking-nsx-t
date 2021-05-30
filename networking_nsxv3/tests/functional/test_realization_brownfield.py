@@ -1,8 +1,10 @@
 import copy
 import os
+import re
 
 import eventlet
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
+    agent, provider_nsx_mgmt, provider_nsx_policy)
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
 from neutron.tests import base
@@ -36,7 +38,7 @@ class TestAgentRealizer(base.BaseTestCase):
         
 
     def cleanup(self):
-        env = Environment()
+        env = Environment(name="Cleanup")
         with env:
             eventlet.sleep(30)
         
@@ -49,15 +51,15 @@ class TestAgentRealizer(base.BaseTestCase):
         super(TestAgentRealizer, self).tearDown()
         self.cleanup() 
     
-    def test_creation(self):
+
+    def test_end_to_end(self):
         self.cleanup()
         c = coverage
 
-        env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+        LOG.info("Create inventory with the legacy provider")
+        inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY)
+        env = Environment(name="Management API", inventory=inventory, force_api="Management")
         with env:
-            LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
-            LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
-
             i = env.openstack_inventory
             i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
             i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
@@ -65,14 +67,35 @@ class TestAgentRealizer(base.BaseTestCase):
             i.port_bind(c.PORT_DB["name"], "3200")
 
             eventlet.sleep(30)
-
-            LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
-            LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
-
         
-        provider = p = env.manager.realizer.provider
+        self._assert_create(c, env)
 
-        metadata = m = env.dump_provider_inventory(printable=False)
+        LOG.info("Create inventory with the provider")
+
+        env = Environment(name="Policy API", inventory=inventory)
+        with env:
+            inventory = i = env.openstack_inventory
+            provider = p = env.manager.realizer.provider
+
+            eventlet.sleep(30)
+
+            for index in range(1,10):
+                self._pollute(env, index)            
+
+            # Remove parent
+            i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
+            eventlet.sleep(10)
+            # Remove child
+            i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
+            eventlet.sleep(40)
+
+        self._assert_update(c, env)
+
+    
+    def _assert_create(self, os_inventory, environment):
+        c = os_inventory
+        m = environment.dump_provider_inventory(printable=False)
+        p = environment.manager.realizer.provider
 
         # Validate network creation
         self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -99,7 +122,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
         self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
 
-        if env.is_management_api_mode():
+        if environment.is_management_api_mode():
             # Validate Security Group Rules NSGroups
             self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
@@ -111,41 +134,11 @@ class TestAgentRealizer(base.BaseTestCase):
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
-
-    def test_cleanup(self):
-        self.cleanup()
-        c = coverage
-
-        env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
-        with env:
-            inventory = i = env.openstack_inventory
-            provider = p = env.manager.realizer.provider
-
-            i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
-            i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
-            i.port_bind(c.PORT_BACKEND["name"], "3200")
-            i.port_bind(c.PORT_DB["name"], "3200")
-
-            eventlet.sleep(30)
-
-            LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
-            LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
-
-            # Add orphan IPSets
-            p.client.post(path="/api/v1/ip-sets",
-                          data=p.payload.sg_rule_remote("192.168.0.0/12"))
-            p.client.post(path="/api/v1/ip-sets",
-                          data=p.payload.sg_rule_remote("::ffff/64"))
-
-            i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
-            eventlet.sleep(10)
-            i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
-            eventlet.sleep(40)
-
-
-        LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
-        LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())        
-        metadata = m = env.dump_provider_inventory(printable=False)
+    
+    def _assert_update(self, os_inventory, environment):
+        c = os_inventory
+        m = environment.dump_provider_inventory(printable=False)
+        p = environment.manager.realizer.provider
 
         # Validate network creation
         self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -155,6 +148,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], False)
         self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], False)
         self.assertEquals(c.QOS_NOT_REFERENCED["id"] in m[p.QOS]["meta"], False)
+        self.assertEquals(len(m[p.QOS]["meta"].keys()), 0)
 
         # Validate Security Groups Members
         self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
@@ -163,6 +157,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
         self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], False)
         self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        self.assertEquals(len(m[p.SG_MEMBERS]["meta"].keys()), 4)
 
         # Validate Security Group Rules Sections
         self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], False)
@@ -171,16 +166,63 @@ class TestAgentRealizer(base.BaseTestCase):
         self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
         self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
         self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+        self.assertEquals(len(m[p.SG_RULES]["meta"].keys()), 3)
 
-        # Validate Security Group Rules NSGroups
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+        if environment.is_management_api_mode():
+            # Validate Security Group Rules NSGroups
+            self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            self.assertEquals(len(m[p.SG_RULES_EXT]["meta"].keys()), 3)
 
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
+        
+        params = {"default_service": False} # User services only
+        services = p.client.get_all(path=provider_nsx_policy.API.SERVICES, params=params)
+        self.assertEquals(len(services), 0)
+        
 
+    def _pollute(self, env, index):
+        p = env.manager.realizer.provider
+        id = "00000000-0000-0000-0000-00000000000{}".format(index)
+
+        ipv4 = "192.168.0.0/{}".format(index)
+        ipv6 = "::ffff/{}".format(index)
+
+        ipv4_id = re.sub(r"\.|:|\/", "-", ipv4)
+        ipv6_id = re.sub(r"\.|:|\/", "-", ipv6)
+
+        mp = provider_nsx_mgmt.Payload()
+        pp = provider_nsx_policy.Payload()
+        api = provider_nsx_policy.API
+
+        p.client.post(path=api.IPSETS, data=mp.sg_rule_remote(ipv4))
+        p.client.post(path=api.IPSETS, data=mp.sg_rule_remote(ipv6))
+
+        p.client.put(path=api.GROUP.format(ipv4_id), data=pp.sg_rule_remote(ipv4))
+        p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
+
+        p.client.put(path=api.GROUP.format(id), data=pp.sg_members_container({"id": id}, dict()))
+        p.client.put(path=api.POLICY.format(id), data=pp.sg_rules_container({"id": id}, {"rules": [], "scope": id}))
+
+        o = p.client.post(path=api.NSGROUPS, data=mp.sg_rules_ext_container({"id": id}, dict())).json()
+        p.client.post(path=api.SECTIONS, data=mp.sg_rules_container({"id": id}, {"applied_tos": o.get("id")}))
+
+        p.client.put(path=api.SERVICE.format(id), data={
+            "service_entries": [
+                {
+                    "l4_protocol": "TCP",
+                    "source_ports": [],
+                    "destination_ports": ["1024"],
+                    "resource_type": "L4PortSetServiceEntry",
+                    "display_name": id
+                }
+            ],
+            "resource_type": "Service",
+            "display_name": id
+        })
