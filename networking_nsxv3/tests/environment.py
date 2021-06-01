@@ -31,6 +31,10 @@ class Environment(object):
         self.manager.shutdown()
         LOG.info("Environment:%s final state of OpenStack inventory: %s", self.name, self.dump_openstack_inventory())
         LOG.info("Environment:%s final state of NSX-T inventory: %s", self.name, self.dump_provider_inventory())
+
+    @property
+    def version(self):
+        return self.manager.realizer.provider.client.version
     
     def is_management_api_mode(self):
         return type(self.manager.realizer.provider) is provider_nsx_mgmt.Provider

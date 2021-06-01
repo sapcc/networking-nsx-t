@@ -72,7 +72,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
         LOG.info("Create inventory with the provider")
 
-        env = Environment(name="Policy API", inventory=inventory)
+        env = Environment(inventory=inventory)
         with env:
             inventory = i = env.openstack_inventory
             provider = p = env.manager.realizer.provider
@@ -87,7 +87,7 @@ class TestAgentRealizer(base.BaseTestCase):
             eventlet.sleep(10)
             # Remove child
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
-            eventlet.sleep(40)
+            eventlet.sleep(60)
 
         self._assert_update(c, env)
 
@@ -208,7 +208,10 @@ class TestAgentRealizer(base.BaseTestCase):
         p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
 
         p.client.put(path=api.GROUP.format(id), data=pp.sg_members_container({"id": id}, dict()))
-        p.client.put(path=api.POLICY.format(id), data=pp.sg_rules_container({"id": id}, {"rules": [], "scope": id}))
+        data=pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
+        if env.version < (3, 0):
+            del data["scope"] # No scope property before 3.0
+        p.client.put(path=api.POLICY.format(id), data=data)
 
         o = p.client.post(path=api.NSGROUPS, data=mp.sg_rules_ext_container({"id": id}, dict())).json()
         p.client.post(path=api.SECTIONS, data=mp.sg_rules_container({"id": id}, {"applied_tos": o.get("id")}))
