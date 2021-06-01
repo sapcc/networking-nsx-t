@@ -1133,8 +1133,7 @@ class TestProviderMgmt(base.BaseTestCase):
         
         p.sg_rules_realize(sg)
 
-        ids, cleanup = p.sanitize(100)
-        for id in ids:
+        for id, cleanup in p.sanitize(100):
             cleanup(id)
 
         # /16 from the rule and /1-9
