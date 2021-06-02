@@ -259,8 +259,9 @@ class Provider(provider_nsx_mgmt.Provider):
         sanitize = super(Provider, self).sanitize(slice)
 
         if len(sanitize) < slice:
-            params = {"default_service": False} # User services only
-            for service in self.client.get_all(path=API.SERVICES, params=params):
+            services = self.client.get_all(path=API.SERVICES, params={"default_service": False})
+            # Mitigating bug with 3.0.1 which ignores default_service = False
+            for service in [sv for sv in services if not sv.get("is_default")]:
                 sanitize.append((service.get("id"), remove_orphan_service))
 
         return sanitize
