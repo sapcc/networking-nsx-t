@@ -18,9 +18,12 @@ jobs:
 
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python: [2.7]
-
+        tox-env: [unit,pep8,pip-missing-reqs,coverage]
+    env:
+      TOXENV: ${{ matrix.tox-env }}
     steps:
       - uses: actions/checkout@v2
       - name: Set up Python ${{ matrix.python-version }}
@@ -29,13 +32,14 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install Tox and any other packages
         run: |
-          sudo apt-get -y update
-          sudo apt-get -y install build-essential netbase
           pip install tox
-      - name: Tox
-        run: tox -e unit
-      - name: Coverage
-        run: tox -e coverage
-      - name: pytest-coverage-commentator
-        uses: coroo/pytest-coverage-commentator@v1.0.2
+      - name: Running Tox
+        run: tox
+      - name: Comment coverage report
+        if: ${{ matrix.tox-env == 'coverage' }}
+        uses: machine-learning-apps/pr-comment@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          path: pytest-coverage.txt
 

@@ -16,5 +16,5 @@ if test "x$1" = "x-HEAD" ; then
     diff -u --from-file /dev/null ${files} | flake8 --diff "$@"
 else
     echo "Running flake8 on all files"
-    exec flake8 "$@"
+    flake8 "$@" || true
 fi
