@@ -1,4 +1,5 @@
 from oslo_config import cfg
+from neutron.conf import service
 
 try:
     from neutron.conf.agent import common as config
@@ -238,4 +239,5 @@ cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(agent_cli_opts, "AGENT_CLI")
 cfg.CONF.register_opts(nsxv3_opts, "NSXV3")
 cfg.CONF.register_opts(vsphere_opts, "vsphere")
+cfg.CONF.register_opts(service.RPC_EXTRA_OPTS)
 config.register_agent_state_opts_helper(cfg.CONF)
