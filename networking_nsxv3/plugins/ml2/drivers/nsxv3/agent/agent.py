@@ -15,11 +15,12 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
     provider_nsx_mgmt, provider_nsx_policy, realization)
 from networking_nsxv3.prometheus import exporter
 from neutron.common import config as common_config
-from neutron.common import profiler, topics
+from neutron.common import profiler
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
 from neutron_lib import context as neutron_context
 from neutron_lib import exceptions
+from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
 from oslo_config import cfg
 from oslo_log import log as logging

@@ -1,3 +1,4 @@
+from neutron.conf import service
 from oslo_config import cfg
 
 DEFAULT_BRIDGE_MAPPINGS = []
@@ -193,4 +194,5 @@ vsphere_opts = [
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(agent_cli_opts, "AGENT_CLI")
 cfg.CONF.register_opts(nsxv3_opts, "NSXV3")
+cfg.CONF.register_opts(service.RPC_EXTRA_OPTS)
 cfg.CONF.register_opts(vsphere_opts, "vsphere")

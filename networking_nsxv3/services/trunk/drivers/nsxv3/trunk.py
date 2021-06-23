@@ -1,17 +1,12 @@
+from networking_nsxv3.common import constants as nsxv3_constants
+from neutron.services.trunk.drivers import base
+from neutron_lib import constants, context
+from neutron_lib.api.definitions import port, portbindings
+from neutron_lib.callbacks import events, registry, resources
+from neutron_lib.plugins import directory
+from neutron_lib.services.trunk import constants as trunk_consts
 from oslo_config import cfg
 from oslo_log import log as logging
-
-from neutron.services.trunk import constants as trunk_consts
-from neutron.services.trunk.drivers import base
-from neutron_lib.api.definitions import portbindings
-from neutron_lib.api.definitions import port
-from neutron_lib.callbacks import events
-from neutron_lib.callbacks import registry
-from neutron_lib.plugins import directory
-from neutron_lib import context
-from neutron_lib import constants
-
-from networking_nsxv3.common import constants as nsxv3_constants
 
 LOG = logging.getLogger(__name__)
 
@@ -34,7 +29,7 @@ class NSXv3TrunkDriver(base.DriverBase):
     @classmethod
     def create(cls):
         SUPPORTED_INTERFACES = (portbindings.VIF_TYPE_OVS,)
-        SUPPORTED_SEGMENTATION_TYPES = (trunk_consts.VLAN,)
+        SUPPORTED_SEGMENTATION_TYPES = (trunk_consts.SEGMENTATION_TYPE_VLAN,)
         return cls(
             nsxv3_constants.NSXV3,
             SUPPORTED_INTERFACES,
@@ -43,7 +38,7 @@ class NSXv3TrunkDriver(base.DriverBase):
             can_trunk_bound_port=True
         )
 
-    @registry.receives(trunk_consts.TRUNK_PLUGIN, [events.AFTER_INIT])
+    @registry.receives(resources.TRUNK_PLUGIN, [events.AFTER_INIT])
     def register(self, resource, event, trigger, payload=None):
         LOG.info("NSXv3 trunk driver initializing ...")
         super(
@@ -56,10 +51,10 @@ class NSXv3TrunkDriver(base.DriverBase):
 
         self.core_plugin = directory.get_plugin()
 
-        registry.subscribe(self.trunk_create, trunk_consts.TRUNK, events.AFTER_CREATE)
-        registry.subscribe(self.trunk_delete, trunk_consts.TRUNK, events.AFTER_DELETE)
-        registry.subscribe(self.subport_create, trunk_consts.SUBPORTS, events.AFTER_CREATE)
-        registry.subscribe(self.subport_delete, trunk_consts.SUBPORTS, events.AFTER_DELETE)
+        registry.subscribe(self.trunk_create, resources.TRUNK, events.AFTER_CREATE)
+        registry.subscribe(self.trunk_delete, resources.TRUNK, events.AFTER_DELETE)
+        registry.subscribe(self.subport_create, resources.SUBPORTS, events.AFTER_CREATE)
+        registry.subscribe(self.subport_delete, resources.SUBPORTS, events.AFTER_DELETE)
 
         LOG.info("NSXv3 trunk driver initialized.")
 
@@ -82,7 +77,7 @@ class NSXv3TrunkDriver(base.DriverBase):
         LOG.info("Trunk create called, resource %s payload %s trunk id %s",
                  resource, payload, payload.trunk_id)
         self._bind_subports(ctx, parent, payload.current_trunk, payload.current_trunk.sub_ports)
-        payload.current_trunk.update(status=trunk_consts.ACTIVE_STATUS)
+        payload.current_trunk.update(status=trunk_consts.TRUNK_ACTIVE_STATUS)
 
     def trunk_delete(self, resource, event, trunk_plugin, payload):
         ctx, parent = self._get_context_and_parent_port(payload.original_trunk.port_id)
@@ -143,7 +138,7 @@ class NSXv3TrunkDriver(base.DriverBase):
             self.core_plugin.update_port(ctx, subport.port_id, port_data)
 
         if len(trunk.sub_ports) > 0:
-            trunk.update(status=trunk_consts.ACTIVE_STATUS)
+            trunk.update(status=trunk_consts.TRUNK_ACTIVE_STATUS)
         else:
             # trunk is automatically set to DOWN on change. if we don't change that it will stay that way
             LOG.info("Last subport was removed from trunk %s, setting it to state DOWN", trunk.id)
