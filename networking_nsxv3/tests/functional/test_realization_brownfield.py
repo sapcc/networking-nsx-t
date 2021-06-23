@@ -184,6 +184,7 @@ class TestAgentRealizer(base.BaseTestCase):
         
         params = {"default_service": False} # User services only
         services = p.client.get_all(path=provider_nsx_policy.API.SERVICES, params=params)
+        services = [s for s in services if not s.get("is_default")]
         self.assertEquals(len(services), 0)
         
 
