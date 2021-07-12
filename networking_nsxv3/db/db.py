@@ -170,7 +170,8 @@ def get_port(context, port_id):
     ).select_from(
         Port
     ).filter(
-        Port.id == port_id
+        Port.id == port_id,
+        PortBinding.status == nsxv3_constants.neutron_constants.ACTIVE
     ).join(
         StandardAttribute,
         PortBinding,
