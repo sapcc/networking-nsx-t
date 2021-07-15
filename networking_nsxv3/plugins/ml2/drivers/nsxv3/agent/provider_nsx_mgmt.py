@@ -579,6 +579,8 @@ class Provider(abs.Provider):
                         if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
                             if NSXV3_REVISION_SCOPE in res.tags:
                                 continue
+                        if provider.meta.get(res.os_id):
+                            LOG.error("Duplicate resource with ID:%s", res.os_id)
                         provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
