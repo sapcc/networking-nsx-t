@@ -115,7 +115,10 @@ class AgentRealizer(object):
 
             current = sorted(current, key=get_rev)
 
-            if len(current) > 1 and str(current[0][2]).isdigit() and int(current[0][2]) > self.age:
+            # Sanitize when there are not elements or the eldest age > current age
+            if not(len(current) > 1 and (not str(current[0][2]).isdigit() \
+                or int(current[0][2]) <= self.age)):
+
                 LOG.info("Sanitizing provider based on age cycles")
                 sanitize = p.sanitize(slice)
 

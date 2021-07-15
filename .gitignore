@@ -24,3 +24,8 @@ pyvenv.cfg
 .DS_Store
 test.log
 developer.sh
+inventory
+.data
+ml2.ini
+neutron.conf
+

@@ -148,47 +148,50 @@ def get_qos_dscp_rules(context, qos_id):
 
 
 def get_port(context, host, port_id):
-    result = context.session.query(
+    port = context.session.query(
         Port.id,
         Port.mac_address,
         Port.admin_state_up,
         Port.status,
-        QosPolicy.id,
         StandardAttribute.revision_number,
         PortBinding.host,
         PortBinding.vif_details,
-        trunk_model.Trunk.port_id
     ).join(
         StandardAttribute,
         PortBinding
-    ).outerjoin(
-        QosPortPolicyBinding,
-        QosPolicy
-    ).outerjoin(
-        trunk_model.SubPort,
-        trunk_model.SubPort.port_id == port_id
-    ).outerjoin(
-        trunk_model.Trunk,
-        trunk_model.Trunk.id == trunk_model.SubPort.trunk_id
     ).filter(
         Port.id == port_id,
-        PortBindingLevel.host == host,
-        PortBindingLevel.driver == nsxv3_constants.NSXV3
-    ).distinct(Port.id).one_or_none()
+        PortBinding.host == host
+    ).one_or_none()
 
-    if not result:
+    qos_id = context.session.query(
+        QosPolicy.id
+    ).join(
+        QosPortPolicyBinding
+    ).filter(
+        QosPortPolicyBinding.port_id == port_id
+    ).one_or_none()
+
+    parent_port_id = context.session.query(
+        trunk_model.Trunk.port_id
+    ).join(
+        trunk_model.SubPort
+    ).filter(
+        trunk_model.SubPort.port_id == port_id,
+    ).one_or_none()
+
+    if not port:
         return None
 
-    (id, mac, up, status, qos_id, rev, binding_host, vif_details,
-     parent_id) = result
+    (id, mac, up, status, rev, binding_host, vif_details) = port
 
     return {
         "id": id,
-        "parent_id": parent_id,
+        "parent_id": parent_port_id if parent_port_id else "",
         "mac_address": mac,
         "admin_state_up": up,
         "status": status,
-        "qos_policy_id": qos_id,
+        "qos_policy_id": qos_id if qos_id else "",
         "security_groups": [],
         "address_bindings": [],
         "revision_number": rev,
@@ -293,7 +296,7 @@ def get_rules_for_security_group_id(context, security_group_id):
 
 
 def get_port_id_by_sec_group_id(context, host, security_group_id):
-    return context.session.query(
+    result = context.session.query(
         sg_db.SecurityGroupPortBinding.port_id
     ).join(
         PortBindingLevel,
@@ -303,6 +306,8 @@ def get_port_id_by_sec_group_id(context, host, security_group_id):
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3
     ).all()
+
+    return [o[0] for o in result]
 
 
 def get_security_groups_for_host(context, host, limit, cursor):

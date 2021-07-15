@@ -138,27 +138,40 @@ CLI
 Neutron ML2 NSX-T Agent command line interface
 
 ::
-    # Synchronize OpenStack resource Types with ids
-    /usr/local/bin/neutron-nsxv3-agent-cli-sync -h
-    usage: neutron-nsxv3-agent-cli-sync
-        [-h] [--config-file CONFIG_FILE]
-        -T{port,qos,security_group_rules,security_group_members}
-        -I IDS
 
-    optional arguments:
-    -h, --help                  show this help message and exit
-    --config-file CONFIG_FILE   OpenStack Neutron configuration file(s) location(s)
-    -T TYPE,    --type TYPE     OpenStack object type target of synchronization
-                                TYPE := {port,qos,security_group_rules,security_group_members}
-    -I IDS,     --ids IDS       OpenStack object IDs, separated by ','
+    # Synchronize OpenStack resource Types with ids
+    /usr/local/bin/neutron-nsxv3-agent-cli -h
+        usage: neutron-nsxv3-agent-cli-sync COMMAND
+                        update - Force synchronization between Neutron and NSX-T objects
+                        export - Export Neutron and NSX-T inventories
+                        load - Loads NSX-T Inventory and syncs Neutron inventory on top
+                        clean - Clean up NSX-T objects
+                    
+        Neutron ML2 NSX-T Agent command line interface
+
+        positional arguments:
+        command     Subcommand update|export|load|clean
+
+        optional arguments:
+        -h, --help  show this help message and exit
 
 
     # Example for synchronization of members for two security groups
-    /usr/local/bin/neutron-nsxv3-agent-cli-sync \
+    /usr/local/bin/neutron-nsxv3-agent-cli update \
         --config-file /etc/neutron/neutron.conf \
         --config-file /etc/neutron/plugins/ml2/ml2_conf.ini \
         --type security_group_members \
         --ids 5af2f34b-cb81-4a9d-bcb4-30f72fca91cd,b0cd1ce8-9fe0-44f6-8b5c-be455e778756
+    
+    # Clean up NSX-T Manager objects both Policy and Management
+    /usr/local/bin/neutron-nsxv3-agent-cli clean --config-file ml2.ini --config-file neutron.conf
+
+    # Export NSX-T and Neutron inventories into a local file structure under "inventory" folder
+    /usr/local/bin/neutron-nsxv3-agent-cli export --config-file ml2.ini --config-file neutron.conf
+
+    # Load NSX-T Manager from the local file inventory.
+    # Synchronize NSX-T Manager objects state based on the local file Neutron inventory
+    /usr/local/bin/neutron-nsxv3-agent-cli load --config-file ml2.ini --config-file neutron.conf
 
 
 NSX-T ML2 Prometheus Exporter

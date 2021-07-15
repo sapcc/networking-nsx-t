@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import re
 import sys
@@ -11,8 +12,9 @@ from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common import synchronization as sync
+from networking_nsxv3.db import db
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    provider_nsx_mgmt, provider_nsx_policy, realization)
+    client_nsx, provider_nsx_mgmt, provider_nsx_policy, realization)
 from networking_nsxv3.prometheus import exporter
 from neutron.common import config as common_config
 from neutron.common import profiler
@@ -274,69 +276,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             in the Neutron Plug-in. E.g. ['tap1', 'tap2']
         """
         # Spoofguard is handled by port delete operation
-
-
-
-def cli_sync():
-    """
-    CLI SYNC command force synchronization between Neutron and NSX-T objects
-    cfg.CONF.AGENT_CLI for options
-    """
-    LOG.info("VMware NSXv3 Agent CLI")
-
-    # CLI Arguments
-    PORT="port"
-    QOS="qos"
-    SECURITY_GROUP_RULES="security_group_rules"
-    SECURITY_GROUP_MEMBERS="security_group_members"
-
-    description = 'Neutron ML2 NSX-T Agent command line interface'
-    parser = argparse.ArgumentParser(description=description)
-    parser.add_argument(
-        "--config-file", action="append",
-        help="OpenStack Neutron configuration file(s) location(s)")
-    parser.add_argument(
-        "-T", "--type", required=True,
-        help="OpenStack object type target of synchronization",
-        choices=[PORT, QOS, SECURITY_GROUP_RULES, SECURITY_GROUP_MEMBERS])
-    parser.add_argument(
-        "-I", "--ids", required=True,
-        help="OpenStack object IDs, separated by ','")
-    args = parser.parse_args()
-
-
-    # Manager Initialization
-    neutron_config = []
-    for file in args.config_file:
-        neutron_config.extend(["--config-file", file])
-
-    common_config.init(neutron_config)
-    common_config.setup_logging()
-    profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
-
-    manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
-        synchronization=False, monitoring=False)
-    rpc = manager.get_rpc_callbacks(context=None, agent=None, sg_agent=None)
-
-    ids = args.ids.split(",")
-    context = None
-
-    # Enforce synchronization
-    if args.type == SECURITY_GROUP_RULES:
-        rpc.security_groups_rule_updated(context, security_groups=ids)
-    
-    if args.type == SECURITY_GROUP_MEMBERS:
-        rpc.security_groups_member_updated(context, security_groups=ids)
-
-    if args.type == PORT:
-        for id in ids:
-            rpc.port_update(context, port={"id": id})
-    
-    if args.type == QOS:    
-        for id in ids:
-            rpc.update_policy(context, policy={"id": id})
-
-    manager.shutdown()
 
 
 def main():
