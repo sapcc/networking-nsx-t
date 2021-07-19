@@ -164,6 +164,11 @@ class NsxInventory(object):
             for key in list(o):
                 if key.startswith("_") or key == "id":
                     del o[key]
+        
+        def substitute_id(meta, o, directions):
+            for direction in o[directions]:
+                if direction["target_type"] in ["IPSet", "NSGroup"]:
+                    direction["target_id"] = meta[direction["target_id"]]
 
         remove_system_information(o)
         
@@ -201,12 +206,13 @@ class NsxInventory(object):
         if self.api.SECTIONS in path:
             if path.endswith("sections"):
                 if "applied_tos" in o:
-                    o["applied_tos"][0]["target_id"] = meta[o["applied_tos"][0]["target_id"]]
+                    for target in o["applied_tos"]:
+                        target["target_id"] = meta[target["target_id"]]
             else:
                 if "sources" in o:
-                    o["sources"][0]["target_id"] = meta[o["sources"][0]["target_id"]]
+                    substitute_id(meta, o, "sources")
                 if "destinations" in o:
-                    o["destinations"][0]["target_id"] = meta[o["destinations"][0]["target_id"]]
+                    substitute_id(meta, o, "destinations")
 
 
 class NeutronInventory(object):
