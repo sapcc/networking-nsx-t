@@ -270,10 +270,11 @@ class CLI(object):
             usage='''neutron-nsxv3-agent-cli-sync COMMAND
                 update - Force synchronization between Neutron and NSX-T objects
                 export - Export Neutron and NSX-T inventories
-                load - Loads NSX-T Inventory and syncs Neutron inventory on top
+                load - Loads the exported NSX-T Inventory
+                run - Runs the NSX-T Agent with the exported Neutron inventory
                 clean - Clean up NSX-T objects
             ''')
-        parser.add_argument('command', help='Subcommand update|export|load|clean')
+        parser.add_argument('command', help='Subcommand update|export|load|run|clean')
         args = parser.parse_args(sys.argv[1:2])
         if hasattr(self, args.command):
             getattr(self, args.command)()
@@ -378,7 +379,7 @@ class CLI(object):
     
     def load(self):
         """
-        Load NSX-T inventory
+        Load the exported NSX-T inventory
         """
         description = "Load NSX-T inventory"
         parser = argparse.ArgumentParser(description=description)
@@ -392,6 +393,21 @@ class CLI(object):
         load_path = os.path.join(os.getcwd(), "inventory")
 
         NsxInventory().load(load_path)
+
+    def run(self):
+        """
+        Run NSX-T Agent with exported Neutron inventory
+        """
+        description = "Run NSX-T Agent"
+        parser = argparse.ArgumentParser(description=description)
+        parser.add_argument(
+            "--config-file", action="append",
+            help="OpenStack Neutron configuration file(s) location(s)")
+        args = parser.parse_args(sys.argv[2:])
+
+        self._init_(args)
+
+        load_path = os.path.join(os.getcwd(), "inventory")
         
         with open(os.path.join(load_path, "neutron"), "r") as file:
             dataset = json.load(file)
