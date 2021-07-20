@@ -114,6 +114,7 @@ class Resource(object):
 
     def __init__(self, resource):
         self.resource = resource
+        self._duplicates = []
 
     @property
     def is_managed(self):
@@ -171,6 +172,12 @@ class Resource(object):
             age = int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
             _revision = self.resource.get("_revision")
         )
+    
+    def add_ambiguous(self, resource):
+        self._duplicates.append(resource)
+
+    def get_all_ambiguous(self):
+        return self._duplicates
 
 
 class Payload(object):
@@ -579,9 +586,12 @@ class Provider(abs.Provider):
                         if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
                             if NSXV3_REVISION_SCOPE in res.tags:
                                 continue
-                        if provider.meta.get(res.os_id):
+                        ex_res = provider.meta.get(res.os_id)
+                        if ex_res:
                             LOG.error("Duplicate resource with ID:%s", res.os_id)
-                        provider.meta.add(res)
+                            ex_res.add_ambiguous(res)
+                        else:
+                            provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
         if resource_type != Provider.SG_RULE:
@@ -900,9 +910,15 @@ class Provider(abs.Provider):
         for os_id in meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
-            if "0.0.0.0/" not in os_id and "::/" not in os_id:
+            if "0.0.0.0/" not in os_id and "::/" not in os_id:                
+                resource = meta.get(os_id)
+                if resource.get_all_ambiguous():
+                    for res in resource.get_all_ambiguous():
+                        sanitize.append(res.id, remove_orphan_remote_prefixes)
+                sanitize.append(resource.id, remove_orphan_remote_prefixes)
+
                 if len(sanitize) >= slice:
+                    sanitize = sanitize[0:slice]
                     break
-                sanitize.append((meta.get(os_id).id, remove_orphan_remote_prefixes))
         
         return sanitize
