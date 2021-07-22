@@ -76,7 +76,22 @@ class Meta(object):
 
     def add(self, resource):
         old_meta = self.meta.get(resource.os_id)
-        self.meta[resource.os_id] = resource.meta
+        if old_meta:
+            old_meta.add_ambiguous(resource.meta)
+            LOG.error("Duplicate resource with OS_ID:%s ID:%s", resource.os_id, resource.os_id)
+        else:
+            self.meta[resource.os_id] = resource.meta
+        return old_meta
+
+    def update(self, resource):
+        meta = resource.meta
+        old_meta = self.meta.get(resource.os_id)
+        if old_meta:
+            for m in old_meta.get_all_ambiguous():
+                meta.add_ambiguous(m)
+            self.meta[resource.os_id] = meta
+        else:
+            self.add(resource)
         return old_meta
 
     def get(self, os_id):
@@ -108,13 +123,19 @@ class ResourceMeta(object):
         self.rev = rev
         self.age = age
         self._revision = _revision
+        self._duplicates = []
+    
+    def add_ambiguous(self, resource):
+        self._duplicates.append(resource)
+
+    def get_all_ambiguous(self):
+        return self._duplicates
 
 
 class Resource(object):
 
     def __init__(self, resource):
         self.resource = resource
-        self._duplicates = []
 
     @property
     def is_managed(self):
@@ -172,12 +193,6 @@ class Resource(object):
             age = int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
             _revision = self.resource.get("_revision")
         )
-    
-    def add_ambiguous(self, resource):
-        self._duplicates.append(resource)
-
-    def get_all_ambiguous(self):
-        return self._duplicates
 
 
 class Payload(object):
@@ -586,12 +601,7 @@ class Provider(abs.Provider):
                         if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
                             if NSXV3_REVISION_SCOPE in res.tags:
                                 continue
-                        ex_res = provider.meta.get(res.os_id)
-                        if ex_res:
-                            LOG.error("Duplicate resource with ID:%s", res.os_id)
-                            ex_res.add_ambiguous(res)
-                        else:
-                            provider.meta.add(res)
+                        provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
         if resource_type != Provider.SG_RULE:
@@ -602,7 +612,7 @@ class Provider(abs.Provider):
         if resource_type != Provider.SG_RULE:
             with LockManager.get_lock(resource_type):
                 res = Resource(provider_object)
-                self._metadata[resource_type].meta.add(res)
+                self._metadata[resource_type].meta.update(res)
                 return res.meta
 
     def metadata(self, resource_type, os_id):
@@ -914,8 +924,8 @@ class Provider(abs.Provider):
                 resource = meta.get(os_id)
                 if resource.get_all_ambiguous():
                     for res in resource.get_all_ambiguous():
-                        sanitize.append(res.id, remove_orphan_remote_prefixes)
-                sanitize.append(resource.id, remove_orphan_remote_prefixes)
+                        sanitize.append((res.id, remove_orphan_remote_prefixes))
+                sanitize.append((resource.id, remove_orphan_remote_prefixes))
 
                 if len(sanitize) >= slice:
                     sanitize = sanitize[0:slice]
