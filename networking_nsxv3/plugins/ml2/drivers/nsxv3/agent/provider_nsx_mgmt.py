@@ -466,20 +466,23 @@ class Payload(object):
             min = int(min) if str(min).isdigit() else min
             max = int(max) if str(max).isdigit() else max
 
-            if min not in VALID_ICMP_RANGES[ethertype] or \
-                max not in VALID_ICMP_RANGES[ethertype][min]:
+            if min in VALID_ICMP_RANGES[ethertype] and \
+                (VALID_ICMP_RANGES[ethertype][min] == None or \
+                    max in VALID_ICMP_RANGES[ethertype][min]):
+
+                return ({
+                    "resource_type": "ICMPType{}".format(subtype),
+                    "icmp_type": str(min),
+                    "icmp_code": str(max if VALID_ICMP_RANGES[ethertype][min] else ""),
+                    "protocol": {
+                        'IPv4': "ICMPv4",
+                        'IPv6': "ICMPv6"
+                    }.get(ethertype)
+                }, None)
+            else:
                 return \
                     (None, "Not supported ICMP Range {}-{}".format(min, max))
-
-            return ({
-                "resource_type": "ICMPType{}".format(subtype),
-                "icmp_type": str(min),
-                "icmp_code": str(max),
-                "protocol": { 
-                    'IPv4': "ICMPv4", 
-                    'IPv6': "ICMPv6"
-                }.get(ethertype)
-            }, None)
+                
 
         if protocol in ["tcp", "udp"]:
             if not min and not max:

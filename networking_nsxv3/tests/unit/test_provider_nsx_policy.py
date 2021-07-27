@@ -158,7 +158,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider.sg_members_realize(sg)
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
-        self.assertNotEquals(sg_group, None)
+        self.assertNotEqual(sg_group, None)
 
         provider.sg_members_realize(sg, delete=True)
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
@@ -187,7 +187,7 @@ class TestProviderPolicy(base.BaseTestCase):
         self.assertEquals(policy.get("display_name"), sg.get("id"))
         self.assertEquals(tags["revision_number"], sg.get("revision_number"))
         self.assertEquals(tags["agent_id"], cfg.CONF.AGENT.agent_id)
-        self.assertNotEquals(tags.get("age"), None)
+        self.assertNotEqual(tags.get("age"), None)
         self.assertEquals(policy.get("scope"), ["/infra/domains/default/groups/{}".format(sg["id"])])
         self.assertEquals(policy.get("rules"), [])
 

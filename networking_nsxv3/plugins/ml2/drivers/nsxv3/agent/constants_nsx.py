@@ -149,45 +149,39 @@ VALID_ICMP_RANGES = {
         3: range(16),  # Destination Unreachable
         4: [0],  # Source Quench (Deprecated)
         5: [0, 1, 2, 3],  # Redirect
-        6: [0],  # Alternate Host Address (Deprecated)
         8: [0],  # Echo
-        9: [0, 16],  # Router Advertisement
-        10: [0, 1],  # Router Selection
-        11: [0, 1, 2],  # Time Exceeded
+        9: [0],  # Router Advertisement
+        10: [0],  # Router Selection
+        11: [0, 1],  # Time Exceeded
         12: [0, 1, 2],  # Parameter Problem
         13: [0],  # Timestamp
         14: [0],  # Timestamp Reply
-        40: range(6),  # Photuris
-        42: [0],  # Extended Echo Request
-        43: range(5),  # Extended Echo Reply
     },
     'IPv6': {
-        1: range(8),  # Destination Unreachable
-        2: [0],  # Packet Too Big
+        1: [0, 2, 3, 4, 5, 6, 7],  # Destination Unreachable
+        2: None,  # Packet Too Big
         3: [0, 1],  # Time Exceeded
-        4: range(5),  # Parameter Problem
-        128: [0],
-        129: [0],
-        130: [0],
-        131: [0],
-        132: [0],
-        133: [0],
-        134: [0],
-        135: [0],
-        136: [0],
-        137: [0],
-        138: [0, 1, 255],
-        139: [0, 1, 2],
-        140: [0, 1, 2],
-        141: [0],
-        142: [0],
-        144: [0],
-        145: [0],
-        146: [0],
-        147: [0],
-        157: range(5),  # Duplicate Address Request Code Suffix
-        158: range(5),  # Duplicate Address Confirmation Code Suffix
-        160: [0],  # Extended Echo Request
-        161: range(5),  # Extended Echo Reply
+        4: [0, 1, 2],  # Parameter Problem
+        128: None,
+        129: None,
+        130: None,
+        131: None,
+        132: None,
+        133: None,
+        134: None,
+        135: None,
+        136: None,
+        137: None,
+        138: None,
+        139: None,
+        140: None,
+        141: None,
+        142: None,
+        144: None,
+        145: None,
+        146: None,
+        147: None,
+        157: None,
+        158: None
     }
 }

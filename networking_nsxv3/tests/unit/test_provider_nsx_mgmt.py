@@ -1143,5 +1143,5 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
         sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
 
-        self.assertNotEquals(sg_rule_ipset, None)
+        self.assertNotEqual(sg_rule_ipset, None)
 
