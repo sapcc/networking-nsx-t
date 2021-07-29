@@ -144,7 +144,7 @@ class NsxInventory(object):
             with open(file_path, "r") as file:
                 data = {"rules": json.load(file)}
                 for o in data["rules"]:
-                    self._preprocess(meta, o, path)
+                    self._preprocess(meta, o, path, meta[id]["_revision"])
                 LOG.info("%s %s", path, json.dumps(data, indent=2))
                 self.client.post(path=path, data=data)
                 meta[id]["rules_processed"] = True
@@ -158,7 +158,7 @@ class NsxInventory(object):
                 return rules
 
 
-    def _preprocess(self, meta, o, path):
+    def _preprocess(self, meta, o, path, revision=None):
 
         def remove_system_information(o):
             for key in list(o):
@@ -171,12 +171,17 @@ class NsxInventory(object):
                     direction["target_id"] = meta[direction["target_id"]]
 
         remove_system_information(o)
+
+        if revision is not None:
+            o["_revision"] = revision
         
         if self.api.ZONES in path:
             del o["host_switch_id"]
             del o["transport_zone_profile_ids"]
         
         if self.api.SWITCHES in path:
+
+
             o["transport_zone_id"] = meta[o["transport_zone_id"]]
             o["switching_profile_ids"] = []
         
@@ -204,15 +209,13 @@ class NsxInventory(object):
                 remove_system_information(e)
             
         if self.api.SECTIONS in path:
-            if path.endswith("sections"):
-                if "applied_tos" in o:
-                    for target in o["applied_tos"]:
-                        target["target_id"] = meta[target["target_id"]]
-            else:
-                if "sources" in o:
-                    substitute_id(meta, o, "sources")
-                if "destinations" in o:
-                    substitute_id(meta, o, "destinations")
+            if "applied_tos" in o:
+                for target in o["applied_tos"]:
+                    target["target_id"] = meta[target["target_id"]]
+            if "sources" in o:
+                substitute_id(meta, o, "sources")
+            if "destinations" in o:
+                substitute_id(meta, o, "destinations")
 
 
 class NeutronInventory(object):
