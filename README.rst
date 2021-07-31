@@ -186,3 +186,15 @@ The agent exports the following metrics.
     # HELP nsxv3_agent_passive_queue_size Passive synchronization queue size
     # TYPE nsxv3_agent_passive_queue_size gauge
     nsxv3_agent_passive_queue_size{nsxv3_manager_hostname="nsxm-l-01a.corp.local"} 72.0
+
+
+Pending Tasks
+-------------
+
+- Finalize migration to Policy API (applicable for NSX-T version >= 3.2.0)
+    - Change implementation of Logical Switces, Ports and Policies from Management to Policy API
+    - Promote Logical Switces, Ports and Policies to Segments by keeping the same system IDs
+- Merge Security Group Logging from `feature branch <https://github.com/sapcc/networking-nsx-t/pull/57/commits/cb6061f0aedbb3e08a036f231f60ae6be179e53f>`_.
+- Finalize the list of `supported ICMP Rules <https://github.com/sapcc/networking-nsx-t/blob/df5858dfd7fd6fe748e05489fee0d11ed789ea2e/networking_nsxv3/plugins/ml2/drivers/nsxv3/agent/constants_nsx.py#L146>`_ by NSX-T .
+- Add unit and functional tests for port trunking functionality
+- Optimize the speed and number of Neutron DB queries
