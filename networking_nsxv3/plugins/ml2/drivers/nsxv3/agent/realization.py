@@ -71,6 +71,10 @@ class AgentRealizer(object):
             port_outdated, port_current = p.outdated(p.PORT, port_meta)
             sgr_outdated, sgr_current = p.outdated(p.SG_RULES, sg_meta)
             qos_outdated, qos_current = p.outdated(p.QOS, qos_meta)
+            # Refresh legacy metadata
+            legacy_sgr_outdated, _ = l.outdated(l.SG_RULES, dict())
+            legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
+
             # There is not way to revision group members but can 'age' them
             sgm_outdated, _ = p.outdated(p.SG_MEMBERS, dict())
             # Only force networks refresh
@@ -81,8 +85,12 @@ class AgentRealizer(object):
                 LOG.info("Dryrun:%s. Metadata refresh completed.", dryrun)
                 return
 
-            outdated = list(itertools.islice(port_outdated, slice))
-            slice -= len(outdated)
+            ## Don't count ports into synchronization limit, since ports
+            ## are not created by the agent they could exhaust the worker queue
+            ## and cause the agent to be stuck.
+            # outdated = list(itertools.islice(port_outdated, slice))
+            outdated = port_outdated
+            #slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Ports",
                 len(outdated), len(port_outdated))
             self.callback(outdated, self.port)
@@ -110,14 +118,9 @@ class AgentRealizer(object):
             current += p.age(p.SG_MEMBERS, sgm_outdated)
             current += p.age(p.QOS, qos_current)
 
-            def get_rev(o):
-                return int(o[2]) if str(o[2]).isdigit() else 0
-
-            current = sorted(current, key=get_rev)
-
-            # Sanitize when there are not elements or the eldest age > current age
-            if not(len(current) > 1 and (not str(current[0][2]).isdigit() \
-                or int(current[0][2]) <= self.age)):
+            # Sanitize when there are no elements or the eldest age > current age
+            if not [entry for entry in current
+                    if entry[2] and entry[2].isdigit() and int(entry[2]) <= self.age]:
 
                 LOG.info("Sanitizing provider based on age cycles")
                 sanitize = p.sanitize(slice)
@@ -129,7 +132,6 @@ class AgentRealizer(object):
                 if slice <= 0:
                     return
 
-                legacy_sgr_outdated, _ = l.outdated(l.SG_RULES, dict())
                 outdated = list(itertools.islice(legacy_sgr_outdated, slice))
                 slice -= len(outdated)
                 LOG.info("Realizing %s/%s resources of Type:Security Group Rules (Legacy)",
@@ -140,7 +142,6 @@ class AgentRealizer(object):
                 if slice <= 0:
                     return
 
-                legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
                 outdated = list(itertools.islice(legacy_sgm_outdated, slice))
                 slice -= len(outdated)
                 LOG.info("Realizing %s/%s resources of Type:Security Group Members (Legacy)",

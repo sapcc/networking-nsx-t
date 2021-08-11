@@ -78,7 +78,7 @@ class Meta(object):
         old_meta = self.meta.get(resource.os_id)
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
-            LOG.error("Duplicate resource with OS_ID:%s ID:%s", resource.os_id, resource.os_id)
+            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
         else:
             self.meta[resource.os_id] = resource.meta
         return old_meta
@@ -759,7 +759,7 @@ class Provider(abs.Provider):
             if port:
                 provider_port["id"] = port.id
             else:
-                LOG.error("Not found. Port:%s", os_port.get("id"))
+                LOG.warning("Not found. Port: %s", os_port.get("id"))
                 return
         
         if os_port.get("qos_policy_id"):

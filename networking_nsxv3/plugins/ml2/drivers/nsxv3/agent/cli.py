@@ -66,7 +66,7 @@ class NsxInventory(object):
                 file.writelines(json.dumps(data, indent=2))
 
     def _export_filter(self, path, data):
-        if path == self.api.SWITCHES:
+        if path in [self.api.SWITCHES, self.api.PORTS]:
             data = [o for o in data if o["_create_user"] != "nsx_policy"]
         elif path == self.api.SERVICES:
             data = [o for o in data if not o["is_default"]]
