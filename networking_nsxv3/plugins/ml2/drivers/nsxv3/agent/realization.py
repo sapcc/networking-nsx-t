@@ -119,8 +119,7 @@ class AgentRealizer(object):
             current += p.age(p.QOS, qos_current)
 
             # Sanitize when there are no elements or the eldest age > current age
-            if not [entry for entry in current
-                    if entry[2] and entry[2].isdigit() and int(entry[2]) <= self.age]:
+            if not [entry for entry in current if entry[2] and int(entry[2]) <= self.age]:
 
                 LOG.info("Sanitizing provider based on age cycles")
                 sanitize = p.sanitize(slice)
