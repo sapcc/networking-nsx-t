@@ -66,6 +66,39 @@ SECURITY_GROUP_FRONTEND = {
             "port_range_max": "",
             "protocol": "icmp"
         },
+        {   # Generic ICMP 1
+            "id": "AA45801C-96A4-4BC1-BEBA-B799060A7187",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+            "port_range_min": None,
+            "port_range_max": None,
+            "protocol": "icmp"
+        },
+        {   # Generic ICMP 2
+            "id": "AA45801C-96A4-4BC1-BEBA-B799060A7188",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "remote_group_id": "",
+            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+            "port_range_min": None,
+            "port_range_max": "0",
+            "protocol": "icmp"
+        },
+        {   # Generic ICMP 3
+            "id": "AA45801C-96A4-4BC1-BEBA-B799060A7189",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "remote_group_id": "",
+            "security_group_id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+            "port_range_min": "8",
+            "port_range_max": None,
+            "protocol": "icmp"
+        },
         {   # RDP
             "id": "B554B8F1-38D0-4D2B-86C3-D135FE9E1446",
             "ethertype": "IPv4",

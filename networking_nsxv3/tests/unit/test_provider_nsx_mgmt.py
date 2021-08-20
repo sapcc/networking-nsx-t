@@ -352,6 +352,91 @@ class TestProviderMgmt(base.BaseTestCase):
 
 
     @responses.activate
+    def test_security_group_icmp_generic_rules(self):
+
+        sg = {
+            "id": "1",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": []
+        }
+
+        rule1 = {
+            "id": "1",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "192.168.10.0/24",
+            "security_group_id": "",
+            "port_range_min": None,
+            "port_range_max": None,
+            "protocol": "icmp",
+        }
+
+        rule2 = {
+            "id": "2",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "192.168.10.0/24",
+            "security_group_id": "",
+            "port_range_min": "5",
+            "port_range_max": None,
+            "protocol": "icmp",
+        }
+
+        rule3 = {
+            "id": "3",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "192.168.10.0/24",
+            "security_group_id": "",
+            "port_range_min": None,
+            "port_range_max": "1",
+            "protocol": "icmp",
+        }
+
+        # Add rules
+        sg["rules"].append(copy.deepcopy(rule1))
+        sg["rules"].append(copy.deepcopy(rule2))
+        sg["rules"].append(copy.deepcopy(rule3))
+
+        inv = self.inventory.inventory
+        provider = provider_nsx_mgmt.Provider()
+        
+        provider.sg_rules_realize(sg)
+
+        LOG.info(json.dumps(inv, indent=4))
+
+        sg_meta_rules = provider.metadata(provider.SG_RULE, sg.get("id"))
+        self.assertEquals(len(sg_meta_rules.keys()), 3)
+
+        generic_icmp_expected = [
+            {
+                "service": {
+                    "icmp_code": "",
+                    "icmp_type": "",
+                    "protocol": "ICMPv4",
+                    "resource_type": "ICMPTypeNSService"
+                }
+            },
+            {
+                "service": {
+                    "icmp_code": "",
+                    "icmp_type": "5",
+                    "protocol": "ICMPv4",
+                    "resource_type": "ICMPTypeNSService"
+                }
+            }
+        ]
+
+        self.assertDictContainsSubset(sg_meta_rules.get(rule1.get("id")).get("services")[0], generic_icmp_expected[0])
+        self.assertDictContainsSubset(sg_meta_rules.get(rule2.get("id")).get("services")[0], generic_icmp_expected[1])
+        self.assertDictContainsSubset(sg_meta_rules.get(rule3.get("id")).get("services")[0], generic_icmp_expected[0])
+
+
+    @responses.activate
     def test_security_group_rules_delete(self):
 
         sg = {
