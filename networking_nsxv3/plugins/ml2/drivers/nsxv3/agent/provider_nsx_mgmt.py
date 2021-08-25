@@ -95,12 +95,14 @@ class Meta(object):
         return old_meta
 
     def get(self, os_id):
+        os_id = str(os_id)
         meta = self.meta.get(os_id)
         if not meta and self.meta_transaction:
             meta = self.meta_transaction.get(os_id)
         return meta
 
     def rm(self, os_id):
+        os_id = str(os_id)
         meta = self.meta.get(os_id)
         if meta:
             del self.meta[os_id]
