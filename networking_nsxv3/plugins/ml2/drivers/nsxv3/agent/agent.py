@@ -58,7 +58,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def get_network_bridge(self, context, current, network_segments, network_current):
         for ns in network_segments:
             seg_id = ns.get("segmentation_id")
-            if seg_id:
+            net_type = ns.get("network_type")
+            if seg_id and net_type in nsxv3_constants.NSXV3_AGENT_NETWORK_TYPES:
                 return self.realizer.network(seg_id)
         return dict()
 
