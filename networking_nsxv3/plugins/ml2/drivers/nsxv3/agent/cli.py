@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import math
 
 from networking_nsxv3.api import rpc as nsxv3_rpc
 # Implicitly used to initialize the global configuration
@@ -50,6 +51,71 @@ class NsxInventory(object):
         with env:
             # TODO - define more correct criteria
             eventlet.sleep(30)
+
+    def update_database_export(self, meta_file_path, sql_file_path):
+        LOG.info('Start update_database_export ...')
+        try:
+            # Read 'meta' file content
+            LOG.info('About to open meta file %s ...', meta_file_path)
+            file_handler = open(meta_file_path, 'r')
+            meta_file_content = file_handler.read()
+            file_handler.close()
+
+            LOG.info('About to open neutron sql import file %s ...', sql_file_path)
+            file_handler = open(sql_file_path, 'r')
+            sql_file_content = file_handler.read()
+            file_handler.close()
+        except FileNotFoundError as e:
+            # Print an error message
+            LOG.error(str(e))
+            # Error indicator
+            return False
+        # Convert the meta data to a dictionary
+        try:
+            meta_dict = json.loads(meta_file_content)
+            meta_dict_size = len(meta_dict.items())
+            meta_file_content = None
+            LOG.info("About to process %s keys ...", meta_dict_size)
+        except ValueError as e:
+            # Print an error message
+            LOG.error('JSON decoding - ' + str(e))
+            # Error indicator
+            return False
+        # Loop the 'meta' data
+        currentKey = 0
+        currentPercentage = 0
+        for key, value in meta_dict.items():
+            # Examine value type
+            if isinstance(value, dict):
+                if 'id' in value:
+                    value = value['id']
+                else:
+                    LOG.info('Key "%s" has no value' % key)
+                    continue
+            # Here we have key & value pair
+            sql_file_content = sql_file_content.replace(key, value)
+            if math.trunc(currentKey/meta_dict_size*100) != currentPercentage:
+                currentPercentage = math.trunc(currentKey/meta_dict_size*100)
+                LOG.info("Percent done %s%%", currentPercentage)
+            currentKey += 1
+        # Form output sql file path
+        output_sql_file_path = os.path.splitext(sql_file_path)[0] + '.final.sql'
+        # Print an info message
+        LOG.info('Saving the new .sql file at: %s ...' % output_sql_file_path)
+        # Save the result
+        try:
+            # Write to the output file
+            file_handler = open(output_sql_file_path, 'w')
+            file_handler.write(sql_file_content)
+            file_handler.close()
+        except Exception as e:
+            # Print an error message
+            LOG.error(str(e))
+            # Error indicator
+            return False
+        # Print an info message
+        LOG.info('End matching NSX IDs.')
+        return True
 
     def export(self, export_path):
         for path in self.paths:
@@ -274,10 +340,11 @@ class CLI(object):
                 update - Force synchronization between Neutron and NSX-T objects
                 export - Export Neutron and NSX-T inventories
                 load - Loads the exported NSX-T Inventory
+                updateDatabaseExport - Update neutron sql file NSXT object IDs
                 run - Runs the NSX-T Agent with the exported Neutron inventory
                 clean - Clean up NSX-T objects
             ''')
-        parser.add_argument('command', help='Subcommand update|export|load|run|clean')
+        parser.add_argument('command', help='Subcommand update|export|load|updateDatabaseExport|run|clean')
         args = parser.parse_args(sys.argv[1:2])
         if hasattr(self, args.command):
             getattr(self, args.command)()
@@ -362,6 +429,30 @@ class CLI(object):
         self._init_(args)
 
         NsxInventory().cleanup()
+
+    
+    def updateDatabaseExport(self):
+        """
+        Update neutron sql file with the newly created IDs from NSX-T
+        """
+        description = "Update neutron sql file NSXT object IDs"
+        parser = argparse.ArgumentParser(description=description)
+        parser.add_argument(
+            "--config-file", action="append",
+            help="OpenStack Neutron configuration file(s) location(s)")
+        parser.add_argument(
+            "--sql-file", action="append",
+            help="OpenStack Neutron DB SQL file")
+        args = parser.parse_args(sys.argv[2:])
+
+        self._init_(args)
+        meta_path = os.path.join(os.getcwd(), "inventory/nsx/meta")
+        if args.sql_file == None or args.sql_file[0] == None:
+            LOG.error("Please specify neutron database export file using --sql-file")
+            exit(1)
+        if not NsxInventory().update_database_export(meta_path, args.sql_file[0]):
+            LOG.error('update_database_export finished with error. Please check the logs for details')
+            exit(1)
     
     def export(self):
         """
