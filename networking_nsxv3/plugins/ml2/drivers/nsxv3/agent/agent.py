@@ -70,8 +70,11 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.callback(kwargs["security_groups"], self.realizer.security_group_rules)
 
     def port_update(self, context, **kwargs):
+        # Ensure security groups attached to the port are synced first
+        for sg in kwargs["port"].get('security_groups', []):
+            self.callback(sg, self.realizer.security_group_rules)
         self.callback(kwargs["port"]["id"], self.realizer.port)
-    
+
     def port_delete(self, context, **kwargs):
         # Ports removed by the background synchronization
         pass
