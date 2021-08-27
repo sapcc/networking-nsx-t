@@ -82,7 +82,8 @@ def get_security_groups_with_revisions(context, host, limit, cursor):
 def get_security_group_revision(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroup.id,
-        StandardAttribute.revision_number
+        StandardAttribute.revision_number,
+        sg_db.SecurityGroup.stateful
     ).join(
         StandardAttribute
     ).filter(

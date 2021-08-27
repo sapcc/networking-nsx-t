@@ -73,7 +73,7 @@ class Payload(provider_nsx_mgmt.Payload):
         return {
             "category": "Application",
             "display_name": os_sg.get("id"),
-            "stateful": True,
+            "stateful": os_sg.get("stateful", True),
             "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags", dict()),
             "scope": [
                 "/infra/domains/default/groups/{}".format(

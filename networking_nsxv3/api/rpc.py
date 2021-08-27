@@ -189,6 +189,7 @@ class NSXv3ServerRpcCallback(object):
             return {
                 "id": id_rev[0],
                 "revision_number": id_rev[1],
+                "stateful": id_rev[2],
                 "tags": db.get_security_group_tag(context, security_group_id),
                 "ports": db.get_port_id_by_sec_group_id(context, host, 
                                                         security_group_id)

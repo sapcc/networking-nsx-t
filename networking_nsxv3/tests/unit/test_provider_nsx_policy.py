@@ -527,3 +527,14 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEquals(outdated, set(["2","3","4"]))
         self.assertEquals(current, set(["1"]))
+
+    @responses.activate
+    def test_security_group_stateful(self):
+        sg1 = { "id": "1", "revision_number": 2,"rules": [] }
+        sg2 = dict(sg1, **{'id': '2', 'stateful': False})
+        provider = provider_nsx_policy.Provider()
+        provider.sg_rules_realize(sg1)
+        provider.sg_rules_realize(sg2)
+        inv = self.inventory.inventory
+        self.assertTrue(self.get_by_name(inv[Inventory.POLICIES], sg1["id"]).get("stateful"))
+        self.assertFalse(self.get_by_name(inv[Inventory.POLICIES], sg2["id"]).get("stateful"))

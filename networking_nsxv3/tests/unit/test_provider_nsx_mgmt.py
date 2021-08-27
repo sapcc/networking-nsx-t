@@ -1230,3 +1230,13 @@ class TestProviderMgmt(base.BaseTestCase):
 
         self.assertNotEqual(sg_rule_ipset, None)
 
+    @responses.activate
+    def test_security_group_stateful(self):
+        sg1 = { "id": "1", "revision_number": 2,"rules": [] }
+        sg2 = dict(sg1, **{'id': '2', 'stateful': False})
+        provider = provider_nsx_mgmt.Provider()
+        provider.sg_rules_realize(sg1)
+        provider.sg_rules_realize(sg2)
+        inv = self.inventory.inventory
+        self.assertTrue(self.get_by_name(inv[Inventory.SECTIONS], sg1["id"]).get("stateful"))
+        self.assertFalse(self.get_by_name(inv[Inventory.SECTIONS], sg2["id"]).get("stateful"))

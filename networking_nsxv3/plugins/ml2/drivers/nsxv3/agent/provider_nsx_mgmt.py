@@ -377,7 +377,7 @@ class Payload(object):
             "display_name": os_sg.get("id"),
             "section_type": "LAYER3",
             "is_default": False,
-            "stateful": True,
+            "stateful": os_sg.get("stateful", True),
             "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags", dict()),
             "applied_tos": [
                 {
