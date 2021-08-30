@@ -7,6 +7,7 @@ import netaddr
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
+from networking_nsxv3.prometheus import exporter
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -144,10 +145,8 @@ class Provider(provider_nsx_mgmt.Provider):
             Provider.NETWORK: mp(API.SWITCHES)
         }
 
-    
+    @exporter.IN_REALIZATION.track_inprogress()
     def _wait_to_realize(self, resource_type, os_id):
-
-        path = None
         if resource_type == Provider.SG_RULES:
             path = API.POLICY.format(os_id)
         elif resource_type == Provider.SG_MEMBERS:
@@ -159,14 +158,16 @@ class Provider(provider_nsx_mgmt.Provider):
             "intent_path": path.replace(API.POLICY_BASE, "")
         }
 
-        until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
+        until = cfg.CONF.NSXV3.nsxv3_realization_timeout
         pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
 
+        status = ''
         for attempt in range(1, until + 1):
             o = self.client.get(path=API.STATUS, params=params).json()
             status = o.get("consolidated_status", {}).get("consolidated_status")
             if status == "SUCCESS":
                 LOG.info("%s ID:%s in Status:%s", resource_type, os_id, status)
+                exporter.REALIZED.labels(resource_type, status).inc()
                 return True
             else:
                 LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt*pause)
@@ -174,8 +175,8 @@ class Provider(provider_nsx_mgmt.Provider):
         # When multiple policies did not get realized in the defined timeframe,
         # this is a symptom for another issue. 
         # This should be detected by the Prometheus after a while
-        LOG.warning("%s ID:%s did not get realized for %ss", resource_type, os_id, until*pause)
-
+        LOG.error("%s ID:%s did not get realized for %ss", resource_type, os_id, until*pause)
+        exporter.REALIZED.labels(resource_type, status).inc()
 
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         path = self._metadata.get(resource_type).endpoint

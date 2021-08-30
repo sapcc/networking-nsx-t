@@ -129,8 +129,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.reload()
 
         if monitoring:
-            eventlet.greenthread.spawn(exporter.nsxv3_agent_exporter, 
-                                       self.runner)
+            exporter.nsxv3_agent_exporter()
 
     def _sync_all(self):
         try:

@@ -84,6 +84,11 @@ nsxv3_opts = [
         help='NSXv3 Manager client native request timeout in seconds.'
     ),
     cfg.IntOpt(
+        'nsxv3_realization_timeout',
+        default=900,
+        help='NSXv3 Manager client (policy) realization timeout.'
+    ),
+    cfg.IntOpt(
         'nsxv3_operation_retry_count',
         default=3,
         help='NSXv3 Manager failed operation retry-count.'

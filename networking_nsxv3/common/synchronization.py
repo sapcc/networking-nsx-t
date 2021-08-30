@@ -12,6 +12,8 @@ from enum import Enum
 from oslo_config import cfg
 from oslo_log import log as logging
 
+import networking_nsxv3.prometheus.exporter as EXPORTER
+
 if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
     import eventlet
     eventlet.monkey_patch()
@@ -180,6 +182,9 @@ class Runner(object):
             except Exception as err:
                 # Continue on error. Otherwise the agent operation will stop
                 LOG.error(err)
+            EXPORTER.ACTIVE_QUEUE_SIZE.set(self.active())
+            EXPORTER.PASSIVE_QUEUE_SIZE.set(self.passive())
+            EXPORTER.JOB_SIZE.set(self._workers.running())
 
     def active(self):
         """ Returns that size of the active queue """
