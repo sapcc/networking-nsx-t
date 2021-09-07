@@ -660,7 +660,12 @@ class Provider(abs.Provider):
                     params = dict()
 
                 if resource_type == Provider.PORT:
-                    o = self.client.get(path=path).json()
+                    res = self.client.get(path=path)
+                    if res.status_code == 404:
+                        LOG.info(end_report, "rescheduled due 404: not found")
+                        return meta
+
+                    o = res.json()
                     if o.get("attachment", {}).get("context", {})\
                         .get("vif_type") != "CHILD":
 
