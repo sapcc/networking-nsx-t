@@ -48,6 +48,7 @@ class RetryPolicy(object):
             for attempt in range(1, until + 1):
                 try:
                     response = func(self, *args, **kwargs)
+                    #LOG.debug("REQUEST: %s STATUS: %s, RESPONSE.CONTENT %s", requestInfo, response.status_code, response.content)
 
                     if response.status_code in [404]:
                         LOG.error("Error Code=%s Message=%s", response.status_code, response.content)

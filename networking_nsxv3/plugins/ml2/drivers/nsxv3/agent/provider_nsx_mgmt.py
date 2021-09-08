@@ -297,13 +297,13 @@ class Payload(object):
         p = os_port
         pp = provider_port
 
-        p_pid = pp.get("id")
+        # p_pid = pp.get("id")
         p_ppid = pp.get("parent_id")
         p_qid = pp.get("qos_policy_id")
 
-        if not p_pid and not p_ppid:
-            LOG.error("Port '%s' not found.", p.get("id"))
-            return
+        # if not p_pid and not p_ppid:
+        #     LOG.error("Port '%s' not found.", p.get("id"))
+        #     return
 
         port = {
             "display_name": os_port.get("id"),
@@ -639,7 +639,7 @@ class Provider(abs.Provider):
         os_id = os_o.get("id")
         
         begin_report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
-        end_report = "Resource:{} with ID:{} have been %s.".format(resource_type, os_id)
+        end_report = "Resource:{} with ID:{} has been %s.".format(resource_type, os_id)
 
         path = self._metadata.get(resource_type).endpoint
 
@@ -686,7 +686,6 @@ class Provider(abs.Provider):
                 LOG.info(begin_report, "updated")
                 if resource_type == Provider.SG_RULES_EXT:
                     LOG.debug("Skipping update of NSGroup:%s",)
-                    pass
                 data = convertor(os_o, provider_o)
                 revision = meta._revision
                 if revision != None:
@@ -754,8 +753,6 @@ class Provider(abs.Provider):
             if port:
                 return self.metadata_update(Provider.PORT, port)
 
-        port = get(os_port.get("id"))
-
         if os_port.get("parent_id"):
             # Child port always created internally
             parent_port = get(os_port.get("parent_id"))
@@ -765,12 +762,13 @@ class Provider(abs.Provider):
                 LOG.error("Not found. Parent Port:%s", os_port.get("parent_id"))
                 return
         else:
-            # Parent port always created externally
+            # Parent port is NOT always created externally
+            port = get(os_port.get("id"))
             if port:
                 provider_port["id"] = port.id
             else:
                 LOG.warning("Not found. Port: %s", os_port.get("id"))
-                return
+                # provider_port["id"] = os_port.get("id")
         
         if os_port.get("qos_policy_id"):
             meta_qos = self.metadata(Provider.QOS, os_port.get("qos_policy_id"))
@@ -782,7 +780,7 @@ class Provider(abs.Provider):
 
         provider_port["switching_profile_ids"] = copy.deepcopy(self.switch_profiles)
 
-        return self._realize(Provider.PORT, delete, 
+        return self._realize(Provider.PORT, False, 
                              self.payload.port, os_port, provider_port)
 
     def qos_realize(self, qos, delete=False):
