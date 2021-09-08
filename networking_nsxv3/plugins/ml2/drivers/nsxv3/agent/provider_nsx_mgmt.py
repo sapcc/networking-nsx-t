@@ -233,7 +233,7 @@ class Payload(object):
         return provider_tags
 
     def ip_discovery(self):
-        os_id = "{}-{}".format(cfg.CONF.AGENT.agent_id, "IpDiscovery")
+        os_id = cfg.CONF.NSXV3.nsxv3_ip_discovery_switching_profile
         return {
             "resource_type": "IpDiscoverySwitchingProfile",
             "arp_bindings_limit": 1,
@@ -244,10 +244,10 @@ class Payload(object):
         }
 
     def spoofguard(self):
-        os_id = "{}-{}".format(cfg.CONF.AGENT.agent_id, "SpoofGuard")
+        os_id = cfg.CONF.NSXV3.nsxv3_spoof_guard_switching_profile
         return {
             "resource_type": "SpoofGuardSwitchingProfile",
-            "white_list_providers": ["LPORT_BINDINGS"],
+            "white_list_providers": [],
             "display_name": os_id
         }
     

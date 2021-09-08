@@ -58,8 +58,8 @@ class TestProviderMgmt(base.BaseTestCase):
 
         profiles = self.inventory.inventory.get(Inventory.PROFILES)
 
-        sgp = "{}-{}".format(cfg.CONF.AGENT.agent_id, "SpoofGuard")
-        ipp = "{}-{}".format(cfg.CONF.AGENT.agent_id, "IpDiscovery")
+        sgp = cfg.CONF.NSXV3.nsxv3_spoof_guard_switching_profile
+        ipp = cfg.CONF.NSXV3.nsxv3_ip_discovery_switching_profile
 
         self.assertEquals(len(profiles), 2)
         realized_profiles = [profiles.get(key).get("display_name") for key in profiles.keys()]

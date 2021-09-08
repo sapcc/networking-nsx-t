@@ -117,7 +117,7 @@ class Client:
 
         self._session = requests.session()
 
-        if cfg.CONF.NSXV3.nsxv3_suppress_ssl_wornings:
+        if cfg.CONF.NSXV3.nsxv3_suppress_ssl_warnings:
             self._session.verify = False
             requests.packages.urllib3.disable_warnings()
 

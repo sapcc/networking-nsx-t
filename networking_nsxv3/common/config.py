@@ -139,15 +139,21 @@ nsxv3_opts = [
         default='openstack-tz',
         help="NSXv3 Manager transport zone name."
     ),
-    cfg.BoolOpt(
-        'nsxv3_enable_spoof_guard',
-        default=False,
-        help="NSXv3 Manager enables SpoofGuard protection."
+    cfg.StrOpt(
+        'nsxv3_spoof_guard_switching_profile',
+        default='nsx-default-spoof-guard-vif-profile',
+        help="NSXv3 Spoof guard profile to use (or create if not existing)."
+    ),
+    cfg.StrOpt(
+        'nsxv3_ip_discovery_switching_profile',
+        default='nsx-default-ip-discovery-vlan-profile',
+        help="NSXv3 ip discovery profile to use (or create if not existing)."
     ),
     cfg.BoolOpt(
-        'nsxv3_suppress_ssl_wornings',
+        'nsxv3_suppress_ssl_warnings',
         default=True,
-        help="NSXv3 Manager disables ssl host validattion. [Development Mode]"
+        help="NSXv3 Manager disables ssl host validation. [Development Mode]",
+        deprecated_name='nsxv3_suppress_ssl_wornings'
     ),
     cfg.ListOpt(
         'nsxv3_managed_hosts',
