@@ -56,6 +56,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.realizer = realizer
 
     def get_network_bridge(self, context, current, network_segments, network_current):
+        if current.get('binding:vif_type') == portbindings.VIF_TYPE_UNBOUND and \
+                current.get('status') == nsxv3_constants.neutron_constants.ACTIVE:
+            # This is a double-bound port with inactive new binding, proactivly sync it
+            self.port_update(context, port=current)
         for ns in network_segments:
             seg_id = ns.get("segmentation_id")
             net_type = ns.get("network_type")
