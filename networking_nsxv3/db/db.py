@@ -162,8 +162,7 @@ def get_port(context, host, port_id):
         PortBinding
     ).filter(
         Port.id == port_id,
-        PortBinding.host == host,
-        PortBinding.status == nsxv3_constants.neutron_constants.ACTIVE
+        PortBinding.host == host
     ).one_or_none()
 
     qos_id = context.session.query(

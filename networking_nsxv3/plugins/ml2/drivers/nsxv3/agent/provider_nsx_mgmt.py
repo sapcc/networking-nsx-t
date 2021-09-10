@@ -297,13 +297,8 @@ class Payload(object):
         p = os_port
         pp = provider_port
 
-        # p_pid = pp.get("id")
         p_ppid = pp.get("parent_id")
         p_qid = pp.get("qos_policy_id")
-
-        # if not p_pid and not p_ppid:
-        #     LOG.error("Port '%s' not found.", p.get("id"))
-        #     return
 
         port = {
             "display_name": os_port.get("id"),
@@ -768,8 +763,7 @@ class Provider(abs.Provider):
                 provider_port["id"] = port.id
             else:
                 LOG.warning("Not found. Port: %s", os_port.get("id"))
-                # provider_port["id"] = os_port.get("id")
-        
+
         if os_port.get("qos_policy_id"):
             meta_qos = self.metadata(Provider.QOS, os_port.get("qos_policy_id"))
             if meta_qos:

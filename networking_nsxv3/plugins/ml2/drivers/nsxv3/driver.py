@@ -103,7 +103,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             return False
 
         if not agent_type.lower() == self.agent_type.lower():
-            LOG.warn("Un supported agent type Type=" + str(agent_type))
+            LOG.warn("Unsupported agent type: Type=" + str(agent_type))
             return False
 
         if not host == context.current['binding:host_id']:
