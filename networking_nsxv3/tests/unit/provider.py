@@ -46,7 +46,10 @@ class Inventory(object):
         }
 
     def resp(self, code, data=dict()):
-        return (code, dict(), json.dumps(data))
+        """
+        Mocked response returns tuple containing (code, headers, body)
+        """
+        return (code, dict(), json.dumps(data))  # (code, headers, body)
 
     def identifier(self, inventory, content):
         """
