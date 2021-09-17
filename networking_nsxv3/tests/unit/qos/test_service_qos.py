@@ -1,6 +1,4 @@
-import neutron
 from neutron.tests import base
-import neutron_lib
 from oslo_config import cfg
 from oslo_log import log as logging
 from networking_nsxv3.tests.unit.call_tracker import CallTracker
