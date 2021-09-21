@@ -871,7 +871,7 @@ class Provider(abs.Provider):
     def _get_sg_provider_rule(self, os_rule, revision):
         provider_rule = dict()
         if os_rule.get("remote_ip_prefix"):
-            net = netaddr.IPSet([os_rule["remote_ip_prefix"]]).pop()
+            net = netaddr.IPNetwork(os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
             meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
             if net.ip in meta_addr:
                 cidr = str(net)
