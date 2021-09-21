@@ -51,9 +51,10 @@ class RetryPolicy(object):
                     #LOG.debug("REQUEST: %s STATUS: %s, RESPONSE.CONTENT %s", requestInfo, response.status_code, response.content)
 
                     if response.status_code in [404]:
-                        LOG.error("Error Code=%s Message=%s", response.status_code, response.content)
+                        LOG.warning("Warning Code=%s Message=%s", response.status_code, response.content)
+                        return response
 
-                    if 200 <= response.status_code < 300 or response.status_code in [404]:
+                    if 200 <= response.status_code < 300:
                         return response
 
                     last_err = "Error Code={} Message={}"\
