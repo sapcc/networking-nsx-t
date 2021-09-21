@@ -48,6 +48,8 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {
             portbindings.CAP_PORT_FILTER: sg_enabled,
             portbindings.OVS_HYBRID_PLUG: sg_enabled,
+            portbindings.VIF_DETAILS_CONNECTIVITY:
+                portbindings.CONNECTIVITY_L2
         }
 
         self.rpc = nsxv3_rpc.NSXv3AgentRpcClient(self.context)
@@ -87,6 +89,8 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agent_alive = agent.get('alive', False)
         agent_type = agent['agent_type']
         host = agent.get('host', None)
+        physical_network = segment.get('physical_network')
+        transport_zone = agent.get('configurations', {}).get('nsxv3_transport_zone')
 
         if not device.startswith('compute'):
             LOG.warn(
@@ -110,6 +114,26 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             LOG.warn("Not supported host. Host=" + str(host))
             return False
 
+        if not physical_network:
+            LOG.warn("Needs a valid physical network for binding")
+            return False
+
+        # We cannot rely on always getting the right segment
+        if len(context.segments_to_bind) > 1 and transport_zone:
+            # Remove bb
+            bb = transport_zone.lstrip('b')
+            # remove leading zeros
+            bb = bb.lstrip('0')
+            # remove -vlan
+            if bb.endswith('-vlan'):
+                bb = bb[:-5]
+            # readd bb
+            bb = 'bb{}'.format(bb)
+
+            if not(physical_network in transport_zone or physical_network == bb):
+                LOG.warn("No segment found for physical_network=" + str(physical_network))
+                return False
+
         response = self.rpc.get_network_bridge(
             context.current, [segment], context.network.current, context.host
         )
@@ -117,9 +141,9 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         vif_details = self.vif_details.copy()
         vif_details.update(response)
 
-        if not vif_details['nsx-logical-switch-id']:
-            LOG.error("Agent={} did not provide nsx-logical-switch-id."
-                      .format(agent_type))
+        if not vif_details.get('nsx-logical-switch-id'):
+            LOG.info("Agent {} did not provide nsx-logical-switch-id for network {} of port {}"
+                     .format(host, context.network.current.get('id'), context.current.get('id')))
             return False
         else:
             context.set_binding(segment[api.ID], self.vif_type, vif_details)

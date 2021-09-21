@@ -1,32 +1,24 @@
-import argparse
-import json
 import os
-import re
 import sys
-import traceback
-import uuid
 
-import netaddr
 import oslo_messaging
-from networking_nsxv3.api import rpc as nsxv3_rpc
-from networking_nsxv3.common import config  # noqa
-from networking_nsxv3.common import constants as nsxv3_constants
-from networking_nsxv3.common import synchronization as sync
-from networking_nsxv3.db import db
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    client_nsx, provider_nsx_mgmt, provider_nsx_policy, realization)
-from networking_nsxv3.prometheus import exporter
 from neutron.common import config as common_config
 from neutron.common import profiler
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
-from neutron_lib import context as neutron_context
-from neutron_lib import exceptions
-from neutron_lib.agent import topics
-from neutron_lib.api.definitions import portbindings
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_service import loopingcall, service
+
+from networking_nsxv3.api import rpc as nsxv3_rpc
+from networking_nsxv3.common import config  # noqa
+from networking_nsxv3.common import constants as nsxv3_constants
+from networking_nsxv3.common import synchronization as sync
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
+    provider_nsx_mgmt, provider_nsx_policy, realization)
+from networking_nsxv3.prometheus import exporter
+from neutron_lib.agent import topics
+from neutron_lib.api.definitions import portbindings
 
 try:
     from neutron.conf.agent import common as agent_config
@@ -61,6 +53,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             # This is a double-bound port with inactive new binding, proactivly sync it
             self.port_update(context, port=current)
         for ns in network_segments:
+            cfg.CONF.NSXV3.nsxv3_transport_zone_name
             seg_id = ns.get("segmentation_id")
             net_type = ns.get("network_type")
             if seg_id and net_type in nsxv3_constants.NSXV3_AGENT_NETWORK_TYPES:
