@@ -84,20 +84,21 @@ class NsxInventory(object):
         # Loop the 'meta' data
         currentKey = 0
         currentPercentage = 0
-        for key, value in meta_dict.items():
-            # Examine value type
-            if isinstance(value, dict):
-                if 'id' in value:
-                    value = value['id']
-                else:
-                    LOG.info('Key "%s" has no value' % key)
-                    continue
-            # Here we have key & value pair
-            sql_file_content = sql_file_content.replace(key, value)
-            if math.trunc(currentKey/meta_dict_size*100) != currentPercentage:
-                currentPercentage = math.trunc(currentKey/meta_dict_size*100)
-                LOG.info("Percent done %s%%", currentPercentage)
-            currentKey += 1
+        for _, contents in meta_dict.items():
+            for key, value in contents.items():
+                # Examine value type
+                if isinstance(value, dict):
+                    if 'id' in value:
+                        value = value['id']
+                    else:
+                        LOG.info('Key "%s" has no value' % key)
+                        continue
+                # Here we have key & value pair
+                sql_file_content = sql_file_content.replace(key, value)
+                if math.trunc(currentKey/meta_dict_size*100) != currentPercentage:
+                    currentPercentage = math.trunc(currentKey/meta_dict_size*100)
+                    LOG.info("Percent done %s%%", currentPercentage)
+                currentKey += 1
         # Form output sql file path
         output_sql_file_path = os.path.splitext(sql_file_path)[0] + '.final.sql'
         # Print an info message
@@ -173,20 +174,21 @@ class NsxInventory(object):
                 file.writelines(json.dumps(meta, indent=2))
 
 
-    def _load(self, load_path, meta):
+    def _load(self, load_path, full_meta):
         for path in self.paths:
             file_path = self._get_path(load_path, path)
             folder_path = os.path.dirname(file_path)
 
+            meta = full_meta.get(path, {})
             with open(file_path, "r") as file:
                 for o in json.load(file):
                     id = o.get("id")
                     if id in meta:
                         LOG.info("Object with ID:%s already processed.", id)
                         if isinstance(meta[id], dict) and not meta[id]["rules_processed"]:
-                            self._load_section_rules(meta, id, self.api.RULES_CREATE.format(meta[id]["id"]), os.path.join(folder_path, id))
+                            self._load_section_rules(full_meta, id, self.api.RULES_CREATE.format(meta[id]["id"]), os.path.join(folder_path, id))
                         continue
-                    self._preprocess(meta, o, path)
+                    self._preprocess(full_meta, o, path)
                     LOG.info(json.dumps(o, indent=2))
                     if "policy" in path:
                         if self.api.POLICIES in path:
@@ -201,19 +203,21 @@ class NsxInventory(object):
                             "_revision": resp["_revision"],
                             "rules_processed": False 
                         }
-                        self._load_section_rules(meta, id, self.api.RULES_CREATE.format(meta[id]["id"]), os.path.join(folder_path, id))
+                        full_meta.update({path: meta})
+                        self._load_section_rules(full_meta, id, self.api.RULES_CREATE.format(meta[id]["id"]), os.path.join(folder_path, id))
                     else:
                         meta[id] = resp["id"]
+            full_meta[path] = meta
     
-    def _load_section_rules(self, meta, id, path, file_path):
+    def _load_section_rules(self, full_meta, id, path, file_path):
         if os.path.isfile(file_path):
             with open(file_path, "r") as file:
                 data = {"rules": json.load(file)}
                 for o in data["rules"]:
-                    self._preprocess(meta, o, path, meta[id]["_revision"])
+                    self._preprocess(full_meta, o, path, full_meta[self.api.SECTIONS][id]["_revision"])
                 LOG.info("%s %s", path, json.dumps(data, indent=2))
                 self.client.post(path=path, data=data)
-                meta[id]["rules_processed"] = True
+                full_meta[self.api.SECTIONS][id]["rules_processed"] = True
     
     def _get_policy_rules(self, file_path):
         if os.path.isfile(file_path):
@@ -246,16 +250,14 @@ class NsxInventory(object):
             del o["transport_zone_profile_ids"]
         
         if self.api.SWITCHES in path:
-
-
-            o["transport_zone_id"] = meta[o["transport_zone_id"]]
+            o["transport_zone_id"] = meta[self.api.ZONES][o["transport_zone_id"]]
             o["switching_profile_ids"] = []
         
         if self.api.PROFILES in path:
             pass
 
         if self.api.PORTS in path:
-            o["logical_switch_id"] = meta[o["logical_switch_id"]]
+            o["logical_switch_id"] = meta[self.api.SWITCHES][o["logical_switch_id"]]
             o["switching_profile_ids"] = []
             del o["internal_id"]
 
@@ -277,11 +279,11 @@ class NsxInventory(object):
         if self.api.SECTIONS in path:
             if "applied_tos" in o:
                 for target in o["applied_tos"]:
-                    target["target_id"] = meta[target["target_id"]]
+                    target["target_id"] = meta[self.api.SECTIONS][target["target_id"]]
             if "sources" in o:
-                substitute_id(meta, o, "sources")
+                substitute_id(meta[self.api.SECTIONS], o, "sources")
             if "destinations" in o:
-                substitute_id(meta, o, "destinations")
+                substitute_id(meta[self.api.SECTIONS], o, "destinations")
 
 
 class NeutronInventory(object):
