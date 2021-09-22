@@ -175,7 +175,13 @@ nsxv3_opts = [
         default='NONE',
         help="NSXv3 Manager DFW connectivity strategy: {}"\
             .format(str(nsxv3_dfw_connectivity_strategy))
-    )
+    ),
+    cfg.StrOpt(
+        'nsxv3_default_policy_infrastructure_rules',
+        default=False,
+        help="Enable create of default infrastructure rules like ICMP allow, " 
+             "DHCP and Metadata Agent access"
+    ),
 ]
 
 vsphere_opts = [

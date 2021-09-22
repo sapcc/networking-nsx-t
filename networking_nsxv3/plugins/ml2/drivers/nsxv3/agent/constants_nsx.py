@@ -185,3 +185,114 @@ VALID_ICMP_RANGES = {
         158: None
     }
 }
+
+DEFAULT_INFRASTRUCTURE_POLICIES = [
+    {
+        "resource_type": "SecurityPolicy",
+        "display_name": "ICMP Allow",
+        "id": "ICMP_Allow",
+        "category": "Infrastructure",
+        "stateful": False,
+        "tcp_strict": False,
+        "locked": True,
+        "scope": ["ANY"],
+        "rules": [
+            {
+                "action": "ALLOW",
+                "resource_type": "Rule",
+                "id": "ICMP",
+                "display_name": "ICMP",
+                "source_groups": ["ANY"],
+                "destination_groups": ["ANY"],
+                "services": ["/infra/services/ICMP-ALL"],
+                "service_entries": [],
+                "profiles": ["ANY"],
+                "logged": False,
+                "scope": ["ANY"],
+                "disabled": False,
+                "direction": "IN_OUT",
+                "ip_protocol": "IPV4_IPV6",
+            }
+        ],
+    },
+    {
+        "resource_type": "SecurityPolicy",
+        "display_name": "Metadata Allow",
+        "id": "Metadata_Allow",
+        "category": "Infrastructure",
+        "stateful": True,
+        "tcp_strict": False,
+        "locked": True,
+        "scope": ["ANY"],
+        "rules": [
+            {
+                "action": "ALLOW",
+                "resource_type": "Rule",
+                "id": "HTTP",
+                "display_name": "HTTP",
+                "source_groups": ["ANY"],
+                "destination_groups": ["169.254.169.254"],
+                "services": ["/infra/services/HTTP"],
+                "service_entries": [],
+                "profiles": ["ANY"],
+                "logged": False,
+                "scope": ["ANY"],
+                "disabled": False,
+                "direction": "IN_OUT",
+                "ip_protocol": "IPV4_IPV6",
+            }
+        ],
+    },
+    {
+        "resource_type": "SecurityPolicy",
+        "display_name": "DHCP Allow",
+        "id": "DHCP_Allow",
+        "category": "Infrastructure",
+        "stateful": True,
+        "tcp_strict": False,
+        "locked": True,
+        "scope": ["ANY"],
+        "rules": [
+            {
+                "action": "ALLOW",
+                "resource_type": "Rule",
+                "id": "DHCP_Client",
+                "display_name": "DHCP Client",
+                "source_groups": ["ANY"],
+                "destination_groups": ["ANY"],
+                "services": [
+                    "/infra/services/DHCPv6_Client",
+                    "/infra/services/DHCP-Client"
+                ],
+                "service_entries": [],
+                "profiles": ["ANY"],
+                "logged": False,
+                "scope": ["ANY"],
+                "disabled": False,
+                "direction": "IN",
+                "ip_protocol": "IPV4_IPV6",
+            },
+            {
+                "action": "ALLOW",
+                "resource_type": "Rule",
+                "id": "DHCP_Server",
+                "display_name": "DHCP Server",
+                "source_groups": ["ANY"],
+                "destination_groups": ["ANY"],
+                "services": [
+                    "/infra/services/DHCPv6_Server",
+                    "/infra/services/DHCP-Server"
+                ],
+                "service_entries": [],
+                "profiles": ["ANY"],
+                "logged": False,
+                "scope": ["ANY"],
+                "disabled": False,
+                "direction": "OUT",
+                "ip_protocol": "IPV4_IPV6",
+            }
+        ],
+    },
+]
+
+NSXV3_DEFAULT_L3_SECTION = "default-layer3-section"

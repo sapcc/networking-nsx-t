@@ -132,6 +132,29 @@ class Provider(provider_nsx_mgmt.Provider):
 
     def __init__(self, payload=Payload):
         super(Provider, self).__init__(payload=payload)
+        if cfg.CONF.NSXV3.nsxv3_default_policy_infrastructure_rules:
+            self._setup_default_infrastructure_rules()
+        self._ensure_default_l3_policy()
+
+    def _ensure_default_l3_policy(self):
+        res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
+        res.raise_for_status()
+        for rule in res.json()['rules']:
+            if rule['action'] not in ['DROP', 'REJECT']:
+                raise Exception("Default l3 section rule is not drop/reject, bailing out")
+
+    def _setup_default_infrastructure_rules(self):
+        LOG.info("Looking for the default Infrastructure Rules.")
+        for policy in DEFAULT_INFRASTRUCTURE_POLICIES:
+            path = API.POLICY.format(policy['id'])
+            res = self.client.get(path=path)
+            if res.ok:
+                continue
+            elif res.status_code == 404:
+                LOG.info("Infrastructure Policy %s not found, creating...", policy['display_name'])
+                self.client.put(path=path, data=policy).raise_for_status()
+            else:
+                res.raise_for_status()
 
     def _metadata_loader(self):
         mp = provider_nsx_mgmt.MetaProvider
