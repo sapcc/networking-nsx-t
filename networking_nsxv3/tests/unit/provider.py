@@ -41,7 +41,11 @@ class Inventory(object):
             Inventory.IPSETS: dict(),
             Inventory.NSGROUPS: dict(),
             Inventory.SECTIONS: dict(),
-            Inventory.POLICIES: dict(),
+            Inventory.POLICIES: {
+                "default-layer3-section": {
+                    "rules": [{"action": "DROP"}]
+                }
+            },
             Inventory.GROUPS: dict(),
         }
 
