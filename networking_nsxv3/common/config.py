@@ -176,7 +176,7 @@ nsxv3_opts = [
         help="NSXv3 Manager DFW connectivity strategy: {}"\
             .format(str(nsxv3_dfw_connectivity_strategy))
     ),
-    cfg.StrOpt(
+    cfg.BoolOpt(
         'nsxv3_default_policy_infrastructure_rules',
         default=False,
         help="Enable create of default infrastructure rules like ICMP allow, " 
