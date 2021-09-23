@@ -1,7 +1,4 @@
-from networking_nsxv3.api import rpc as nsxv3_rpc
-from networking_nsxv3.common import constants as nsxv3_constants
-from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
-from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
+from neutron import service
 from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
@@ -10,6 +7,11 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
 from neutron_lib.plugins.ml2 import api
 from oslo_log import log
+
+from networking_nsxv3.api import rpc as nsxv3_rpc
+from networking_nsxv3.common import constants as nsxv3_constants
+from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
+from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 
 LOG = log.getLogger(__name__)
 
@@ -56,12 +58,6 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.trunk = nsxv3_trunk.NSXv3TrunkDriver.create()
         self.qos = nsxv3_qos.NSXv3QosDriver.create(self.rpc)
 
-        conn = rpc.Connection()
-        conn.create_consumer(nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
-                             [nsxv3_rpc.NSXv3ServerRpcCallback()],
-                             fanout=False)
-        conn.consume_in_threads()
-
         super(VMwareNSXv3MechanismDriver, self).__init__(
             self.agent_type,
             self.vif_type,
@@ -69,6 +65,17 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         )
 
         LOG.info("Initialized Mechanism Driver Type=" + str(self.agent_type))
+
+    def get_workers(self):
+        return [service.RpcWorker([self], worker_process_count=0)]
+
+    def start_rpc_listeners(self):
+        """Start the RPC loop to let the plugin communicate with agents."""
+        self.conn = rpc.Connection()
+        self.conn.create_consumer(nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
+                             [nsxv3_rpc.NSXv3ServerRpcCallback()],
+                             fanout=False)
+        return self.conn.consume_in_threads()
 
     # Overwrite
     def get_allowed_network_types(self, agent):
