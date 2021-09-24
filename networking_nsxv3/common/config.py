@@ -1,10 +1,5 @@
-from oslo_config import cfg
 from neutron.conf import service
-
-try:
-    from neutron.conf.agent import common as config
-except ImportError:
-    from neutron.agent.common import config
+from oslo_config import cfg
 
 DEFAULT_BRIDGE_MAPPINGS = []
 DEFAULT_VLAN_RANGES = []
@@ -24,11 +19,6 @@ agent_opts = [
         'agent_id',
         default='nsxm-l-01a.corp.local',
         help="NSXv3 Manager ID"
-    ),
-    cfg.IntOpt(
-        'sync_full_schedule',
-        default=24,
-        help='''Full-sync schedule in hours between OpenStack and NSXv3.'''
     ),
     cfg.IntOpt(
         'locking_coordinator_url',
@@ -52,30 +42,15 @@ agent_opts = [
         default=1000,
         help="Neutron RPC maximum records per query."
     ),
-    cfg.BoolOpt(
-        'enable_runtime_migration_from_dvs_driver',
-        default=False,
-        help="Enable runtime migration from DVS ML2 Driver."
-    ),
-    cfg.BoolOpt(
-        'enable_imperative_security_group_cleanup',
-        default=False,
-        help="Enable NSX-T imperative security group cleanup."
-    ),
     cfg.IntOpt(
         'agent_prometheus_exporter_port',
         default='8000',
         help="Prometheus exporter port"
     ),
     cfg.IntOpt(
-        'retry_on_failure_max',
-        default=0,
-        help="Maximum retries of a failed object synchronization"
-    ),
-    cfg.IntOpt(
-        'retry_on_failure_delay',
-        default=10,
-        help="Delay between retries of a failed object synchronization in seconds"
+        'synchronization_queue_size',
+        default=20,
+        help="The maximum amount of objects witing in the queue for update."
     )
 ]
 
@@ -93,16 +68,6 @@ agent_cli_opts = [
 ]
 
 nsxv3_opts = [
-    cfg.BoolOpt(
-        'nsxv3_use_policy_api',
-        default=None,
-        help="Enforce use of NSXv3 Manager Policy API."
-    ),
-    cfg.IntOpt(
-        'nsxv3_policy_migration_limit',
-        default=2,
-        help='Management to Policy API objects migration limit in seconds'
-    ),
     cfg.IntOpt(
         'nsxv3_connection_retry_count',
         default=10,
@@ -117,6 +82,11 @@ nsxv3_opts = [
         'nsxv3_request_timeout',
         default=60,
         help='NSXv3 Manager client native request timeout in seconds.'
+    ),
+    cfg.IntOpt(
+        'nsxv3_realization_timeout',
+        default=900,
+        help='NSXv3 Manager client (policy) realization timeout.'
     ),
     cfg.IntOpt(
         'nsxv3_operation_retry_count',
@@ -150,7 +120,8 @@ nsxv3_opts = [
     ),
     cfg.StrOpt(
         'nsxv3_login_password',
-        default='VMware1!',
+        default='',
+        secret=True,
         help="NSXv3 Manager login password."
     ),
     cfg.HostAddressOpt(
@@ -168,15 +139,21 @@ nsxv3_opts = [
         default='openstack-tz',
         help="NSXv3 Manager transport zone name."
     ),
-    cfg.BoolOpt(
-        'nsxv3_enable_spoof_guard',
-        default=False,
-        help="NSXv3 Manager enables SpoofGuard protection."
+    cfg.StrOpt(
+        'nsxv3_spoof_guard_switching_profile',
+        default='nsx-default-spoof-guard-vif-profile',
+        help="NSXv3 Spoof guard profile to use (or create if not existing)."
+    ),
+    cfg.StrOpt(
+        'nsxv3_ip_discovery_switching_profile',
+        default='nsx-default-ip-discovery-vlan-profile',
+        help="NSXv3 ip discovery profile to use (or create if not existing)."
     ),
     cfg.BoolOpt(
-        'nsxv3_suppress_ssl_wornings',
+        'nsxv3_suppress_ssl_warnings',
         default=True,
-        help="NSXv3 Manager disables ssl host validattion. [Development Mode]"
+        help="NSXv3 Manager disables ssl host validation. [Development Mode]",
+        deprecated_name='nsxv3_suppress_ssl_wornings'
     ),
     cfg.ListOpt(
         'nsxv3_managed_hosts',
@@ -199,15 +176,11 @@ nsxv3_opts = [
         help="NSXv3 Manager DFW connectivity strategy: {}"\
             .format(str(nsxv3_dfw_connectivity_strategy))
     ),
-    cfg.BoolOpt('nsxv3_groups_disconnect',
+    cfg.BoolOpt(
+        'nsxv3_default_policy_infrastructure_rules',
         default=False,
-        help="Remvoe dynamic membership criteria from security groups."
-        # NSX-T objects will be created but not enforced on the segment ports
-    ),
-    cfg.IntOpt(
-        'nsxv3_remove_orphan_items_count',
-        default=30,
-        help="Amount of items to be deleted if per sync loop."
+        help="Enable create of default infrastructure rules like ICMP allow, " 
+             "DHCP and Metadata Agent access"
     ),
 ]
 
@@ -238,6 +211,5 @@ vsphere_opts = [
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(agent_cli_opts, "AGENT_CLI")
 cfg.CONF.register_opts(nsxv3_opts, "NSXV3")
-cfg.CONF.register_opts(vsphere_opts, "vsphere")
 cfg.CONF.register_opts(service.RPC_EXTRA_OPTS)
-config.register_agent_state_opts_helper(cfg.CONF)
+cfg.CONF.register_opts(vsphere_opts, "vsphere")

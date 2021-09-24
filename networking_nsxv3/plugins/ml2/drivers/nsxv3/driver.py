@@ -1,19 +1,17 @@
-from neutron_lib.callbacks import resources
-from oslo_log import log
-
+from neutron import service
+from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
-from neutron.agent import securitygroups_rpc
-
-from neutron_lib import rpc
-from neutron_lib import context
+from neutron_lib import context, rpc
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.callbacks import resources
 from neutron_lib.plugins.ml2 import api
+from oslo_log import log
 
-from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.api import rpc as nsxv3_rpc
-from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
+from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
+from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 
 LOG = log.getLogger(__name__)
 
@@ -52,17 +50,13 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {
             portbindings.CAP_PORT_FILTER: sg_enabled,
             portbindings.OVS_HYBRID_PLUG: sg_enabled,
+            portbindings.VIF_DETAILS_CONNECTIVITY:
+                portbindings.CONNECTIVITY_L2
         }
 
         self.rpc = nsxv3_rpc.NSXv3AgentRpcClient(self.context)
         self.trunk = nsxv3_trunk.NSXv3TrunkDriver.create()
         self.qos = nsxv3_qos.NSXv3QosDriver.create(self.rpc)
-
-        conn = rpc.Connection()
-        conn.create_consumer(nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
-                             [nsxv3_rpc.NSXv3ServerRpcCallback()],
-                             fanout=False)
-        conn.consume_in_threads()
 
         super(VMwareNSXv3MechanismDriver, self).__init__(
             self.agent_type,
@@ -71,6 +65,17 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         )
 
         LOG.info("Initialized Mechanism Driver Type=" + str(self.agent_type))
+
+    def get_workers(self):
+        return [service.RpcWorker([self], worker_process_count=0)]
+
+    def start_rpc_listeners(self):
+        """Start the RPC loop to let the plugin communicate with agents."""
+        self.conn = rpc.Connection()
+        self.conn.create_consumer(nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
+                             [nsxv3_rpc.NSXv3ServerRpcCallback()],
+                             fanout=False)
+        return self.conn.consume_in_threads()
 
     # Overwrite
     def get_allowed_network_types(self, agent):
@@ -91,6 +96,8 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         agent_alive = agent.get('alive', False)
         agent_type = agent['agent_type']
         host = agent.get('host', None)
+        physical_network = segment.get('physical_network')
+        transport_zone = agent.get('configurations', {}).get('nsxv3_transport_zone')
 
         if not device.startswith('compute'):
             LOG.warn(
@@ -107,26 +114,43 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             return False
 
         if not agent_type.lower() == self.agent_type.lower():
-            LOG.warn("Un supported agent type Type=" + str(agent_type))
+            LOG.warn("Unsupported agent type: Type=" + str(agent_type))
             return False
 
         if not host == context.current['binding:host_id']:
             LOG.warn("Not supported host. Host=" + str(host))
             return False
 
+        if not physical_network:
+            LOG.warn("Needs a valid physical network for binding")
+            return False
+
+        # We cannot rely on always getting the right segment
+        if len(context.segments_to_bind) > 1 and transport_zone:
+            # Remove bb
+            bb = transport_zone.lstrip('b')
+            # remove leading zeros
+            bb = bb.lstrip('0')
+            # remove -vlan
+            if bb.endswith('-vlan'):
+                bb = bb[:-5]
+            # readd bb
+            bb = 'bb{}'.format(bb)
+
+            if not(physical_network in transport_zone or physical_network == bb):
+                LOG.warn("No segment found for physical_network=" + str(physical_network))
+                return False
+
         response = self.rpc.get_network_bridge(
             context.current, [segment], context.network.current, context.host
         )
 
         vif_details = self.vif_details.copy()
-        vif_details['nsx-logical-switch-id'] = response.get(
-            'nsx-logical-switch-id')
-        vif_details['external-id'] = response.get('nsx-logical-switch-id')
-        vif_details['segmentation_id'] = response.get('segmentation_id')
+        vif_details.update(response)
 
-        if not vif_details['nsx-logical-switch-id']:
-            LOG.error("Agent={} did not provide nsx-logical-switch-id."
-                      .format(agent_type))
+        if not vif_details.get('nsx-logical-switch-id'):
+            LOG.info("Agent {} did not provide nsx-logical-switch-id for network {} of port {}"
+                     .format(host, context.network.current.get('id'), context.current.get('id')))
             return False
         else:
             context.set_binding(segment[api.ID], self.vif_type, vif_details)

@@ -10,12 +10,15 @@ NSXV3_AGENT_NETWORK_TYPES = [
     neutron_constants.TYPE_VLAN,
     neutron_constants.TYPE_FLAT
 ]
-NSXV3_AGENT_NETWORK_MAPPING = {}
+NSXV3_AGENT_NETWORK_MAPPING = dict()
 
 NSXV3_SECURITY_GROUP_SCOPE = "security_group"
+NSXV3_SECURITY_GROUP_REMOTE_SCOPE = "security_group_remote_id"
 NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE = 265
 NSXV3_REVISION_SCOPE = "revision_number"
 NSXV3_AGENT_SCOPE = "agent_id"
+NSXV3_AGE_SCOPE = "age"
+
 
 NSXV3_MIGRATION_SCOPE = "vswitch_migration_target"
 NSXV3_MIGRATION_TAG_DVS = "dvs"

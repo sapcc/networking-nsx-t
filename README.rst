@@ -133,54 +133,46 @@ Port Binding (Trunk)
     --subport port=<trunk_subport_id_2>,segmentation-type=vlan,segmentation-id=200 
     openstack server create --image <image_name> --flavor "1" --nic "port-id=<trunk-parent-port-id>" <server-name>
 
+CLI
+^^^
+Neutron ML2 NSX-T Agent command line interface
 
-Ansible Playbook - Install ML2 Driver & ML2 Agent
--------------------------------------------------
 ::
 
-    cd tools
-    ansible-playbook -i open_stack.cfg configure_ml2_agent.yml
-    ansible-playbook -i open_stack.cfg configure_ml2_plugin.yml
+    # Synchronize OpenStack resource Types with ids
+    /usr/local/bin/neutron-nsxv3-agent-cli -h
+        usage: neutron-nsxv3-agent-cli-sync COMMAND
+                        update - Force synchronization between Neutron and NSX-T objects
+                        export - Export Neutron and NSX-T inventories
+                        load - Loads NSX-T Inventory and syncs Neutron inventory on top
+                        clean - Clean up NSX-T objects
+                    
+        Neutron ML2 NSX-T Agent command line interface
+
+        positional arguments:
+        command     Subcommand update|export|load|clean
+
+        optional arguments:
+        -h, --help  show this help message and exit
 
 
-Workload Migration from DVS ML2 driver
--------------------------------------------------
-The driver supports migration of worklods from DVS ML2 driver to NSXv3 ML2 driver.
+    # Example for synchronization of members for two security groups
+    /usr/local/bin/neutron-nsxv3-agent-cli update \
+        --config-file /etc/neutron/neutron.conf \
+        --config-file /etc/neutron/plugins/ml2/ml2_conf.ini \
+        --type security_group_members \
+        --ids 5af2f34b-cb81-4a9d-bcb4-30f72fca91cd,b0cd1ce8-9fe0-44f6-8b5c-be455e778756
+    
+    # Clean up NSX-T Manager objects both Policy and Management
+    /usr/local/bin/neutron-nsxv3-agent-cli clean --config-file ml2.ini --config-file neutron.conf
 
-Migration Prerequisites
-^^^^^^^^^^^^^^^^^^^^^^^
+    # Export NSX-T and Neutron inventories into a local file structure under "inventory" folder
+    /usr/local/bin/neutron-nsxv3-agent-cli export --config-file ml2.ini --config-file neutron.conf
 
-- ESXi hosts have to be both enabled for DVS and N-VDS workloads
-- Virtual machines target of migration have to be assigned with the NSX-T tag:
-    ::
+    # Load NSX-T Manager from the local file inventory.
+    # Synchronize NSX-T Manager objects state based on the local file Neutron inventory
+    /usr/local/bin/neutron-nsxv3-agent-cli load --config-file ml2.ini --config-file neutron.conf
 
-        scope = "vswitch_migration_target"
-        tag = "dvs"
-
-- Enable DVS and NSX-T drivers to work at the same time as follow:
-    ::
-
-        # /etc/neutron/plugins/ml2/ml2_conf.ini
-        mechanism_drivers = nsxv3,dvs
-
-NSX-T ML2 Driver Behaviour
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-- Once both drivers are enabled the OpenStack networking will behave as follow:
-    - network operations related to the existing virtual machines assigned with NSX-T tag = "dvs" will be skipped by NSX-T driver and handled by the DVS driver
-    - network operations related to the new virtual machines will be handled by the NSX-T dirver
-- Migrate DVS managed virtual machine to NSX-T:
-    - change the NSX-T tag:
-        ::
-        
-            scope = "vswitch_migration_target"
-            tag = "nvds"
-
-    - re-trigger port binding for every virtual machine port by using an random name for a dummy host and then switch back to the original host
-        ::
-
-            os port set --host <dummy host> <port_id>
-            os port set --host <original host> <port_id>
 
 NSX-T ML2 Prometheus Exporter
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -194,3 +186,15 @@ The agent exports the following metrics.
     # HELP nsxv3_agent_passive_queue_size Passive synchronization queue size
     # TYPE nsxv3_agent_passive_queue_size gauge
     nsxv3_agent_passive_queue_size{nsxv3_manager_hostname="nsxm-l-01a.corp.local"} 72.0
+
+
+Pending Tasks
+-------------
+
+- Finalize migration to Policy API (applicable for NSX-T version >= 3.2.0)
+    - Change implementation of Logical Switces, Ports and Policies from Management to Policy API
+    - Promote Logical Switces, Ports and Policies to Segments by keeping the same system IDs
+- Merge Security Group Logging from `feature branch <https://github.com/sapcc/networking-nsx-t/pull/57/commits/cb6061f0aedbb3e08a036f231f60ae6be179e53f>`_.
+- Finalize the list of `supported ICMP Rules <https://github.com/sapcc/networking-nsx-t/blob/df5858dfd7fd6fe748e05489fee0d11ed789ea2e/networking_nsxv3/plugins/ml2/drivers/nsxv3/agent/constants_nsx.py#L146>`_ by NSX-T .
+- Add unit and functional tests for port trunking functionality
+- Optimize the speed and number of Neutron DB queries

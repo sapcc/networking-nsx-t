@@ -1,19 +1,12 @@
+from networking_nsxv3.common import constants as nsxv3_constants
+from neutron.services.trunk.drivers import base
+from neutron_lib import constants, context
+from neutron_lib.api.definitions import port, portbindings
+from neutron_lib.callbacks import events, registry, resources
+from neutron_lib.plugins import directory
+from neutron_lib.services.trunk import constants as trunk_consts
 from oslo_config import cfg
 from oslo_log import log as logging
-
-from neutron_lib.callbacks import resources
-from neutron_lib.services.trunk import constants as trunk_consts
-
-from neutron.services.trunk.drivers import base
-from neutron_lib.api.definitions import portbindings
-from neutron_lib.api.definitions import port
-from neutron_lib.callbacks import events
-from neutron_lib.callbacks import registry
-from neutron_lib.plugins import directory
-from neutron_lib import context
-from neutron_lib import constants
-
-from networking_nsxv3.common import constants as nsxv3_constants
 
 LOG = logging.getLogger(__name__)
 
