@@ -134,7 +134,8 @@ class Provider(provider_nsx_mgmt.Provider):
         super(Provider, self).__init__(payload=payload)
         if cfg.CONF.NSXV3.nsxv3_default_policy_infrastructure_rules:
             self._setup_default_infrastructure_rules()
-        self._ensure_default_l3_policy()
+        if self.client.version >= (3, 0):
+            self._ensure_default_l3_policy()
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
