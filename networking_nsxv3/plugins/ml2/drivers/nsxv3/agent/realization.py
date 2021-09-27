@@ -28,7 +28,7 @@ class AgentRealizer(object):
         meta = dict()
         while cursor != -1:
             result = query(step, cursor)
-            meta.update({id:rev for id,rev,_ in result})
+            meta.update({id: rev for id, rev, _ in result})
             cursor = result[-1][2] if len(result) >= step else -1
         return meta
 
@@ -45,7 +45,6 @@ class AgentRealizer(object):
             if o[0] == p.SG_MEMBERS:
                 self.callback(o[1], self.security_group_members)
 
-
     def all(self, dryrun=False):
         """
         Enforce desired state between OpenStack and Provider objects
@@ -56,8 +55,8 @@ class AgentRealizer(object):
         with LockManager.get_lock("all"):
             if self.kpi().get("passive") > 0:
                 return
-            
-            slice = cfg.CONF.AGENT.synchronization_queue_size
+
+            _slice = cfg.CONF.AGENT.synchronization_queue_size
             p = self.provider
             l = self.legacy_provider
             r = self.rpc
@@ -85,32 +84,40 @@ class AgentRealizer(object):
                 LOG.info("Dryrun:%s. Metadata refresh completed.", dryrun)
                 return
 
-            ## Don't count ports into synchronization limit, since ports
-            ## are not created by the agent they could exhaust the worker queue
-            ## and cause the agent to be stuck.
-            # outdated = list(itertools.islice(port_outdated, slice))
-            outdated = port_outdated
-            #slice -= len(outdated)
+            # Don't count ports into synchronization limit, since ports
+            # are not created by the agent they could exhaust the worker queue
+            # and cause the agent to be stuck.
+            outdated = list(itertools.islice(port_outdated, _slice))
+            # outdated = port_outdated
+            _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Ports",
                 len(outdated), len(port_outdated))
             self.callback(outdated, self.port)
-            if slice <= 0:
+            if _slice <= 0:
                 return
-            
-            outdated = list(itertools.islice(sgr_outdated, slice))
-            slice -= len(outdated)
+
+            outdated = list(itertools.islice(sgm_outdated, _slice))
+            _slice -= len(outdated)
+            LOG.info("Realizing %s/%s resources of Type:Security Group Members",
+                len(outdated), len(sgm_outdated))
+            self.callback(outdated, self.security_group_members)
+            if _slice <= 0:
+                return
+
+            outdated = list(itertools.islice(sgr_outdated, _slice))
+            _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Security Group Rules",
                 len(outdated), len(sgr_outdated))
             self.callback(outdated, self.security_group_rules)
-            if slice <= 0:
+            if _slice <= 0:
                 return
 
-            outdated = list(itertools.islice(qos_outdated, slice))
-            slice -= len(outdated)
+            outdated = list(itertools.islice(qos_outdated, _slice))
+            _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:QoS",
                 len(outdated), len(qos_outdated))
             self.callback(outdated, self.qos)
-            if slice <= 0:
+            if _slice <= 0:
                 return
 
             current = p.age(p.PORT, port_current)
@@ -122,53 +129,54 @@ class AgentRealizer(object):
             if not [entry for entry in current if entry[2] and int(entry[2]) <= self.age]:
 
                 LOG.info("Sanitizing provider based on age cycles")
-                sanitize = p.sanitize(slice)
+                sanitize = p.sanitize(_slice)
 
                 for id, callback in sanitize:
                     self.callback(id, callback)
 
-                slice -= len(sanitize)
-                if slice <= 0:
+                _slice -= len(sanitize)
+                if _slice <= 0:
                     return
 
-                outdated = list(itertools.islice(legacy_sgr_outdated, slice))
-                slice -= len(outdated)
+                outdated = list(itertools.islice(legacy_sgr_outdated, _slice))
+                _slice -= len(outdated)
                 LOG.info("Realizing %s/%s resources of Type:Security Group Rules (Legacy)",
                     len(outdated), len(legacy_sgr_outdated))
+
                 def legacy_sg_rules_realize(id):
                     l.sg_rules_realize({"id": id}, delete=True)
                 self.callback(outdated, legacy_sg_rules_realize)
-                if slice <= 0:
+                if _slice <= 0:
                     return
 
-                outdated = list(itertools.islice(legacy_sgm_outdated, slice))
-                slice -= len(outdated)
+                outdated = list(itertools.islice(legacy_sgm_outdated, _slice))
+                _slice -= len(outdated)
                 LOG.info("Realizing %s/%s resources of Type:Security Group Members (Legacy)",
                     len(outdated), len(legacy_sgm_outdated))
+
                 def legacy_sg_members_realize(id):
                     l.sg_members_realize({"id": id}, delete=True)
                 self.callback(outdated, legacy_sg_members_realize)
-                if slice <= 0:
+                if _slice <= 0:
                     return
 
                 LOG.info("Sanitizing (Legacy) provider based on age cycles")
 
-                sanitize = l.sanitize(slice)
+                sanitize = l.sanitize(_slice)
                 for id, callback in sanitize:
                     self.callback(id, callback)
 
-                slice -= len(sanitize)
-                if slice <= 0:
+                _slice -= len(sanitize)
+                if _slice <= 0:
                     return
 
                 self.age = int(time.time())
 
-            if len(current) > slice:
-                current = set(itertools.islice(current, slice))
+            if len(current) > _slice:
+                current = set(itertools.islice(current, _slice))
 
             LOG.info("Refreshing %s of least updated resources", len(current))
             self.refresh(current)
-
 
     def security_group_members(self, os_id, reference=False):
         """
@@ -182,20 +190,21 @@ class AgentRealizer(object):
             meta = self.provider.metadata(self.provider.SG_MEMBERS, os_id)
             if not(reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
-                    cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
+                    cidrs = self.rpc.get_security_group_members_effective_ips(
+                        os_id)
                     # SG Members are not revisionable, use default "0"
-                    self.provider.sg_members_realize(\
+                    self.provider.sg_members_realize(
                         {"id": os_id, "cidrs": cidrs, "revision_number": "0"})
                 else:
-                    self.provider.sg_members_realize(\
+                    self.provider.sg_members_realize(
                         {"id": os_id}, delete=True)
-            
+
             # TODO - remove after legacy provider is not supported
             try:
-                self.legacy_provider.sg_members_realize({"id": os_id}, delete=True)
+                self.legacy_provider.sg_members_realize(
+                    {"id": os_id}, delete=True)
             except Exception:
                 pass
-        
 
     def security_group_rules(self, os_id):
         """
@@ -210,7 +219,8 @@ class AgentRealizer(object):
                 # Create Members Container
                 self.security_group_members(os_id, reference=True)
 
-                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(os_id)
+                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(
+                    os_id)
 
                 for os_rule in os_sg["rules"]:
                     remote_id = os_rule.get("remote_group_id")
@@ -225,10 +235,10 @@ class AgentRealizer(object):
 
             # TODO - remove after legacy provider is not supported
             try:
-                self.legacy_provider.sg_rules_realize({"id": os_id}, delete=True)
+                self.legacy_provider.sg_rules_realize(
+                    {"id": os_id}, delete=True)
             except Exception:
-                pass     
-
+                pass
 
     def port(self, os_id):
         """
@@ -245,7 +255,6 @@ class AgentRealizer(object):
             else:
                 self.provider.port_realize({"id": os_id}, delete=True)
 
-
     def qos(self, os_id, reference=False):
         """
         Realize QoS Policy state.
@@ -260,7 +269,6 @@ class AgentRealizer(object):
                     self.provider.qos_realize(qos)
                 else:
                     self.provider.qos_realize({"id": os_id}, delete=True)
-    
 
     def network(self, os_seg_id):
         """

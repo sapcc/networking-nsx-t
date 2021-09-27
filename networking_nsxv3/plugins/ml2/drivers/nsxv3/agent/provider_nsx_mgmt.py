@@ -56,16 +56,17 @@ class Meta(object):
     def __init__(self):
         self.meta = dict()
         self.meta_transaction = None
-    
+        self.scheduled_deletions = dict()
+
     def __enter__(self):
         self.meta_transaction = dict()
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
             self.meta.update(self.meta_transaction)
         self.meta_transaction = None
 
-    def rest(self):
+    def reset(self):
         self.meta = dict()
 
     def keys(self):
@@ -104,11 +105,17 @@ class Meta(object):
     def rm(self, os_id):
         os_id = str(os_id)
         meta = self.meta.get(os_id)
+        for_deletion = self.scheduled_deletions.get(os_id)
         if meta:
             del self.meta[os_id]
         if self.meta_transaction:
             meta = self.meta_transaction.rm(os_id)
+        if for_deletion:
+            del self.scheduled_deletions[os_id]
         return meta
+
+    def schedule_delete(self, os_id, stamp):
+        self.scheduled_deletions.update({os_id: {'stamp': stamp}})
 
 
 class MetaProvider(object):
@@ -126,7 +133,7 @@ class ResourceMeta(object):
         self.age = age
         self._revision = _revision
         self._duplicates = []
-    
+
     def add_ambiguous(self, resource):
         self._duplicates.append(resource)
 
@@ -151,7 +158,7 @@ class Resource(object):
                 if user != "nsx_policy" and att_id:
                     return True
         return False
-    
+
     @property
     def type(self):
         return self.resource.get("resource_type")
@@ -159,7 +166,7 @@ class Resource(object):
     @property
     def id(self):
         return self.resource.get("id")
-    
+
     @property
     def os_id(self):
         os_id = self.resource.get("display_name")
@@ -168,7 +175,7 @@ class Resource(object):
         if self.type == "LogicalPort":
             os_id = self.resource.get("attachment", {}).get("id")
         return os_id
-    
+
     @property
     def tags(self):
         tags = {}
@@ -190,10 +197,11 @@ class Resource(object):
         tags = self.tags
         # Set age to most recent and rev to 0 NSGroups to always skip the update
         return ResourceMeta(
-            id = self.id, 
-            rev = tags.get(NSXV3_REVISION_SCOPE), # empty set for NSGroup
-            age = int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
-            _revision = self.resource.get("_revision")
+            id=self.id,
+            rev=tags.get(NSXV3_REVISION_SCOPE),  # empty set for NSGroup
+            age=int(time.time()) if self.type == "NSGroup" else tags.get(
+                NSXV3_AGE_SCOPE),
+            _revision=self.resource.get("_revision")
         )
 
 
@@ -229,7 +237,7 @@ class Payload(object):
                     provider_tags.append({"scope": scope, "tag": value})
             else:
                 provider_tags.append({"scope": scope, "tag": tag})
-        
+
         return provider_tags
 
     def ip_discovery(self):
@@ -250,7 +258,7 @@ class Payload(object):
             "white_list_providers": [],
             "display_name": os_id
         }
-    
+
     def network(self, os_net, provider_net):
         return {
             "resource_type": "LogicalSwitch",
@@ -263,14 +271,14 @@ class Payload(object):
             "hybrid": False,
             "switching_profile_ids": [],
         }
-    
+
     def qos(self, os_qos, provider_qos):
         payload = {
             "resource_type": "QosSwitchingProfile",
             "display_name": os_qos.get("id"),
             "tags": self.tags(os_qos),
             "shaper_configuration": [],
-            "dscp": { "mode": "TRUSTED", "priority": 0 }
+            "dscp": {"mode": "TRUSTED", "priority": 0}
         }
 
         type = {"ingress": "IngressRateShaper", "egress": "EgressRateShaper"}
@@ -285,14 +293,14 @@ class Payload(object):
             payload["shaper_configuration"].append({
                 "resource_type": type.get(rule.get("direction")),
                 "enabled": True,
-                "average_bandwidth_mbps": \
-                    int(round(float(rule["max_kbps"]) / 1024)),
-                "peak_bandwidth_mbps": \
-                    int(round(float(rule["max_kbps"]) / 1024) * 2),
+                "average_bandwidth_mbps":
+                int(round(float(rule["max_kbps"]) / 1024)),
+                "peak_bandwidth_mbps":
+                int(round(float(rule["max_kbps"]) / 1024) * 2),
                 "burst_size_bytes": int(rule["max_burst_kbps"]) * 128
             })
-        return payload        
-    
+        return payload
+
     def port(self, os_port, provider_port):
         p = os_port
         pp = provider_port
@@ -302,8 +310,8 @@ class Payload(object):
 
         port = {
             "display_name": os_port.get("id"),
-            "logical_switch_id": \
-                p.get("vif_details").get("nsx-logical-switch-id"),
+            "logical_switch_id":
+            p.get("vif_details").get("nsx-logical-switch-id"),
             "admin_state": "UP",
             "switching_profile_ids": pp.get("switching_profile_ids"),
             "address_bindings": p.get("address_bindings"),
@@ -313,18 +321,19 @@ class Payload(object):
                 "context": {
                     "resource_type": "VifAttachmentContext",
                     "vif_type": "PARENT",
-                    "traffic_tag": \
-                        p.get("vif_details").get("segmentation_id")
+                    "traffic_tag":
+                    p.get("vif_details").get("segmentation_id")
                 }
             },
-            "tags": self.tags(os_port, more={NSXV3_SECURITY_GROUP_SCOPE:p.get("security_groups")})
+            "tags": self.tags(os_port, more={NSXV3_SECURITY_GROUP_SCOPE: p.get("security_groups")})
         }
 
         if p_ppid:
             port["attachment"]["id"] = p.get("id")
             port["attachment"]["context"]["vif_type"] = "CHILD"
-            port["attachment"]["context"]["parent_vif_id"] = os_port.get("parent_id")
-        
+            port["attachment"]["context"]["parent_vif_id"] = os_port.get(
+                "parent_id")
+
         if p_qid:
             port["switching_profile_ids"].append({
                 "key": "QosSwitchingProfile",
@@ -345,7 +354,7 @@ class Payload(object):
                 NSXV3_REVISION_SCOPE: "latest"
             })
         }
-    
+
     def sg_rules_ext_container(self, os_sg, provider_sg):
         return {
             "resource_type": "NSGroup",
@@ -365,7 +374,7 @@ class Payload(object):
                 NSXV3_REVISION_SCOPE: "latest"
             })
         }
-    
+
     def sg_rules_container(self, os_sg, provider_sg):
         section = {
             "resource_type": "FirewallSection",
@@ -413,8 +422,8 @@ class Payload(object):
             "display_name": id,
             "services": services,
             "action": "ALLOW",
-            "logged": False, # TODO selective logging
-            "rule_tag": id.replace("-",""),
+            "logged": False,  # TODO selective logging
+            "rule_tag": id.replace("-", ""),
             "_revision": provider_rule["_revision"]
         }
 
@@ -441,7 +450,8 @@ class Payload(object):
             type = "IPSet"
         elif os_rule.get("remote_ip_prefix"):
             id = name = str(netaddr.IPNetwork(os_rule["remote_ip_prefix"]))
-            type = {'IPv4': 'IPv4Address', 'IPv6': 'IPv6Address'}.get(os_rule['ethertype'])
+            type = {'IPv4': 'IPv4Address', 'IPv6': 'IPv6Address'}.get(
+                os_rule['ethertype'])
         else:
             # Any
             return []
@@ -453,7 +463,6 @@ class Payload(object):
             "target_display_name": name
         }]
 
-
     def _sg_rule_service(self, os_rule, provider_rule, subtype="NSService"):
         min = os_rule.get("port_range_min")
         max = os_rule.get("port_range_max")
@@ -464,12 +473,13 @@ class Payload(object):
             min = int(min) if str(min).isdigit() else min
             max = int(max) if str(max).isdigit() else max
 
-            if (min is None or min in VALID_ICMP_RANGES[ethertype] and \
-                (VALID_ICMP_RANGES[ethertype][min] == None) or \
+            if (min is None or min in VALID_ICMP_RANGES[ethertype] and
+                (VALID_ICMP_RANGES[ethertype][min] == None) or
                     (max is None or max in VALID_ICMP_RANGES[ethertype][min])):
 
                 icmp_type = str(min) if min is not None else ""
-                icmp_code = str(max) if max is not None and min is not None and VALID_ICMP_RANGES[ethertype][min] else ""
+                icmp_code = str(
+                    max) if max is not None and min is not None and VALID_ICMP_RANGES[ethertype][min] else ""
                 return ({
                     "resource_type": "ICMPType{}".format(subtype),
                     "icmp_type": icmp_type,
@@ -482,7 +492,6 @@ class Payload(object):
             else:
                 return \
                     (None, "Not supported ICMP Range {}-{}".format(min, max))
-                
 
         if protocol in ["tcp", "udp"]:
             if not min and not max:
@@ -491,11 +500,11 @@ class Payload(object):
             return ({
                 "resource_type": "L4PortSet{}".format(subtype),
                 "l4_protocol": {'tcp': "TCP", 'udp': "UDP"}.get(protocol),
-                "destination_ports": ["{}-{}".format(min, max) \
+                "destination_ports": ["{}-{}".format(min, max)
                     if min != max and max else str(min)],
                 "source_ports": ["1-65535"]
             }, None)
-        
+
         if str(protocol).isdigit():
             return ({
                 "resource_type": "IPProtocol{}".format(subtype),
@@ -507,11 +516,11 @@ class Payload(object):
                 "resource_type": "IPProtocol{}".format(subtype),
                 "protocol_number": int(IP_PROTOCOL_NUMBERS.get(protocol))
             }, None)
-        
-        if not protocol: # ANY
+
+        if not protocol:  # ANY
             return (None, None)
-        
-        return (None,"Unsupported protocol {}.".format(protocol))
+
+        return (None, "Unsupported protocol {}.".format(protocol))
 
 
 class Provider(abs.Provider):
@@ -521,7 +530,7 @@ class Provider(abs.Provider):
 
     def __init__(self, payload=Payload):
         self._metadata = self._metadata_loader()
-        
+
         self.client = Client()
         self.payload = payload()
 
@@ -539,7 +548,7 @@ class Provider(abs.Provider):
                 self.zone_id = zone.get("id")
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
-    
+
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
         ip = self.payload.ip_discovery()
@@ -566,7 +575,7 @@ class Provider(abs.Provider):
             LOG.info("Spoof Guard Switching Profile not found. Creating it.")
             o = self.client.post(path=API.PROFILES, data=sg).json()
             sg_id = o.get("id")
-        
+
         self.switch_profiles = [
             {"key": "SpoofGuardSwitchingProfile", "value": sg_id},
             {"key": "IpDiscoverySwitchingProfile", "value": ip_id}
@@ -589,11 +598,12 @@ class Provider(abs.Provider):
             provider = self._metadata[resource_type]
             with provider.meta:
                 LOG.info("Fetching NSX-T metadata for Type:%s.", resource_type)
-                if provider.endpoint == API.PROFILES: 
+                if provider.endpoint == API.PROFILES:
                     params = API.PARAMS_GET_QOS_PROFILES
-                resources = self.client.get_all(path=provider.endpoint, params=params)
+                resources = self.client.get_all(
+                    path=provider.endpoint, params=params)
                 with LockManager.get_lock(resource_type):
-                    provider.meta.rest()
+                    provider.meta.reset()
                     for o in resources:
                         res = Resource(o)
                         if not res.is_managed:
@@ -618,30 +628,34 @@ class Provider(abs.Provider):
                 self._metadata[resource_type].meta.update(res)
                 return res.meta
 
-    def metadata(self, resource_type, os_id):
+    def metadata(self, resource_type, os_id) -> ResourceMeta:
         if resource_type == Provider.SG_RULE:
             with LockManager.get_lock(Provider.SG_RULES):
                 meta = self._metadata[Provider.SG_RULES].meta.get(os_id)
-                if meta: 
+                if meta:
                     rules = self.client.get_all(API.RULES.format(meta.id))
-                    meta = {Resource(o).os_id:o for o in rules}
+                    meta = {Resource(o).os_id: o for o in rules}
                 return meta
 
         with LockManager.get_lock(resource_type):
             return self._metadata[resource_type].meta.get(os_id)
 
+    def meta_provider(self, resource_type) -> MetaProvider:
+        return self._metadata.get(resource_type)
+
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         os_id = os_o.get("id")
-        
+
         begin_report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
         end_report = "Resource:{} with ID:{} has been %s.".format(resource_type, os_id)
 
-        path = self._metadata.get(resource_type).endpoint
+        path = self.meta_provider(resource_type).endpoint
 
-        meta = self.metadata(resource_type, os_id)
+        metadata = self.metadata(resource_type, os_id)
+        meta = self.meta_provider(resource_type).meta
 
-        if meta:
-            path = "{}/{}".format(path, meta.id)
+        if metadata:
+            path = "{}/{}".format(path, metadata.id)
             if delete:
                 LOG.info(begin_report, "deleted")
 
@@ -658,22 +672,19 @@ class Provider(abs.Provider):
                     res = self.client.get(path=path)
                     if res.status_code == 404:
                         LOG.info(end_report, "rescheduled due 404: not found")
-                        return meta
+                        return metadata
 
                     o = res.json()
-                    if o.get("attachment", {}).get("context", {})\
-                        .get("vif_type") != "CHILD":
-
+                    if o.get("attachment", {}).get("context", {}).get("vif_type") != "CHILD":
                         stamp = int(o.get("_last_modified_time")) / 1000
 
-                        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
-
-                        if (time.time() - stamp) / 3600 < delay:
+                        if not self._del_tmout_passed(stamp):
                             LOG.info(end_report, "rescheduled for deletion")
-                            return meta
+                            meta.schedule_delete(os_id, stamp)
+                            return metadata
 
                 self.client.delete(path=path, params=params)
-                
+
                 LOG.info(end_report, "deleted")
 
                 return self.metadata_delete(resource_type, os_id)
@@ -682,7 +693,7 @@ class Provider(abs.Provider):
                 if resource_type == Provider.SG_RULES_EXT:
                     LOG.debug("Skipping update of NSGroup:%s",)
                 data = convertor(os_o, provider_o)
-                revision = meta._revision
+                revision = metadata._revision
                 if revision != None:
                     data["_revision"] = revision
                 o = self.client.put(path=path, data=data)
@@ -696,6 +707,9 @@ class Provider(abs.Provider):
                 return self.metadata_update(resource_type, o.json())
             LOG.info(end_report, "already deleted")
 
+    def _del_tmout_passed(self, stamp):
+        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
+        return (time.time() - stamp) / 3600 > delay
 
     def outdated(self, resource_type, os_meta):
         self.metadata_refresh(resource_type)
@@ -704,7 +718,7 @@ class Provider(abs.Provider):
             if type(self) == Provider:
                 self.metadata_refresh(Provider.SG_RULES_EXT)
             self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
-        
+
         meta = self._metadata.get(resource_type).meta
 
         k1 = set(os_meta.keys())
@@ -714,9 +728,9 @@ class Provider(abs.Provider):
         outdated = k1.difference(k2)
         outdated.update(k2.difference(k1))
 
-        # Add revision outdated 
+        # Add revision outdated
         for id in k1.intersection(k2):
-            if str(os_meta[id]) != str(meta.get(id).rev):
+            if not meta.get(id).age or str(os_meta[id]) != str(meta.get(id).rev):
                 r = meta.get(id)
                 outdated.add(id)
 
@@ -725,16 +739,22 @@ class Provider(abs.Provider):
             groups = self._metadata.get(Provider.SG_RULES_EXT).meta
             outdated.update(set(groups.keys()).difference(k1))
 
-        LOG.info("The number of outdated resources for Type:%s Is:%s.", 
+        LOG.info("The number of outdated resources for Type:%s Is:%s.",
                  resource_type, len(outdated))
-        LOG.debug("Outdated resources of Type:%s Are:%s", 
+        LOG.debug("Outdated resources of Type:%s Are:%s",
                   resource_type, outdated)
 
         current = k2.difference(outdated)
+
+        # Remove scheduled for deletion from outdated
+        d1 = meta.scheduled_deletions
+        scheduled_dels = [k for k in d1.keys() if not self._del_tmout_passed(d1[k]['stamp'])]
+        outdated.difference_update(scheduled_dels)
+
         return outdated, current
 
     def age(self, resource_type, os_ids):
-        return [(resource_type,id,self.metadata(resource_type, id).age) for id in os_ids]
+        return [(resource_type, id, self.metadata(resource_type, id).age) for id in os_ids]
 
     def port_realize(self, os_port, delete=False):
         provider_port = dict()
@@ -744,7 +764,8 @@ class Provider(abs.Provider):
             return
 
         def get(os_id):
-            port = self.client.get_unique(path=API.PORTS, params={"attachment_id": os_id})
+            port = self.client.get_unique(path=API.PORTS, params={
+                                          "attachment_id": os_id})
             if port:
                 return self.metadata_update(Provider.PORT, port)
 
@@ -754,7 +775,8 @@ class Provider(abs.Provider):
             if parent_port:
                 provider_port["parent_id"] = parent_port.id
             else:
-                LOG.error("Not found. Parent Port:%s", os_port.get("parent_id"))
+                LOG.error("Not found. Parent Port:%s",
+                          os_port.get("parent_id"))
                 return
         else:
             # Parent port is NOT always created externally
@@ -765,21 +787,23 @@ class Provider(abs.Provider):
                 LOG.warning("Not found. Port: %s", os_port.get("id"))
 
         if os_port.get("qos_policy_id"):
-            meta_qos = self.metadata(Provider.QOS, os_port.get("qos_policy_id"))
+            meta_qos = self.metadata(
+                Provider.QOS, os_port.get("qos_policy_id"))
             if meta_qos:
                 provider_port["qos_policy_id"] = meta_qos.id
             else:
-                LOG.error("Not found. QoS:%s for Port:%s", 
+                LOG.error("Not found. QoS:%s for Port:%s",
                           os_port.get("qos_policy_id"), os_port.get("id"))
 
-        provider_port["switching_profile_ids"] = copy.deepcopy(self.switch_profiles)
+        provider_port["switching_profile_ids"] = copy.deepcopy(
+            self.switch_profiles)
 
-        return self._realize(Provider.PORT, False, 
+        return self._realize(Provider.PORT, False,
                              self.payload.port, os_port, provider_port)
 
     def qos_realize(self, qos, delete=False):
         return self._realize(Provider.QOS, delete, self.payload.qos, qos, dict())
-    
+
     def sg_members_realize(self, sg, delete=False):
         if delete and self.metadata(Provider.SG_RULES, sg.get("id")):
             LOG.debug("Resource:%s with ID:%s deletion is rescheduled due to dependency.",
@@ -791,16 +815,16 @@ class Provider(abs.Provider):
     def sg_rules_realize(self, os_sg, delete=False):
         provider_sg = dict()
 
-        nsg_args = [Provider.SG_RULES_EXT, delete, \
+        nsg_args = [Provider.SG_RULES_EXT, delete,
             self.payload.sg_rules_ext_container, os_sg, dict()]
-        sec_args = [Provider.SG_RULES, delete, \
+        sec_args = [Provider.SG_RULES, delete,
             self.payload.sg_rules_container, os_sg, provider_sg]
 
         if delete:
             meta_sec = self._realize(*sec_args)
             meta_nsg = self._realize(*nsg_args)
             return
-        
+
         meta_nsg = self._realize(*nsg_args)
         provider_sg.update({"applied_tos": meta_nsg.id})
         # Create/update/delete section keeping existing tags(revision)
@@ -812,14 +836,13 @@ class Provider(abs.Provider):
         # Update section tags(revision) when all rules applied successfully
         provider_sg["tags_update"] = True
         self._realize(*sec_args)
-        
 
     def _sg_rules_realize(self, os_sg, meta_sg):
 
-        sg_rules = {o.get("id"):o for o in os_sg.get("rules")}
+        sg_rules = {o.get("id"): o for o in os_sg.get("rules")}
 
         if len(sg_rules) > 1000:
-            LOG.error("Unable to update Security Group:%s with more than 1K rules.", 
+            LOG.error("Unable to update Security Group:%s with more than 1K rules.",
                       os_sg.get("id"))
             return
 
@@ -836,10 +859,11 @@ class Provider(abs.Provider):
         os_rules_existing = sg_rules_ids.intersection(sec_rules_ids)
 
         for id in os_rules_remove:
-            path=API.RULE.format(sec_id, sec_rules.get(id).get("id"))
+            path = API.RULE.format(sec_id, sec_rules.get(id).get("id"))
             self.client.delete(path=path)
 
-        sec_rev = self.client.get(path=API.SECTION.format(sec_id)).json().get("_revision")
+        sec_rev = self.client.get(
+            path=API.SECTION.format(sec_id)).json().get("_revision")
 
         data = {"rules": []}
         while os_rules_add:
@@ -850,7 +874,7 @@ class Provider(abs.Provider):
             sec_rule = self.payload.sg_rule(rule, sec_rule)
             if sec_rule:
                 data["rules"].append(sec_rule)
-        
+
         if data["rules"]:
             path = API.RULES_CREATE.format(sec_id)
             resp = self.client.post(path=path, data=data)
@@ -861,8 +885,9 @@ class Provider(abs.Provider):
             if data.get("disabled") or not meta_sg.age:
                 rule = sg_rules.get(id)
                 path = API.RULE.format(sec_id, data.get("id"))
-                data = self.payload.sg_rule(rule, self._get_sg_provider_rule(rule, sec_rev))
-                resp = self.client.put(path=path,data=data)
+                data = self.payload.sg_rule(
+                    rule, self._get_sg_provider_rule(rule, sec_rev))
+                resp = self.client.put(path=path, data=data)
                 sec_rev = resp.json().get("_revision")
 
         resp = self.client.get(path=API.SECTION.format(sec_id))
@@ -871,7 +896,8 @@ class Provider(abs.Provider):
     def _get_sg_provider_rule(self, os_rule, revision):
         provider_rule = dict()
         if os_rule.get("remote_ip_prefix"):
-            net = netaddr.IPNetwork(os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
+            net = netaddr.IPNetwork(
+                os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
             meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
             if net.ip in meta_addr:
                 cidr = str(net)
@@ -879,20 +905,22 @@ class Provider(abs.Provider):
                     meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
                     if not meta:
                         o = self._create_sg_provider_rule_remote_prefix(cidr)
-                        meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
+                        meta = self.metadata_update(
+                            Provider.SG_RULES_REMOTE_PREFIX, o)
                 provider_rule["remote_ip_prefix_id"] = meta.id
         elif os_rule.get("remote_group_id"):
-            meta = self.metadata(Provider.SG_MEMBERS, os_rule["remote_group_id"])
+            meta = self.metadata(Provider.SG_MEMBERS,
+                                 os_rule["remote_group_id"])
             if meta:
                 provider_rule["remote_group_id"] = meta.id
-        
+
         provider_rule["_revision"] = revision
         return provider_rule
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         return self.client.post(path=API.IPSETS,
                                 data=self.payload.sg_rule_remote(cidr)).json()
-    
+
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.IPSET.format(id))
 
@@ -925,15 +953,16 @@ class Provider(abs.Provider):
         for os_id in meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
-            if "0.0.0.0/" not in os_id and "::/" not in os_id:                
+            if "0.0.0.0/" not in os_id and "::/" not in os_id:
                 resource = meta.get(os_id)
                 if resource.get_all_ambiguous():
                     for res in resource.get_all_ambiguous():
-                        sanitize.append((res.id, remove_orphan_remote_prefixes))
+                        sanitize.append(
+                            (res.id, remove_orphan_remote_prefixes))
                 sanitize.append((resource.id, remove_orphan_remote_prefixes))
 
                 if len(sanitize) >= slice:
                     sanitize = sanitize[0:slice]
                     break
-        
+
         return sanitize

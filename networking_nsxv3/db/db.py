@@ -31,7 +31,7 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id > cursor,
     ).limit(
         limit
-    ).all()
+    ).all() # TODO: only uniques
 
 
 def get_qos_policies_with_revisions(context, host, limit, cursor):
