@@ -2,6 +2,7 @@ from neutron import service
 from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
+from neutron.services.trunk import constants as trunk_consts
 from neutron_lib import context, rpc
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
@@ -99,9 +100,9 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         physical_network = segment.get('physical_network')
         transport_zone = agent.get('configurations', {}).get('nsxv3_transport_zone')
 
-        if not device.startswith('compute'):
+        if not device.startswith('compute') or not device.startswith(trunk_consts.TRUNK_SUBPORT_OWNER):
             LOG.warn(
-                "Only compute devices are supported. Device=" +
+                "Only compute and trunk subport devices are supported. Device=" +
                 str(device))
             return False
 
