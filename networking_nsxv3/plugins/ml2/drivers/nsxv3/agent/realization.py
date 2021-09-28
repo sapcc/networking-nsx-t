@@ -75,9 +75,9 @@ class AgentRealizer(object):
             legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, _ = p.outdated(p.SG_MEMBERS, dict())
+            sgm_outdated, _ = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             # Only force networks refresh
-            p.outdated(p.NETWORK, dict())
+            p.metadata_refresh(p.NETWORK)
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:
@@ -88,7 +88,6 @@ class AgentRealizer(object):
             # are not created by the agent they could exhaust the worker queue
             # and cause the agent to be stuck.
             outdated = list(itertools.islice(port_outdated, _slice))
-            # outdated = port_outdated
             _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Ports",
                 len(outdated), len(port_outdated))

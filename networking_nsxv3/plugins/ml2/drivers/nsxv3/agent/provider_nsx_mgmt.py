@@ -1,15 +1,16 @@
 import copy
 import time
-from os import pardir
+import uuid
 
 import netaddr
+from oslo_config import cfg
+from oslo_log import log as logging
+
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as abs
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
-from oslo_config import cfg
-from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
@@ -160,6 +161,14 @@ class Resource(object):
     @property
     def id(self):
         return self.resource.get("id")
+
+    @property
+    def has_valid_os_uuid(self) -> bool:
+        try:
+            uuid.UUID(self.os_id)
+            return True
+        except ValueError:
+            return False
 
     @property
     def os_id(self):
@@ -609,6 +618,9 @@ class Provider(abs.Provider):
                                 continue
                         if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
                             if NSXV3_REVISION_SCOPE in res.tags:
+                                continue
+                        if resource_type == Provider.SG_RULES:
+                            if not res.has_valid_os_uuid:
                                 continue
                         provider.meta.add(res)
 
