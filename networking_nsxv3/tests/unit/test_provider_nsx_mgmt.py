@@ -1240,3 +1240,27 @@ class TestProviderMgmt(base.BaseTestCase):
         inv = self.inventory.inventory
         self.assertTrue(self.get_by_name(inv[Inventory.SECTIONS], sg1["id"]).get("stateful"))
         self.assertFalse(self.get_by_name(inv[Inventory.SECTIONS], sg2["id"]).get("stateful"))
+
+    @responses.activate
+    def test_outdated_with_filtered_deletions(self):
+        _, _, _, _, os_port_parent, _ = self.port_fixture()
+
+        provider = provider_nsx_mgmt.Provider()
+        provider.port_realize(os_port_parent)
+
+        meta_p = provider.meta_provider(provider.PORT)
+        provider.port_realize(os_port_parent, delete=True)
+
+        self.assertEquals(len(meta_p.meta.scheduled_deletions), 1)
+        self.assertIsNotNone(meta_p.meta.scheduled_deletions.get(os_port_parent['id']))
+
+        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']:{}})
+        self.assertEquals(len(outdated), 0)
+
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
+
+        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']:{}})
+        self.assertEquals(len(outdated), 1)
+
+        provider.port_realize(os_port_parent, delete=True)
+        self.assertEqual(len(meta_p.meta.scheduled_deletions), 0)
