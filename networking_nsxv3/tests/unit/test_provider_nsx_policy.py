@@ -1,6 +1,7 @@
 import copy
 import json
 import re
+import uuid
 
 import requests
 import responses
@@ -502,16 +503,16 @@ class TestProviderPolicy(base.BaseTestCase):
     @responses.activate
     def test_outdated(self):
         sg = [
-            {"id": "1", "revision_number": 1, "tags": [], "rules": []},
-            {"id": "2", "revision_number": 2, "tags": [], "rules": []},
-            {"id": "3", "revision_number": 3, "tags": [], "rules": []},
-            {"id": "4", "revision_number": 4, "tags": [], "rules": []}
+            {"id": str(uuid.uuid4()), "revision_number": 1, "tags": [], "rules": []},
+            {"id": str(uuid.uuid4()), "revision_number": 2, "tags": [], "rules": []},
+            {"id": str(uuid.uuid4()), "revision_number": 3, "tags": [], "rules": []},
+            {"id": str(uuid.uuid4()), "revision_number": 4, "tags": [], "rules": []}
         ]
 
         meta = {
-            "1": "1", # same
-            "2": "3", # updated
-            "3": "8" # updated
+            sg[0]['id']: "1", # same
+            sg[1]['id']: "3", # updated
+            sg[2]['id']: "8" # updated
             # 4 was removed => orphaned
         }
 
@@ -525,8 +526,8 @@ class TestProviderPolicy(base.BaseTestCase):
 
         outdated,current = provider.outdated(provider.SG_RULES, meta)
 
-        self.assertEquals(outdated, set(["2","3","4"]))
-        self.assertEquals(current, set(["1"]))
+        self.assertItemsEqual(outdated, [sg[1]['id'],sg[2]['id'],sg[3]['id']])
+        self.assertItemsEqual(current, [sg[0]['id']])
 
     @responses.activate
     def test_security_group_stateful(self):
