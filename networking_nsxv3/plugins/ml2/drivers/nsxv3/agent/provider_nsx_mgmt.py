@@ -80,6 +80,8 @@ class Meta(object):
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
             LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
+        elif not resource.os_id:
+            LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
         else:
             self.meta[resource.os_id] = resource.meta
         return old_meta
@@ -167,7 +169,7 @@ class Resource(object):
         try:
             uuid.UUID(self.os_id)
             return True
-        except ValueError:
+        except (ValueError, TypeError):
             return False
 
     @property

@@ -247,7 +247,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule1 = {
-            "id": "1",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -259,7 +259,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule2 = {
-            "id": "2",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -271,7 +271,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule1_u = {
-            "id": "1",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -283,7 +283,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule3 = {
-            "id": "3",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -296,19 +296,19 @@ class TestProviderMgmt(base.BaseTestCase):
 
         # Add two new rules
         sg1 = copy.deepcopy(sg)
-        sg1["id"] = "1"
+        sg1["id"] = str(uuid.uuid4())
         sg1["rules"].append(copy.deepcopy(rule1))
         sg1["rules"].append(copy.deepcopy(rule2))
     
 
         # Add new, update existing, delete existing
         sg2 = copy.deepcopy(sg)
-        sg2["id"] = "2"
+        sg2["id"] = str(uuid.uuid4())
         sg2["rules"].append(copy.deepcopy(rule1_u))
         sg2["rules"].append(copy.deepcopy(rule3))
 
         sg3 = copy.deepcopy(sg)
-        sg3["id"] = "3"
+        sg3["id"] = str(uuid.uuid4())
 
         inv = self.inventory.inventory
         provider = provider_nsx_mgmt.Provider()
@@ -357,14 +357,14 @@ class TestProviderMgmt(base.BaseTestCase):
     def test_security_group_icmp_generic_rules(self):
 
         sg = {
-            "id": "1",
+            "id": str(uuid.uuid4()),
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
             "rules": []
         }
 
         rule1 = {
-            "id": "1",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -376,7 +376,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule2 = {
-            "id": "2",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -388,7 +388,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule3 = {
-            "id": "3",
+            "id": str(uuid.uuid4()),
             "ethertype": "IPv4",
             "direction": "ingress",
             "remote_group_id": "",
@@ -1235,8 +1235,8 @@ class TestProviderMgmt(base.BaseTestCase):
 
     @responses.activate
     def test_security_group_stateful(self):
-        sg1 = { "id": "1", "revision_number": 2,"rules": [] }
-        sg2 = dict(sg1, **{'id': '2', 'stateful': False})
+        sg1 = { "id": str(uuid.uuid4()), "revision_number": 2,"rules": [] }
+        sg2 = dict(sg1, **{'id': str(uuid.uuid4()), "stateful": False})
         provider = provider_nsx_mgmt.Provider()
         provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg2)
