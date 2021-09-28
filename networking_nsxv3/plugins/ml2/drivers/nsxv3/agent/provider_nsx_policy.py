@@ -132,6 +132,7 @@ class Provider(provider_nsx_mgmt.Provider):
 
     def __init__(self, payload=Payload):
         super(Provider, self).__init__(payload=payload)
+        self.provider = "Policy"
         if cfg.CONF.NSXV3.nsxv3_default_policy_infrastructure_rules:
             self._setup_default_infrastructure_rules()
         if self.client.version >= (3, 0):

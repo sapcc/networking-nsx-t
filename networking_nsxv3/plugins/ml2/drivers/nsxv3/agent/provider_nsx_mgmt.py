@@ -56,7 +56,6 @@ class Meta(object):
     def __init__(self):
         self.meta = dict()
         self.meta_transaction = None
-        self.scheduled_deletions = dict()
 
     def __enter__(self):
         self.meta_transaction = dict()
@@ -105,17 +104,11 @@ class Meta(object):
     def rm(self, os_id):
         os_id = str(os_id)
         meta = self.meta.get(os_id)
-        for_deletion = self.scheduled_deletions.get(os_id)
         if meta:
             del self.meta[os_id]
         if self.meta_transaction:
             meta = self.meta_transaction.rm(os_id)
-        if for_deletion:
-            del self.scheduled_deletions[os_id]
         return meta
-
-    def schedule_delete(self, os_id, stamp):
-        self.scheduled_deletions.update({os_id: {'stamp': stamp}})
 
 
 class MetaProvider(object):
@@ -127,11 +120,12 @@ class MetaProvider(object):
 
 class ResourceMeta(object):
 
-    def __init__(self, id, rev, age, _revision):
+    def __init__(self, id, rev, age, _revision, _last_modified_time):
         self.id = id
         self.rev = rev
         self.age = age
         self._revision = _revision
+        self._last_modified_time = _last_modified_time
         self._duplicates = []
 
     def add_ambiguous(self, resource):
@@ -201,7 +195,8 @@ class Resource(object):
             rev=tags.get(NSXV3_REVISION_SCOPE),  # empty set for NSGroup
             age=int(time.time()) if self.type == "NSGroup" else tags.get(
                 NSXV3_AGE_SCOPE),
-            _revision=self.resource.get("_revision")
+            _revision=self.resource.get("_revision"),
+            _last_modified_time=self.resource.get('_last_modified_time')
         )
 
 
@@ -529,6 +524,7 @@ class Provider(abs.Provider):
     SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
 
     def __init__(self, payload=Payload):
+        self.provider = "Management"
         self._metadata = self._metadata_loader()
 
         self.client = Client()
@@ -597,7 +593,7 @@ class Provider(abs.Provider):
         if resource_type != Provider.SG_RULE:
             provider = self._metadata[resource_type]
             with provider.meta:
-                LOG.info("Fetching NSX-T metadata for Type:%s.", resource_type)
+                LOG.info("[%s] Fetching NSX-T metadata for Type:%s.", self.provider, resource_type)
                 if provider.endpoint == API.PROFILES:
                     params = API.PARAMS_GET_QOS_PROFILES
                 resources = self.client.get_all(
@@ -646,13 +642,11 @@ class Provider(abs.Provider):
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         os_id = os_o.get("id")
 
-        begin_report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
-        end_report = "Resource:{} with ID:{} has been %s.".format(resource_type, os_id)
+        begin_report = "[{}] Resource:{} with ID:{} is going to be %s.".format(self.provider, resource_type, os_id)
+        end_report = "[{}] Resource:{} with ID:{} has been %s.".format(self.provider, resource_type, os_id)
 
         path = self.meta_provider(resource_type).endpoint
-
         metadata = self.metadata(resource_type, os_id)
-        meta = self.meta_provider(resource_type).meta
 
         if metadata:
             path = "{}/{}".format(path, metadata.id)
@@ -680,7 +674,6 @@ class Provider(abs.Provider):
 
                         if not self._del_tmout_passed(stamp):
                             LOG.info(end_report, "rescheduled for deletion")
-                            meta.schedule_delete(os_id, stamp)
                             return metadata
 
                 self.client.delete(path=path, params=params)
@@ -724,14 +717,17 @@ class Provider(abs.Provider):
         k1 = set(os_meta.keys())
         k2 = set(meta.keys())
 
-        # Treat both new and orphaned as outdated
+        # Treat both new and orphaned as outdated, but filter out orphaned ports not yet to be deleted
         outdated = k1.difference(k2)
-        outdated.update(k2.difference(k1))
+        orphaned = k2.difference(k1)
+        outdated.update([id for id in orphaned if resource_type != Provider.PORT or
+                         self._del_tmout_passed(meta.get(id)._last_modified_time / 1000)]
+        )
 
         # Add revision outdated
         for id in k1.intersection(k2):
             if not meta.get(id).age or str(os_meta[id]) != str(meta.get(id).rev):
-                r = meta.get(id)
+                meta.get(id)
                 outdated.add(id)
 
         if type(self) == Provider and resource_type == Provider.SG_RULES:
@@ -739,18 +735,12 @@ class Provider(abs.Provider):
             groups = self._metadata.get(Provider.SG_RULES_EXT).meta
             outdated.update(set(groups.keys()).difference(k1))
 
-        LOG.info("The number of outdated resources for Type:%s Is:%s.",
-                 resource_type, len(outdated))
+        LOG.info("[%s] The number of outdated resources for Type:%s Is:%s.",
+                 self.provider, resource_type, len(outdated))
         LOG.debug("Outdated resources of Type:%s Are:%s",
                   resource_type, outdated)
 
         current = k2.difference(outdated)
-
-        # Remove scheduled for deletion from outdated
-        d1 = meta.scheduled_deletions
-        scheduled_dels = [k for k in d1.keys() if not self._del_tmout_passed(d1[k]['stamp'])]
-        outdated.difference_update(scheduled_dels)
-
         return outdated, current
 
     def age(self, resource_type, os_ids):

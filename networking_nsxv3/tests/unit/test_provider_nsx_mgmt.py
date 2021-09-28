@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 import re
+import time
 
 import requests
 import responses
@@ -869,7 +870,8 @@ class TestProviderMgmt(base.BaseTestCase):
             "vif_details": {
                 "nsx-logical-switch-id": "712CAD71-B3F5-4AA0-8C3F-8D453DCBF2F2",
                 "segmentation_id": "3200"
-            }
+            },
+            "_last_modified_time": time.time()
         }
 
         os_port_child = {
@@ -1251,16 +1253,16 @@ class TestProviderMgmt(base.BaseTestCase):
         meta_p = provider.meta_provider(provider.PORT)
         provider.port_realize(os_port_parent, delete=True)
 
-        self.assertEquals(len(meta_p.meta.scheduled_deletions), 1)
-        self.assertIsNotNone(meta_p.meta.scheduled_deletions.get(os_port_parent['id']))
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 1000
+        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']:os_port_parent['revision_number']})
+        self.assertEquals(len(outdated), 0)
 
-        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']:{}})
+        outdated, _ = provider.outdated(provider.PORT, {})
         self.assertEquals(len(outdated), 0)
 
         cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
-
-        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']:{}})
+        outdated, _ = provider.outdated(provider.PORT, {})
         self.assertEquals(len(outdated), 1)
 
         provider.port_realize(os_port_parent, delete=True)
-        self.assertEqual(len(meta_p.meta.scheduled_deletions), 0)
+        self.assertEquals(len(meta_p.meta.keys()), 0)
