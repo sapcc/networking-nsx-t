@@ -125,8 +125,13 @@ class AgentRealizer(object):
             current += p.age(p.QOS, qos_current)
 
             # Sanitize when there are no elements or the eldest age > current age
-            if not [entry for entry in current if entry[2] and int(entry[2]) <= self.age]:
-
+            aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.age]
+            LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
+            if aged:
+                aged = set(itertools.islice(aged, _slice))
+                LOG.info("Refreshing %s of least updated resources", len(aged))
+                self.refresh(aged)
+            else:
                 LOG.info("Sanitizing provider based on age cycles")
                 sanitize = p.sanitize(_slice)
 
@@ -170,12 +175,6 @@ class AgentRealizer(object):
                     return
 
                 self.age = int(time.time())
-
-            if len(current) > _slice:
-                current = set(itertools.islice(current, _slice))
-
-            LOG.info("Refreshing %s of least updated resources", len(current))
-            self.refresh(current)
 
     def security_group_members(self, os_id, reference=False):
         """

@@ -753,6 +753,9 @@ class Provider(abs.Provider):
                   resource_type, outdated)
 
         current = k2.difference(outdated)
+        if resource_type == Provider.PORT:
+            # Ignore ports that are going to be deleted anyway (and therefor not existing in neutron)
+            current = [_id for _id in current if _id in os_meta]
         return outdated, current
 
     def age(self, resource_type, os_ids):
