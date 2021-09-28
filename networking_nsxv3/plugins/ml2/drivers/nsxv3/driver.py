@@ -2,7 +2,7 @@ from neutron import service
 from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
-from neutron.services.trunk import constants as trunk_consts
+from neutron_lib.services.trunk import constants as trunk_consts
 from neutron_lib import context, rpc
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources
