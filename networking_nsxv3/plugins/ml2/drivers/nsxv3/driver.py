@@ -100,7 +100,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         physical_network = segment.get('physical_network')
         transport_zone = agent.get('configurations', {}).get('nsxv3_transport_zone')
 
-        if not device.startswith('compute') or not device.startswith(trunk_consts.TRUNK_SUBPORT_OWNER):
+        if not (device.startswith('compute') or device.startswith(trunk_consts.TRUNK_SUBPORT_OWNER)):
             LOG.warn(
                 "Only compute and trunk subport devices are supported. Device=" +
                 str(device))
