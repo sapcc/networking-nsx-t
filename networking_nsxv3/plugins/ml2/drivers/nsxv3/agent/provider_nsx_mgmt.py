@@ -734,9 +734,17 @@ class Provider(abs.Provider):
         # Treat both new and orphaned as outdated, but filter out orphaned ports not yet to be deleted
         outdated = k1.difference(k2)
         orphaned = k2.difference(k1)
-        outdated.update([id for id in orphaned if resource_type != Provider.PORT or
-                         self._del_tmout_passed(meta.get(id)._last_modified_time / 1000)]
-        )
+
+        # Remove Member orphans still in use
+        if resource_type == Provider.SG_MEMBERS:
+            orphaned = orphaned.difference(self._metadata.get(Provider.SG_RULES).meta.keys())
+
+        # Remove Ports not yet exceeding delete timeout
+        if resource_type == Provider.PORT:
+            orphaned = [orphan for orphan in orphaned
+                        if self._del_tmout_passed(meta.get(orphan)._last_modified_time / 1000)]
+
+        outdated.update(orphaned)
 
         # Add revision outdated
         for id in k1.intersection(k2):
@@ -813,7 +821,7 @@ class Provider(abs.Provider):
 
     def sg_members_realize(self, sg, delete=False):
         if delete and self.metadata(Provider.SG_RULES, sg.get("id")):
-            LOG.debug("Resource:%s with ID:%s deletion is rescheduled due to dependency.",
+            LOG.warning("Resource:%s with ID:%s deletion is rescheduled due to dependency.",
                       Provider.SG_MEMBERS, sg.get("id"))
             return
         return self._realize(Provider.SG_MEMBERS, delete,
