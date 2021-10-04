@@ -234,7 +234,7 @@ class NSXv3ServerRpcCallback(object):
         for ip, mac in db.get_port_allowed_pairs(context, port_id):
             if "/" in ip:
                 continue
-            port["address_bindings"].append({"ip_address": ip[0], "mac_address": mac})
+            port["address_bindings"].append({"ip_address": ip, "mac_address": mac})
 
         for sg_id in db.get_port_security_groups(context, port_id):
             port["security_groups"].append(sg_id[0])
