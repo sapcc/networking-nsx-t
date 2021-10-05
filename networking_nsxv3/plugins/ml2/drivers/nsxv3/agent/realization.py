@@ -95,19 +95,19 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
-            outdated = list(itertools.islice(sgm_outdated, _slice))
-            _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:Security Group Members",
-                len(outdated), len(sgm_outdated))
-            self.callback(outdated, self.security_group_members)
-            if _slice <= 0:
-                return
-
             outdated = list(itertools.islice(sgr_outdated, _slice))
             _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Security Group Rules",
                 len(outdated), len(sgr_outdated))
             self.callback(outdated, self.security_group_rules)
+            if _slice <= 0:
+                return
+
+            outdated = list(itertools.islice(sgm_outdated, _slice))
+            _slice -= len(outdated)
+            LOG.info("Realizing %s/%s resources of Type:Security Group Members",
+                len(outdated), len(sgm_outdated))
+            self.callback(outdated, self.security_group_members)
             if _slice <= 0:
                 return
 
