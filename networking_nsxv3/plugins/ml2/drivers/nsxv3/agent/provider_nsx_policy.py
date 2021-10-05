@@ -200,8 +200,8 @@ class Provider(provider_nsx_mgmt.Provider):
         # When multiple policies did not get realized in the defined timeframe,
         # this is a symptom for another issue. 
         # This should be detected by the Prometheus after a while
-        LOG.error("%s ID:%s did not get realized for %ss", resource_type, os_id, until*pause)
         exporter.REALIZED.labels(resource_type, status).inc()
+        raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
 
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         path = self._metadata.get(resource_type).endpoint
