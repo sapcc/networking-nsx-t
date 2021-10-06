@@ -1,6 +1,4 @@
-import datetime
 import itertools
-import json
 import time
 
 from networking_nsxv3.common.locking import LockManager
@@ -75,7 +73,8 @@ class AgentRealizer(object):
             legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, _ = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, _ = p.outdated(
+                p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             # Only force networks refresh
             p.metadata_refresh(p.NETWORK)
             LOG.info("Inventory metadata have been refreshed.")
@@ -125,7 +124,8 @@ class AgentRealizer(object):
             current += p.age(p.QOS, qos_current)
 
             # Sanitize when there are no elements or the eldest age > current age
-            aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.age]
+            aged = [entry for entry in current if entry[2]
+                and int(entry[2]) <= self.age]
             LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
             if aged:
                 aged = set(itertools.islice(aged, _slice))
@@ -237,6 +237,24 @@ class AgentRealizer(object):
                     {"id": os_id}, delete=True)
             except Exception:
                 pass
+
+    def precreate_port(self, os_id, network_meta):
+        """
+        Try to precreate port on first binding request.
+        :os_id: -- OpenStack ID of the Port
+        :network_meta: -- NSX Switch metadata
+        """
+        with LockManager.get_lock("port-{}".format(os_id)):
+            port = self.rpc.get_port(os_id)
+            if port:
+                os_qid = port.get("qos_policy_id")
+                if os_qid:
+                    self.qos(os_qid, reference=True)
+
+                if not port.get("vif_details") and network_meta:
+                    port["vif_details"] = network_meta
+
+                self.provider.port_realize(port)
 
     def port(self, os_id):
         """

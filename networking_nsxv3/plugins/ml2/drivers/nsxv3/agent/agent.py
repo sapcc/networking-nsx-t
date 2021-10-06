@@ -49,19 +49,27 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.realizer = realizer
 
     def get_network_bridge(self, context, current, network_segments, network_current):
+        try_create_port = False
         if current.get('binding:vif_type') == portbindings.VIF_TYPE_UNBOUND and \
                 current.get('status') == nsxv3_constants.neutron_constants.ACTIVE:
             # This is a double-bound port with inactive new binding, proactivly sync it
             self.port_update(context, port=current)
         else:
-            self.port_create(port=current)
+            try_create_port = True
+
+        network_meta = dict()
         for ns in network_segments:
             cfg.CONF.NSXV3.nsxv3_transport_zone_name
             seg_id = ns.get("segmentation_id")
             net_type = ns.get("network_type")
             if seg_id and net_type in nsxv3_constants.NSXV3_AGENT_NETWORK_TYPES:
-                return self.realizer.network(seg_id)
-        return dict()
+                network_meta = self.realizer.network(seg_id)
+                break
+
+        if try_create_port and bool(network_meta):
+            self.realizer.precreate_port(current["id"], network_meta)
+
+        return network_meta
 
     def security_groups_member_updated(self, context, **kwargs):
         self.callback(kwargs["security_groups"],

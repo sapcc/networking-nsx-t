@@ -79,9 +79,11 @@ class Meta(object):
         old_meta = self.meta.get(resource.os_id)
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
-            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
+            LOG.warning("Duplicate resource with OS_ID: %s ID: %s",
+                        resource.os_id, resource.os_id)
         elif not resource.os_id:
-            LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
+            LOG.warning("Invalid object %s without OS_ID, ID: %s",
+                        resource.type, resource.id)
         else:
             self.meta[resource.os_id] = resource.meta
         return old_meta
@@ -554,7 +556,8 @@ class Provider(abs.Provider):
             if zone.get("display_name") == self.zone_name:
                 self.zone_id = zone.get("id")
         if not self.zone_id:
-            raise Exception("Not found Transport Zone {}".format(self.zone_name))
+            raise Exception(
+                "Not found Transport Zone {}".format(self.zone_name))
 
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
@@ -604,7 +607,8 @@ class Provider(abs.Provider):
         if resource_type != Provider.SG_RULE:
             provider = self._metadata[resource_type]
             with provider.meta:
-                LOG.info("[%s] Fetching NSX-T metadata for Type:%s.", self.provider, resource_type)
+                LOG.info("[%s] Fetching NSX-T metadata for Type:%s.",
+                         self.provider, resource_type)
                 if provider.endpoint == API.PROFILES:
                     params = API.PARAMS_GET_QOS_PROFILES
                 resources = self.client.get_all(
@@ -656,8 +660,10 @@ class Provider(abs.Provider):
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         os_id = os_o.get("id")
 
-        begin_report = "[{}] Resource:{} with ID:{} is going to be %s.".format(self.provider, resource_type, os_id)
-        end_report = "[{}] Resource:{} with ID:{} has been %s.".format(self.provider, resource_type, os_id)
+        begin_report = "[{}] Resource:{} with ID:{} is going to be %s.".format(
+            self.provider, resource_type, os_id)
+        end_report = "[{}] Resource:{} with ID:{} has been %s.".format(
+            self.provider, resource_type, os_id)
 
         path = self.meta_provider(resource_type).endpoint
         metadata = self.metadata(resource_type, os_id)
@@ -709,7 +715,8 @@ class Provider(abs.Provider):
         else:
             if not delete:
                 LOG.info(begin_report, "created")
-                o = self.client.post(path=path, data=convertor(os_o, provider_o))
+                o = self.client.post(
+                    path=path, data=convertor(os_o, provider_o))
                 LOG.info(end_report, "created")
                 return self.metadata_update(resource_type, o.json())
             LOG.info(end_report, "already deleted")
@@ -737,7 +744,8 @@ class Provider(abs.Provider):
 
         # Remove Member orphans still in use
         if resource_type == Provider.SG_MEMBERS:
-            orphaned = orphaned.difference(self._metadata.get(Provider.SG_RULES).meta.keys())
+            orphaned = orphaned.difference(
+                self._metadata.get(Provider.SG_RULES).meta.keys())
 
         # Remove Ports not yet exceeding delete timeout
         if resource_type == Provider.PORT:
@@ -792,7 +800,7 @@ class Provider(abs.Provider):
             else:
                 LOG.error("Not found. Parent Port:%s",
                           os_port.get("parent_id"))
-                return
+                # return
         else:
             # Parent port is NOT always created externally
             port = get(os_port.get("id"))
