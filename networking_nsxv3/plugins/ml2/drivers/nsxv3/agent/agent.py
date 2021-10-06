@@ -43,7 +43,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     """
 
     def __init__(self, context, agent, sg_agent, callback, realizer):
-        super(NSXv3AgentManagerRpcCallBackBase, self).__init__(context, agent, sg_agent)
+        super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
+            context, agent, sg_agent)
         self.callback = callback
         self.realizer = realizer
 
@@ -52,6 +53,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 current.get('status') == nsxv3_constants.neutron_constants.ACTIVE:
             # This is a double-bound port with inactive new binding, proactivly sync it
             self.port_update(context, port=current)
+        else:
+            self.port_create(port=current)
         for ns in network_segments:
             cfg.CONF.NSXV3.nsxv3_transport_zone_name
             seg_id = ns.get("segmentation_id")
@@ -61,10 +64,15 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return dict()
 
     def security_groups_member_updated(self, context, **kwargs):
-        self.callback(kwargs["security_groups"], self.realizer.security_group_members)
+        self.callback(kwargs["security_groups"],
+                      self.realizer.security_group_members)
 
     def security_groups_rule_updated(self, context, **kwargs):
-        self.callback(kwargs["security_groups"], self.realizer.security_group_rules)
+        self.callback(kwargs["security_groups"],
+                      self.realizer.security_group_rules)
+
+    def port_create(self, **kwargs):
+        self.realizer.port(kwargs["port"]["id"])
 
     def port_update(self, context, **kwargs):
         # Ensure security groups attached to the port are synced first
@@ -78,7 +86,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def create_policy(self, context, policy):
         self.update_policy(context, policy)
-    
+
     def delete_policy(self, context, policy):
         self.update_policy(context, policy)
 
@@ -110,19 +118,20 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         else:
             LOG.info(info, "Policy", "Management")
 
-        self.runner = sync.Runner(\
+        self.runner = sync.Runner(
             workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
 
-        self.realizer = realization.AgentRealizer(\
-            rpc=rpc, 
+        self.realizer = realization.AgentRealizer(
+            rpc=rpc,
             callback=self._sync_delayed,
             kpi=self.kpi,
             provider=provider,
             legacy_provider=legacy_provider)
 
         self.synchronization = synchronization
-        self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
+        self.synchronizer = loopingcall.FixedIntervalLoopingCall(
+            self._sync_all)
         self.reload()
 
         if monitoring:
@@ -138,7 +147,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         ids = list(os_ids) if isinstance(os_ids, set) else os_ids
         ids = ids if isinstance(ids, list) else [ids]
         self.runner.run(sync.Priority.HIGHEST, ids, realizer)
-    
+
     def _sync_delayed(self, os_ids, realizer):
         ids = list(os_ids) if isinstance(os_ids, set) else os_ids
         ids = ids if isinstance(ids, list) else [ids]
@@ -288,9 +297,11 @@ def main():
     try:
         resolution = os.getenv('DEBUG_BLOCKING')
         if resolution is not None:
-            eventlet.debug.hub_blocking_detection(state=True, resolution=float(resolution))
+            eventlet.debug.hub_blocking_detection(
+                state=True, resolution=float(resolution))
         else:
-            LOG.info("Eventlet blocking behavior detection initialization completed.")
+            LOG.info(
+                "Eventlet blocking behavior detection initialization completed.")
     except (ValueError, TypeError):
         LOG.error("Initializing Eventlet blocking behavior detection has failed.")
 
