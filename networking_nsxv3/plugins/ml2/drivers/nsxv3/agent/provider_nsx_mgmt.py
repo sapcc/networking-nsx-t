@@ -800,7 +800,7 @@ class Provider(abs.Provider):
             else:
                 LOG.error("Not found. Parent Port:%s",
                           os_port.get("parent_id"))
-                # return
+                return
         else:
             # Parent port is NOT always created externally
             port = get(os_port.get("id"))
