@@ -87,9 +87,9 @@ class Inventory(object):
             return self.resp(200, o) if o else self.resp(404)
         if request.method == "PUT":
             if "policy" in request.url:
-                if o:
-                    return self.resp(422)
-                else:
+                # if o:
+                #     return self.resp(422)
+                # else:
                     inventory[id] = resource
                     resource["id"] = id
                     resource["_create_user"] = "admin"
