@@ -124,7 +124,8 @@ class Payload(provider_nsx_mgmt.Payload):
             "logged": False,  # TODO selective logging
             "tag": os_id.replace("-",""),
             "scope": ["ANY"], # Will be overwritten by Policy Scope
-            "services": ["ANY"] # Required by NSX-T Policy validation
+            "services": ["ANY"], # Required by NSX-T Policy validation
+            "_revision": provider_rule.get("_revision", 0)
         }
 
 
@@ -223,7 +224,10 @@ class Provider(provider_nsx_mgmt.Provider):
             else:
                 LOG.info(report, "updated")
                 data = convertor(os_o, provider_o)
-                self.client.patch(path=path, data=data)
+                revision = meta._revision
+                if revision != None:
+                    data["_revision"] = revision
+                self.client.put(path=path, data=data)
                 data["id"] = provider_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
@@ -251,9 +255,12 @@ class Provider(provider_nsx_mgmt.Provider):
             return
 
         provider_rules = []
+        nsx_rules = self._get_rules_with_revision(os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            provider_rule = self._get_sg_provider_rule(rule, None)
+            nr = [r for r in nsx_rules if r['id'] == rule.get("id")]
+            rev = nr[0].get("_revision", None) if len(nr) else None
+            provider_rule = self._get_sg_provider_rule(rule, rev)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
             if provider_rule:
@@ -265,6 +272,13 @@ class Provider(provider_nsx_mgmt.Provider):
         }
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
+
+    def _get_rules_with_revision(self, os_id):
+        res = self.client.get(API.POLICY.format(os_id))
+        if res.status_code != 200:
+            return []
+        return res.json().get("rules", [])
+
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)

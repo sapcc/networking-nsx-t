@@ -16,7 +16,7 @@ from neutron_lib.api.definitions import portbindings
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
-    return context.session.query(
+    return set(context.session.query(
         Port.id,
         StandardAttribute.revision_number,
         Port.standard_attr_id
@@ -31,7 +31,7 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id > cursor,
     ).limit(
         limit
-    ).all() # TODO: only uniques
+    ).all())
 
 
 def get_qos_policies_with_revisions(context, host, limit, cursor):
