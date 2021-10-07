@@ -43,8 +43,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     """
 
     def __init__(self, context, agent, sg_agent, callback, realizer):
-        super(NSXv3AgentManagerRpcCallBackBase, self).__init__(
-            context, agent, sg_agent)
+        super(NSXv3AgentManagerRpcCallBackBase, self).__init__(context, agent, sg_agent)
         self.callback = callback
         self.realizer = realizer
 
@@ -72,12 +71,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return network_meta
 
     def security_groups_member_updated(self, context, **kwargs):
-        self.callback(kwargs["security_groups"],
-                      self.realizer.security_group_members)
+        self.callback(kwargs["security_groups"], self.realizer.security_group_members)
 
     def security_groups_rule_updated(self, context, **kwargs):
-        self.callback(kwargs["security_groups"],
-                      self.realizer.security_group_rules)
+        self.callback(kwargs["security_groups"], self.realizer.security_group_rules)
 
     def port_create(self, **kwargs):
         self.realizer.port(kwargs["port"]["id"])
@@ -138,8 +135,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             legacy_provider=legacy_provider)
 
         self.synchronization = synchronization
-        self.synchronizer = loopingcall.FixedIntervalLoopingCall(
-            self._sync_all)
+        self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
         self.reload()
 
         if monitoring:
@@ -305,11 +301,9 @@ def main():
     try:
         resolution = os.getenv('DEBUG_BLOCKING')
         if resolution is not None:
-            eventlet.debug.hub_blocking_detection(
-                state=True, resolution=float(resolution))
+            eventlet.debug.hub_blocking_detection(state=True, resolution=float(resolution))
         else:
-            LOG.info(
-                "Eventlet blocking behavior detection initialization completed.")
+            LOG.info("Eventlet blocking behavior detection initialization completed.")
     except (ValueError, TypeError):
         LOG.error("Initializing Eventlet blocking behavior detection has failed.")
 

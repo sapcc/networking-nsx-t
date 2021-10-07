@@ -73,8 +73,7 @@ class AgentRealizer(object):
             legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, _ = p.outdated(
-                p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, _ = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             # Only force networks refresh
             p.metadata_refresh(p.NETWORK)
             LOG.info("Inventory metadata have been refreshed.")
@@ -124,8 +123,7 @@ class AgentRealizer(object):
             current += p.age(p.QOS, qos_current)
 
             # Sanitize when there are no elements or the eldest age > current age
-            aged = [entry for entry in current if entry[2]
-                and int(entry[2]) <= self.age]
+            aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.age]
             LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
             if aged:
                 aged = set(itertools.islice(aged, _slice))
