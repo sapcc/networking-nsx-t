@@ -1,6 +1,4 @@
-import datetime
 import itertools
-import json
 import time
 
 from networking_nsxv3.common.locking import LockManager
@@ -237,6 +235,24 @@ class AgentRealizer(object):
                     {"id": os_id}, delete=True)
             except Exception:
                 pass
+
+    def precreate_port(self, os_id, network_meta):
+        """
+        Try to precreate port on first binding request.
+        :os_id: -- OpenStack ID of the Port
+        :network_meta: -- NSX Switch metadata
+        """
+        with LockManager.get_lock("port-{}".format(os_id)):
+            port = self.rpc.get_port(os_id)
+            if port:
+                os_qid = port.get("qos_policy_id")
+                if os_qid:
+                    self.qos(os_qid, reference=True)
+
+                if not port.get("vif_details") and network_meta:
+                    port["vif_details"] = network_meta
+
+                self.provider.port_realize(port)
 
     def port(self, os_id):
         """
