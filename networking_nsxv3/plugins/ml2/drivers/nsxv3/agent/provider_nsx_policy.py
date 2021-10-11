@@ -1,16 +1,15 @@
-import json
-import os
+import functools
 import re
 
 import eventlet
-import netaddr
+from oslo_config import cfg
+from oslo_log import log as logging
+
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
-from networking_nsxv3.prometheus import exporter
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
-from oslo_config import cfg
-from oslo_log import log as logging
+from networking_nsxv3.prometheus import exporter
 
 LOG = logging.getLogger(__name__)
 
@@ -29,6 +28,23 @@ class API(provider_nsx_mgmt.API):
     SERVICE = "/policy/api/v1/infra/services/{}"
 
     STATUS = "/policy/api/v1/infra/realized-state/status"
+
+
+def refresh_and_retry(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        resource_type = args[1]
+        os_id = args[4].get("id")
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            LOG.warning("Resource: %s with ID: %s failed to be updated, retrying after metadata refresh",
+                        resource_type, os_id)
+            self.metadata_refresh(resource_type)
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 class Payload(provider_nsx_mgmt.Payload):
@@ -111,7 +127,6 @@ class Payload(provider_nsx_mgmt.Payload):
         
         service_entries = [service] if service else []
 
-
         res = {
             "id": os_id,
             "direction": {'ingress': 'IN', 'egress': 'OUT'}.get(direction),
@@ -127,9 +142,8 @@ class Payload(provider_nsx_mgmt.Payload):
             "scope": ["ANY"], # Will be overwritten by Policy Scope
             "services": ["ANY"], # Required by NSX-T Policy validation
         }
-        revision = provider_rule.get("_revision")
-        if revision:
-            res["_revision"] = revision
+        if '_revision' in provider_rule:
+            res["_revision"] = provider_rule["_revision"]
         return res
 
 
@@ -208,6 +222,7 @@ class Provider(provider_nsx_mgmt.Provider):
         exporter.REALIZED.labels(resource_type, status).inc()
         raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
 
+    @refresh_and_retry
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         path = self._metadata.get(resource_type).endpoint
         if "policy" not in path:
@@ -228,16 +243,11 @@ class Provider(provider_nsx_mgmt.Provider):
             else:
                 LOG.info(report, "updated")
                 data = convertor(os_o, provider_o)
-                revision = meta._revision
-                if revision != None:
-                    data["_revision"] = revision
-                try:
-                    res = self.client.put(path=path, data=data)
-                    res.raise_for_status()
-                except Exception:
-                    self.metadata_refresh(resource_type, os_id)
-                    res = self.client.put(path=path, data=data)
-                    res.raise_for_status()
+                if meta._revision is not None:
+                    data["_revision"] = meta._revision
+
+                res = self.client.put(path=path, data=data)
+                res.raise_for_status()
                 data = res.json()
                 data["id"] = provider_id
                 # NSX-T applies desired state, no need to fetch after put
@@ -269,7 +279,7 @@ class Provider(provider_nsx_mgmt.Provider):
         meta = self.metadata(Provider.SG_RULE, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            revision = meta.get(rule['id'], {}).get('_revision') if meta else 0
+            revision = meta.get(rule['id'], {}).get('_revision') if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
