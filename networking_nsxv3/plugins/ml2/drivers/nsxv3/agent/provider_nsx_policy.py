@@ -20,6 +20,7 @@ class API(provider_nsx_mgmt.API):
 
     POLICIES = "/policy/api/v1/infra/domains/default/security-policies"
     POLICY = "/policy/api/v1/infra/domains/default/security-policies/{}"
+    RULES = "/policy/api/v1/infra/domains/default/security-policies/{}/rules"
 
     GROUPS = "/policy/api/v1/infra/domains/default/groups"
     GROUP = "/policy/api/v1/infra/domains/default/groups/{}"
@@ -111,7 +112,7 @@ class Payload(provider_nsx_mgmt.Payload):
         service_entries = [service] if service else []
 
 
-        return {
+        res = {
             "id": os_id,
             "direction": {'ingress': 'IN', 'egress': 'OUT'}.get(direction),
             "ip_protocol": {'IPv4': 'IPV4', 'IPv6': 'IPV6'}.get(ethertype),
@@ -124,8 +125,12 @@ class Payload(provider_nsx_mgmt.Payload):
             "logged": False,  # TODO selective logging
             "tag": os_id.replace("-",""),
             "scope": ["ANY"], # Will be overwritten by Policy Scope
-            "services": ["ANY"] # Required by NSX-T Policy validation
+            "services": ["ANY"], # Required by NSX-T Policy validation
         }
+        revision = provider_rule.get("_revision")
+        if revision:
+            res["_revision"] = revision
+        return res
 
 
 class Provider(provider_nsx_mgmt.Provider):
@@ -223,7 +228,17 @@ class Provider(provider_nsx_mgmt.Provider):
             else:
                 LOG.info(report, "updated")
                 data = convertor(os_o, provider_o)
-                self.client.patch(path=path, data=data)
+                revision = meta._revision
+                if revision != None:
+                    data["_revision"] = revision
+                try:
+                    res = self.client.put(path=path, data=data)
+                    res.raise_for_status()
+                except Exception:
+                    self.metadata_refresh(resource_type, os_id)
+                    res = self.client.put(path=path, data=data)
+                    res.raise_for_status()
+                data = res.json()
                 data["id"] = provider_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
@@ -251,9 +266,11 @@ class Provider(provider_nsx_mgmt.Provider):
             return
 
         provider_rules = []
+        meta = self.metadata(Provider.SG_RULE, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            provider_rule = self._get_sg_provider_rule(rule, None)
+            revision = meta.get(rule['id'], {}).get('_revision') if meta else 0
+            provider_rule = self._get_sg_provider_rule(rule, revision)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
             if provider_rule:
@@ -265,6 +282,17 @@ class Provider(provider_nsx_mgmt.Provider):
         }
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
+
+    def metadata(self, resource_type, os_id) -> provider_nsx_mgmt.ResourceMeta:
+        if resource_type == Provider.SG_RULE:
+            with LockManager.get_lock(Provider.SG_RULES):
+                meta = self._metadata[Provider.SG_RULES].meta.get(os_id)
+                if meta:
+                    rules = self.client.get_all(API.RULES.format(meta.id))
+                    meta = {provider_nsx_mgmt.Resource(o).os_id: o for o in rules}
+                return meta
+
+        return super(Provider, self).metadata(resource_type, os_id)
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)
