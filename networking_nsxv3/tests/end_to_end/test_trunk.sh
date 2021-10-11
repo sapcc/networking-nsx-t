@@ -400,13 +400,21 @@ create_objects() {
     echo && echo "===> Creating openstack objects ..."
 
     echo "Creating network ..." &&
-    x="$( openstack network create "${TEST_OS_NETWORK_NAME_R}" --provider-network-type vlan )" ||
-    ( echo "${x}" && false ) &&
+    {
+        x="$( openstack network create "${TEST_OS_NETWORK_NAME_R}" --provider-network-type vlan )" || {
+            # Print the command output
+            echo "${x}"
+            # Operation "openstack network create ..." failed
+            false
+        }
+    }  &&
+    echo "${x}" &&
     export TEST_OS_VLAN_ID="$(
         echo "${x}" |
         grep '\sprovider:segmentation_id\s' |
         awk '{ print $4 }'
-        set_operation_status
+
+        set_operation_status ${PIPESTATUS[@]}
     )" &&
     echo "VLAN ID used: ${TEST_OS_VLAN_ID}" &&
     {
@@ -1071,14 +1079,17 @@ main() {
     if [ ${rc} -ne 0 ]
     then
 
+        # Check if OS/NSX objects have been created at all
+        [ "${TEST_OS_VLAN_ID}x" != "x" ] || return ${rc}
+
         # Clean up openstack objects
         cleanup_os
 
-        # Check if the logical switch hasn't already been created in NSX
+        # Check if the logical switch already exists in NSX
         if [ ${rc} -ne 250 ]
         then
 
-            # Clean up openstack objects
+            # Clean up NSX objects
             cleanup_nsx
         fi
 
