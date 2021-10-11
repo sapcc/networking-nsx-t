@@ -130,6 +130,7 @@ class Payload(provider_nsx_mgmt.Payload):
         revision = provider_rule.get("_revision")
         if revision:
             res["_revision"] = revision
+        return res
 
 
 class Provider(provider_nsx_mgmt.Provider):
@@ -268,7 +269,8 @@ class Provider(provider_nsx_mgmt.Provider):
         meta = self.metadata(Provider.SG_RULE, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            provider_rule = self._get_sg_provider_rule(rule, meta.get(rule['id'], {}).get('_revision'))
+            revision = meta.get(rule['id'], {}).get('_revision') if meta else 0
+            provider_rule = self._get_sg_provider_rule(rule, revision)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
             if provider_rule:
