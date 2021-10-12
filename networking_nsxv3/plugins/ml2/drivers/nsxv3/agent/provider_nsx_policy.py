@@ -38,7 +38,7 @@ def refresh_and_retry(func):
         os_id = args[4].get("id")
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             LOG.warning("Resource: %s with ID: %s failed to be updated, retrying after metadata refresh",
                         resource_type, os_id)
             self.metadata_refresh(resource_type)
@@ -259,7 +259,9 @@ class Provider(provider_nsx_mgmt.Provider):
                 path = "{}/{}".format(path, os_id)
                 LOG.info(report, "created")
                 data = convertor(os_o, provider_o)
-                self.client.put(path=path, data=data)
+                res = self.client.put(path=path, data=data)
+                res.raise_for_status()
+                data = res.json()
                 data["id"] = provider_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
