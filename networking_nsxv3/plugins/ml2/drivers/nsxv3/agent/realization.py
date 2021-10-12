@@ -9,7 +9,6 @@ LOG = logging.getLogger(__name__)
 
 
 class AgentRealizer(object):
-
     def __init__(self, rpc, callback, kpi, provider, legacy_provider):
         self.rpc = rpc
         self.callback = callback
@@ -87,32 +86,28 @@ class AgentRealizer(object):
             # and cause the agent to be stuck.
             outdated = list(itertools.islice(port_outdated, _slice))
             _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:Ports",
-                len(outdated), len(port_outdated))
+            LOG.info("Realizing %s/%s resources of Type:Ports", len(outdated), len(port_outdated))
             self.callback(outdated, self.port)
             if _slice <= 0:
                 return
 
             outdated = list(itertools.islice(sgr_outdated, _slice))
             _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:Security Group Rules",
-                len(outdated), len(sgr_outdated))
+            LOG.info("Realizing %s/%s resources of Type:Security Group Rules", len(outdated), len(sgr_outdated))
             self.callback(outdated, self.security_group_rules)
             if _slice <= 0:
                 return
 
             outdated = list(itertools.islice(sgm_outdated, _slice))
             _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:Security Group Members",
-                len(outdated), len(sgm_outdated))
+            LOG.info("Realizing %s/%s resources of Type:Security Group Members", len(outdated), len(sgm_outdated))
             self.callback(outdated, self.security_group_members)
             if _slice <= 0:
                 return
 
             outdated = list(itertools.islice(qos_outdated, _slice))
             _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:QoS",
-                len(outdated), len(qos_outdated))
+            LOG.info("Realizing %s/%s resources of Type:QoS", len(outdated), len(qos_outdated))
             self.callback(outdated, self.qos)
             if _slice <= 0:
                 return
@@ -142,22 +137,30 @@ class AgentRealizer(object):
 
                 outdated = list(itertools.islice(legacy_sgr_outdated, _slice))
                 _slice -= len(outdated)
-                LOG.info("Realizing %s/%s resources of Type:Security Group Rules (Legacy)",
-                    len(outdated), len(legacy_sgr_outdated))
+                LOG.info(
+                    "Realizing %s/%s resources of Type:Security Group Rules (Legacy)",
+                    len(outdated),
+                    len(legacy_sgr_outdated),
+                )
 
                 def legacy_sg_rules_realize(id):
                     l.sg_rules_realize({"id": id}, delete=True)
+
                 self.callback(outdated, legacy_sg_rules_realize)
                 if _slice <= 0:
                     return
 
                 outdated = list(itertools.islice(legacy_sgm_outdated, _slice))
                 _slice -= len(outdated)
-                LOG.info("Realizing %s/%s resources of Type:Security Group Members (Legacy)",
-                    len(outdated), len(legacy_sgm_outdated))
+                LOG.info(
+                    "Realizing %s/%s resources of Type:Security Group Members (Legacy)",
+                    len(outdated),
+                    len(legacy_sgm_outdated),
+                )
 
                 def legacy_sg_members_realize(id):
                     l.sg_members_realize({"id": id}, delete=True)
+
                 self.callback(outdated, legacy_sg_members_realize)
                 if _slice <= 0:
                     return
@@ -184,21 +187,17 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("member-{}".format(os_id)):
             meta = self.provider.metadata(self.provider.SG_MEMBERS, os_id)
-            if not(reference and meta):
+            if not (reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
-                    cidrs = self.rpc.get_security_group_members_effective_ips(
-                        os_id)
+                    cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
                     # SG Members are not revisionable, use default "0"
-                    self.provider.sg_members_realize(
-                        {"id": os_id, "cidrs": cidrs, "revision_number": "0"})
+                    self.provider.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": "0"})
                 else:
-                    self.provider.sg_members_realize(
-                        {"id": os_id}, delete=True)
+                    self.provider.sg_members_realize({"id": os_id}, delete=True)
 
             # TODO - remove after legacy provider is not supported
             try:
-                self.legacy_provider.sg_members_realize(
-                    {"id": os_id}, delete=True)
+                self.legacy_provider.sg_members_realize({"id": os_id}, delete=True)
             except Exception:
                 pass
 
@@ -215,8 +214,7 @@ class AgentRealizer(object):
                 # Create Members Container
                 self.security_group_members(os_id, reference=True)
 
-                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(
-                    os_id)
+                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(os_id)
 
                 for os_rule in os_sg["rules"]:
                     remote_id = os_rule.get("remote_group_id")
@@ -231,8 +229,7 @@ class AgentRealizer(object):
 
             # TODO - remove after legacy provider is not supported
             try:
-                self.legacy_provider.sg_rules_realize(
-                    {"id": os_id}, delete=True)
+                self.legacy_provider.sg_rules_realize({"id": os_id}, delete=True)
             except Exception:
                 pass
 
@@ -277,7 +274,7 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("qos-{}".format(os_id)):
             meta = self.provider.metadata(self.provider.QOS, os_id)
-            if not(reference and meta):
+            if not (reference and meta):
                 qos = self.rpc.get_qos(os_id)
                 if qos:
                     self.provider.qos_realize(qos)
@@ -295,8 +292,4 @@ class AgentRealizer(object):
             if not meta:
                 self.provider.network_realize(os_seg_id)
                 meta = self.provider.metadata(self.provider.NETWORK, os_seg_id)
-            return {
-                "nsx-logical-switch-id": meta.id,
-                "external-id": meta.id,
-                "segmentation_id": os_seg_id
-            }
+            return {"nsx-logical-switch-id": meta.id, "external-id": meta.id, "segmentation_id": os_seg_id}

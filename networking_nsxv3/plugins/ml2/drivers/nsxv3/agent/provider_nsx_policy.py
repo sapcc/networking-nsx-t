@@ -39,8 +39,9 @@ def refresh_and_retry(func):
         try:
             return func(*args, **kwargs)
         except Exception:
-            LOG.warning("Resource: %s with ID: %s failed to be updated, retrying after metadata refresh",
-                        resource_type, os_id)
+            LOG.warning(
+                "Resource: %s with ID: %s failed to be updated, retrying after metadata refresh", resource_type, os_id
+            )
             self.metadata_refresh(resource_type)
             return func(*args, **kwargs)
 
@@ -48,7 +49,6 @@ def refresh_and_retry(func):
 
 
 class Payload(provider_nsx_mgmt.Payload):
-
     def sg_members_container(self, os_sg, provider_sg):
         sg = {
             "display_name": os_sg.get("id"),
@@ -58,33 +58,24 @@ class Payload(provider_nsx_mgmt.Payload):
                     "member_type": "LogicalPort",
                     "key": "Tag",
                     "operator": "EQUALS",
-                    "resource_type": "Condition"
+                    "resource_type": "Condition",
                 }
             ],
-            "tags": self.tags(os_sg)
+            "tags": self.tags(os_sg),
         }
 
         cidrs = self.get_compacted_cidrs(os_sg.get("cidrs"))
         if cidrs:
-            sg["expression"].append({
-                "resource_type": "ConjunctionOperator",
-                "conjunction_operator": "OR"
-            })
-            sg["expression"].append({
-                "resource_type": "IPAddressExpression",
-                "ip_addresses": cidrs
-            })
+            sg["expression"].append({"resource_type": "ConjunctionOperator", "conjunction_operator": "OR"})
+            sg["expression"].append({"resource_type": "IPAddressExpression", "ip_addresses": cidrs})
         return sg
 
     def sg_rule_remote(self, cidr):
         # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
         return {
             "display_name": cidr,
-            "expression": [{
-                "resource_type": "IPAddressExpression",
-                "ip_addresses": [cidr]   
-            }],
-            "tags": self.tags(None)
+            "expression": [{"resource_type": "IPAddressExpression", "ip_addresses": [cidr]}],
+            "tags": self.tags(None),
         }
 
     def sg_rules_container(self, os_sg, provider_sg):
@@ -93,22 +84,18 @@ class Payload(provider_nsx_mgmt.Payload):
             "display_name": os_sg.get("id"),
             "stateful": os_sg.get("stateful", True),
             "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags", dict()),
-            "scope": [
-                "/infra/domains/default/groups/{}".format(
-                    provider_sg.get("scope"))
-            ],
+            "scope": ["/infra/domains/default/groups/{}".format(provider_sg.get("scope"))],
             "tags": self.tags(os_sg),
-            "rules": provider_sg.get("rules")
+            "rules": provider_sg.get("rules"),
         }
 
     def sg_rule(self, os_rule, provider_rule):
         os_id = os_rule["id"]
-        ethertype = os_rule['ethertype']
-        direction = os_rule['direction']
+        ethertype = os_rule["ethertype"]
+        direction = os_rule["direction"]
 
         def group_ref(group_id):
-            return group_id if group_id == "ANY" else \
-                "/infra/domains/default/groups/" + group_id
+            return group_id if group_id == "ANY" else "/infra/domains/default/groups/" + group_id
 
         current = ["ANY"]
         if os_rule.get("remote_group_id"):
@@ -124,31 +111,30 @@ class Payload(provider_nsx_mgmt.Payload):
         if err:
             LOG.error("Not supported service for Rule:%s. Error:%s", os_id, err)
             return
-        
+
         service_entries = [service] if service else []
 
         res = {
             "id": os_id,
-            "direction": {'ingress': 'IN', 'egress': 'OUT'}.get(direction),
-            "ip_protocol": {'IPv4': 'IPV4', 'IPv6': 'IPV6'}.get(ethertype),
-            "source_groups": target if direction in 'ingress' else current,
-            "destination_groups": current if direction in 'ingress' else target,
+            "direction": {"ingress": "IN", "egress": "OUT"}.get(direction),
+            "ip_protocol": {"IPv4": "IPV4", "IPv6": "IPV6"}.get(ethertype),
+            "source_groups": target if direction in "ingress" else current,
+            "destination_groups": current if direction in "ingress" else target,
             "disabled": False,
             "display_name": os_id,
             "service_entries": service_entries,
             "action": "ALLOW",
             "logged": False,  # TODO selective logging
-            "tag": os_id.replace("-",""),
-            "scope": ["ANY"], # Will be overwritten by Policy Scope
-            "services": ["ANY"], # Required by NSX-T Policy validation
+            "tag": os_id.replace("-", ""),
+            "scope": ["ANY"],  # Will be overwritten by Policy Scope
+            "services": ["ANY"],  # Required by NSX-T Policy validation
         }
-        if '_revision' in provider_rule:
+        if "_revision" in provider_rule:
             res["_revision"] = provider_rule["_revision"]
         return res
 
 
 class Provider(provider_nsx_mgmt.Provider):
-
     def __init__(self, payload=Payload):
         super(Provider, self).__init__(payload=payload)
         self.provider = "Policy"
@@ -160,19 +146,19 @@ class Provider(provider_nsx_mgmt.Provider):
     def _ensure_default_l3_policy(self):
         res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
         res.raise_for_status()
-        for rule in res.json()['rules']:
-            if rule['action'] not in ['DROP', 'REJECT']:
+        for rule in res.json()["rules"]:
+            if rule["action"] not in ["DROP", "REJECT"]:
                 raise Exception("Default l3 section rule is not drop/reject, bailing out")
 
     def _setup_default_infrastructure_rules(self):
         LOG.info("Looking for the default Infrastructure Rules.")
         for policy in DEFAULT_INFRASTRUCTURE_POLICIES:
-            path = API.POLICY.format(policy['id'])
+            path = API.POLICY.format(policy["id"])
             res = self.client.get(path=path)
             if res.ok:
                 continue
             elif res.status_code == 404:
-                LOG.info("Infrastructure Policy %s not found, creating...", policy['display_name'])
+                LOG.info("Infrastructure Policy %s not found, creating...", policy["display_name"])
                 self.client.put(path=path, data=policy).raise_for_status()
             else:
                 res.raise_for_status()
@@ -186,7 +172,7 @@ class Provider(provider_nsx_mgmt.Provider):
             Provider.SG_MEMBERS: mp(API.GROUPS),
             Provider.SG_RULES: mp(API.POLICIES),
             Provider.SG_RULES_REMOTE_PREFIX: mp(API.GROUPS),
-            Provider.NETWORK: mp(API.SWITCHES)
+            Provider.NETWORK: mp(API.SWITCHES),
         }
 
     @exporter.IN_REALIZATION.track_inprogress()
@@ -198,14 +184,12 @@ class Provider(provider_nsx_mgmt.Provider):
         else:
             return
 
-        params = {
-            "intent_path": path.replace(API.POLICY_BASE, "")
-        }
+        params = {"intent_path": path.replace(API.POLICY_BASE, "")}
 
         until = cfg.CONF.NSXV3.nsxv3_realization_timeout
         pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
 
-        status = ''
+        status = ""
         for attempt in range(1, until + 1):
             o = self.client.get(path=API.STATUS, params=params).json()
             status = o.get("consolidated_status", {}).get("consolidated_status")
@@ -214,10 +198,10 @@ class Provider(provider_nsx_mgmt.Provider):
                 exporter.REALIZED.labels(resource_type, status).inc()
                 return True
             else:
-                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt*pause)
+                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt * pause)
                 eventlet.sleep(pause)
         # When multiple policies did not get realized in the defined timeframe,
-        # this is a symptom for another issue. 
+        # this is a symptom for another issue.
         # This should be detected by the Prometheus after a while
         exporter.REALIZED.labels(resource_type, status).inc()
         raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
@@ -230,8 +214,8 @@ class Provider(provider_nsx_mgmt.Provider):
             return super(Provider, self)._realize(resource_type, delete, convertor, os_o, provider_o)
 
         os_id = provider_id = os_o.get("id")
-        
-        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)        
+
+        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
 
         meta = self.metadata(resource_type, os_id)
         if meta:
@@ -269,7 +253,6 @@ class Provider(provider_nsx_mgmt.Provider):
                 return meta
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
 
-
     def sg_rules_realize(self, os_sg, delete=False):
         os_id = os_sg.get("id")
 
@@ -281,17 +264,14 @@ class Provider(provider_nsx_mgmt.Provider):
         meta = self.metadata(Provider.SG_RULE, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            revision = meta.get(rule['id'], {}).get('_revision') if meta else None
+            revision = meta.get(rule["id"], {}).get("_revision") if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
             if provider_rule:
                 provider_rules.append(provider_rule)
 
-        provider_sg = {
-            "scope": os_id,
-            "rules": provider_rules
-        }
+        provider_sg = {"scope": os_id, "rules": provider_rules}
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
 
@@ -308,17 +288,15 @@ class Provider(provider_nsx_mgmt.Provider):
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)
-        return self.client.put(path=API.GROUP.format(id),
-                               data=self.payload.sg_rule_remote(cidr)).json()
-    
+        return self.client.put(path=API.GROUP.format(id), data=self.payload.sg_rule_remote(cidr)).json()
+
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
-
 
     def sanitize(self, slice):
         if slice <= 0:
             return ([], None)
-            
+
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
 
