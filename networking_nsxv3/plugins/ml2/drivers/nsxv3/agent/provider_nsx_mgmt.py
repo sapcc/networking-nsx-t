@@ -337,8 +337,9 @@ class Payload(object):
         if p_ppid:
             port["attachment"]["id"] = p.get("id")
             port["attachment"]["context"]["vif_type"] = "CHILD"
-            port["attachment"]["context"]["parent_vif_id"] = os_port.get(
-                "parent_id")
+            port["attachment"]["context"]["parent_vif_id"] = os_port.get("parent_id")
+            if os_port["traffic_tag"]:
+                port["attachment"]["context"]["traffic_tag"] = os_port["traffic_tag"]
 
         if p_qid:
             port["switching_profile_ids"].append({
