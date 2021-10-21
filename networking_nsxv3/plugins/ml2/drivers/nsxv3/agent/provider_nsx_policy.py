@@ -14,6 +14,29 @@ from networking_nsxv3.prometheus import exporter
 LOG = logging.getLogger(__name__)
 
 
+def refresh_and_retry(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        resource_type = args[1]
+        delete = args[2]
+        os_obj = args[4]
+        os_id = os_obj.get("id")
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            LOG.warning(
+                "Resource: %s with ID: %s failed to be updated, retrying after metadata refresh", resource_type, os_id
+            )
+            self.metadata_refresh(resource_type)
+            if resource_type == Provider.SG_RULES:
+                provider_sg = self._create_provider_sg(os_obj, os_id)  # Regenerate the payload (provider_sg)
+                return func(self, resource_type, delete, self.payload.sg_rules_container, os_obj, provider_sg)
+            return func(*args, **kwargs)
+
+    return wrapper
+
+
 class API(provider_nsx_mgmt.API):
     POLICY_BASE = "/policy/api/v1"
 
@@ -30,22 +53,30 @@ class API(provider_nsx_mgmt.API):
     STATUS = "/policy/api/v1/infra/realized-state/status"
 
 
-def refresh_and_retry(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        self = args[0]
-        resource_type = args[1]
-        os_id = args[4].get("id")
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            LOG.warning(
-                "Resource: %s with ID: %s failed to be updated, retrying after metadata refresh", resource_type, os_id
-            )
-            self.metadata_refresh(resource_type)
-            return func(*args, **kwargs)
+class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
+    def __init__(self, id, rev, age, _revision, _last_modified_time, rules):
+        super().__init__(id, rev, age, _revision, _last_modified_time)
+        self.rules = rules
 
-    return wrapper
+
+class PolicyResource(provider_nsx_mgmt.Resource):
+    def __init__(self, resource):
+        super().__init__(resource)
+
+    @property
+    def meta(self):
+        rulez = self.resource.get("rules", [])
+        _rules = {provider_nsx_mgmt.Resource(r).os_id: r for r in rulez}
+        tags = self.tags
+        # Set age to most recent and rev to 0 NSGroups to always skip the update
+        return PolicyResourceMeta(
+            id=self.id,
+            rev=tags.get(NSXV3_REVISION_SCOPE),  # empty set for NSGroup
+            age=int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
+            _revision=self.resource.get("_revision"),
+            _last_modified_time=self.resource.get("_last_modified_time"),
+            rules=_rules,
+        )
 
 
 class Payload(provider_nsx_mgmt.Payload):
@@ -163,6 +194,7 @@ class Provider(provider_nsx_mgmt.Provider):
             else:
                 res.raise_for_status()
 
+    # overrides
     def _metadata_loader(self):
         mp = provider_nsx_mgmt.MetaProvider
 
@@ -207,6 +239,7 @@ class Provider(provider_nsx_mgmt.Provider):
         raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
 
     @refresh_and_retry
+    # overrides
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         path = self._metadata.get(resource_type).endpoint
         if "policy" not in path:
@@ -253,6 +286,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 return meta
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
 
+    # overrides
     def sg_rules_realize(self, os_sg, delete=False):
         os_id = os_sg.get("id")
 
@@ -260,11 +294,15 @@ class Provider(provider_nsx_mgmt.Provider):
             self._realize(Provider.SG_RULES, delete, None, os_sg, dict())
             return
 
+        provider_sg = self._create_provider_sg(os_sg, os_id)
+        self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
+
+    def _create_provider_sg(self, os_sg, os_id):
         provider_rules = []
-        meta = self.metadata(Provider.SG_RULE, os_id)
+        meta = self.metadata(Provider.SG_RULES, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            revision = meta.get(rule["id"], {}).get("_revision") if meta else None
+            revision = meta.rules.get(rule["id"], {}).get("_revision") if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
@@ -272,19 +310,65 @@ class Provider(provider_nsx_mgmt.Provider):
                 provider_rules.append(provider_rule)
 
         provider_sg = {"scope": os_id, "rules": provider_rules}
+        return provider_sg
 
-        self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
-
+    # overrides
     def metadata(self, resource_type, os_id) -> provider_nsx_mgmt.ResourceMeta:
-        if resource_type == Provider.SG_RULE:
+        if resource_type == Provider.SG_RULES:
             with LockManager.get_lock(Provider.SG_RULES):
                 meta = self._metadata[Provider.SG_RULES].meta.get(os_id)
                 if meta:
-                    rules = self.client.get_all(API.RULES.format(meta.id))
-                    meta = {provider_nsx_mgmt.Resource(o).os_id: o for o in rules}
+                    if not meta.rules:
+                        meta.rules = self._fetch_rules_from_nsx(meta)
                 return meta
 
         return super(Provider, self).metadata(resource_type, os_id)
+
+    # overrides
+    def metadata_update(self, resource_type, provider_object):
+        if resource_type != Provider.SG_RULE:
+            with LockManager.get_lock(resource_type):
+                res = (
+                    provider_nsx_mgmt.Resource(provider_object)
+                    if resource_type != Provider.SG_RULES
+                    else PolicyResource(provider_object)
+                )
+                self._metadata[resource_type].meta.update(res)
+                return res.meta
+
+    # overrides
+    def metadata_refresh(self, resource_type, params=dict()):
+        if resource_type != Provider.SG_RULE:
+            provider = self._metadata[resource_type]
+            with provider.meta:
+                LOG.info("[%s] Fetching NSX-T metadata for Type:%s.", self.provider, resource_type)
+                if provider.endpoint == API.PROFILES:
+                    params = API.PARAMS_GET_QOS_PROFILES
+                resources = self.client.get_all(path=provider.endpoint, params=params)
+                with LockManager.get_lock(resource_type):
+                    provider.meta.reset()
+                    for o in resources:
+                        res = (
+                            provider_nsx_mgmt.Resource(o) if resource_type != Provider.SG_RULES else PolicyResource(o)
+                        )
+                        if not res.is_managed:
+                            continue
+                        if resource_type == Provider.SG_MEMBERS:
+                            if NSXV3_REVISION_SCOPE not in res.tags:
+                                continue
+                        if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
+                            if NSXV3_REVISION_SCOPE in res.tags:
+                                continue
+                        if resource_type == Provider.SG_RULES:
+                            if not res.has_valid_os_uuid:
+                                continue
+                            # res.meta.rules = self._fetch_rules_from_nsx(res.meta) # we don't want thousands of requests here
+
+                        provider.meta.add(res)
+
+    def _fetch_rules_from_nsx(self, meta):
+        rulez = self.client.get_all(API.RULES.format(meta.id))
+        return {provider_nsx_mgmt.Resource(r).os_id: r for r in rulez}
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)
@@ -293,6 +377,7 @@ class Provider(provider_nsx_mgmt.Provider):
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
 
+    # overrides
     def sanitize(self, slice):
         if slice <= 0:
             return ([], None)
