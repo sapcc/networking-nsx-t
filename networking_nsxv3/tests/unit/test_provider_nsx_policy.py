@@ -3,11 +3,9 @@ import json
 import re
 import uuid
 
-import requests
 import responses
 from networking_nsxv3.common import config
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import \
-    provider_nsx_policy
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
 from networking_nsxv3.tests.unit.provider import Inventory
 from neutron.tests import base
 from oslo_config import cfg
@@ -19,13 +17,12 @@ LOG = logging.getLogger(__name__)
 # INFO - Can introduce responses to directly run the tests against live NSX-T
 # responses.add_passthru(re.compile('https://nsxm-l-01a.corp.local/\\w+'))
 
+
 def get_url(path):
     return "https://nsxm-l-01a.corp.local:443{}".format(path)
 
 
-
 class TestProviderPolicy(base.BaseTestCase):
-
     def get_result_by_name(self, payload, display_name):
         r = [o for o in payload.get("results", []) if o.get("display_name") == display_name]
         if len(r) > 1:
@@ -33,7 +30,7 @@ class TestProviderPolicy(base.BaseTestCase):
         return r.pop(0) if len(r) == 1 else None
 
     def get_by_name(self, container, name):
-        result = [obj for id,obj in container.items() if obj.get("display_name") == name]
+        result = [obj for id, obj in container.items() if obj.get("display_name") == name]
         return result.pop(0) if result else None
 
     def get_tag(self, resource, scope):
@@ -53,17 +50,16 @@ class TestProviderPolicy(base.BaseTestCase):
         for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
-
     @responses.activate
     def test_security_group_members_creation_diverse_cidrs(self):
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.5.0/24"],
-            "revision_number": 0
+            "revision_number": 0,
         }
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -72,19 +68,18 @@ class TestProviderPolicy(base.BaseTestCase):
             if e.get("ip_addresses"):
                 ip_addresses = e.get("ip_addresses")
                 break
-        self.assertEquals(ip_addresses,
-            ["172.16.1.1", "172.16.1.2", "172.16.2.0/24", "172.16.5.0/24"])
+        self.assertEquals(ip_addresses, ["172.16.1.1", "172.16.1.2", "172.16.2.0/24", "172.16.5.0/24"])
 
     @responses.activate
     def test_security_group_members_creation_compact_ipv4_cidrs(self):
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.0.0/16"],
-            "revision_number": 0
+            "revision_number": 0,
         }
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -94,17 +89,17 @@ class TestProviderPolicy(base.BaseTestCase):
                 ip_addresses = e.get("ip_addresses")
                 break
         self.assertEquals(ip_addresses, ["172.16.0.0/16"])
-    
+
     @responses.activate
     def test_security_group_members_creation_compact_ipv6_cidrs(self):
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370/128"],
-            "revision_number": 0
+            "revision_number": 0,
         }
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -115,26 +110,21 @@ class TestProviderPolicy(base.BaseTestCase):
                 break
         self.assertEquals(ip_addresses, ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370"])
 
-
     @responses.activate
     def test_security_group_members_update(self):
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.0.0/16"],
-            "revision_number": 0
+            "revision_number": 0,
         }
 
-        sgu = {
-            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
-            "cidrs": ["172.16.1.2/16"],
-            "revision_number": 3
-        }
+        sgu = {"id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19", "cidrs": ["172.16.1.2/16"], "revision_number": 3}
 
         provider = provider_nsx_policy.Provider()
-        
+
         provider.sg_members_realize(sg)
         provider.sg_members_realize(sgu)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -145,13 +135,12 @@ class TestProviderPolicy(base.BaseTestCase):
                 break
         self.assertEquals(ip_addresses, ["172.16.1.2/16"])
 
-
     @responses.activate
     def test_security_group_members_delete(self):
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.0.0/16"],
-            "revision_number": 0
+            "revision_number": 0,
         }
 
         inv = self.inventory.inventory
@@ -165,7 +154,6 @@ class TestProviderPolicy(base.BaseTestCase):
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
         self.assertEquals(sg_group, None)
 
-
     @responses.activate
     def test_security_group_rules_create(self):
 
@@ -173,7 +161,7 @@ class TestProviderPolicy(base.BaseTestCase):
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
-            "rules": []
+            "rules": [],
         }
 
         provider_nsx_policy.Provider().sg_rules_realize(sg)
@@ -183,7 +171,7 @@ class TestProviderPolicy(base.BaseTestCase):
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         LOG.info(json.dumps(policy, indent=4))
 
-        tags = {t["scope"]:t["tag"] for t in policy.get("tags")}
+        tags = {t["scope"]: t["tag"] for t in policy.get("tags")}
 
         self.assertEquals(policy.get("display_name"), sg.get("id"))
         self.assertEquals(tags["revision_number"], sg.get("revision_number"))
@@ -192,7 +180,6 @@ class TestProviderPolicy(base.BaseTestCase):
         self.assertEquals(policy.get("scope"), ["/infra/domains/default/groups/{}".format(sg["id"])])
         self.assertEquals(policy.get("rules"), [])
 
-
     @responses.activate
     def test_security_group_rules_update(self):
 
@@ -200,7 +187,7 @@ class TestProviderPolicy(base.BaseTestCase):
             "id": "7FBE1798-65F6-43E9-A7BB-3DFA63450818",
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
-            "rules": []
+            "rules": [],
         }
 
         rule1 = {
@@ -255,7 +242,6 @@ class TestProviderPolicy(base.BaseTestCase):
         sg1 = copy.deepcopy(sg)
         sg1["rules"].append(copy.deepcopy(rule1))
         sg1["rules"].append(copy.deepcopy(rule2))
-    
 
         # Add new, update existing, delete existing
         sg2 = copy.deepcopy(sg)
@@ -266,11 +252,11 @@ class TestProviderPolicy(base.BaseTestCase):
 
         inv = self.inventory.inventory
         provider = provider_nsx_policy.Provider()
-        
+
         provider.sg_rules_realize(sg1)
         LOG.info(json.dumps(inv, indent=4))
         policy1 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy1.get("rules")}
+        rules = {r.get("id"): r for r in policy1.get("rules")}
 
         self.assertEquals(len(policy1.get("rules")), 2)
         self.assertEquals(rules[rule1["id"]].get("source_groups"), [rule1.get("remote_ip_prefix")])
@@ -281,7 +267,7 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_rules_realize(sg2)
         LOG.info(json.dumps(inv, indent=4))
         policy2 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy2.get("rules")}
+        rules = {r.get("id"): r for r in policy2.get("rules")}
 
         self.assertEquals(len(policy2.get("rules")), 2)
         self.assertEquals(rules.get(rule2["id"]), None)
@@ -291,25 +277,20 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_rules_realize(sg3)
         LOG.info(json.dumps(inv, indent=4))
         policy3 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy3.get("rules")}
-        
+        rules = {r.get("id"): r for r in policy3.get("rules")}
+
         self.assertEquals(len(policy3.get("rules")), 0)
 
-        
     @responses.activate
     def test_security_group_rules_remote_group(self):
 
-        sg_remote = ({
-            "id": "36BC1A8F-C62C-4327-9FD5-AEC49E941467",
-            "cidrs": [],
-            "revision_number": 0
-        })
+        sg_remote = {"id": "36BC1A8F-C62C-4327-9FD5-AEC49E941467", "cidrs": [], "revision_number": 0}
 
         sg = {
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
-            "rules": []
+            "rules": [],
         }
 
         rule = {
@@ -335,12 +316,11 @@ class TestProviderPolicy(base.BaseTestCase):
         LOG.info(json.dumps(inv, indent=4))
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
-        rules = {r.get("id"):r for r in policy.get("rules")}
+        rules = {r.get("id"): r for r in policy.get("rules")}
 
         self.assertEquals(
-            rules[rule["id"]].get("source_groups"), 
-            ["/infra/domains/default/groups/{}".format(sg_remote["id"])])
-
+            rules[rule["id"]].get("source_groups"), ["/infra/domains/default/groups/{}".format(sg_remote["id"])]
+        )
 
     @responses.activate
     def test_security_group_rules_service_l4(self):
@@ -349,7 +329,7 @@ class TestProviderPolicy(base.BaseTestCase):
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
-            "rules": []
+            "rules": [],
         }
 
         rule = {
@@ -371,25 +351,23 @@ class TestProviderPolicy(base.BaseTestCase):
         inv = self.inventory.inventory
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy.get("rules")}
+        rules = {r.get("id"): r for r in policy.get("rules")}
 
-        self.assertEquals(rules[rule["id"]].get("service_entries")[0], {
-            "resource_type": "L4PortSetServiceEntry", 
-            "l4_protocol": "TCP", 
-            "source_ports": [
-                "1-65535"
-            ],
-            "destination_ports": [
-                "443"
-            ] 
-        })
+        self.assertEquals(
+            rules[rule["id"]].get("service_entries")[0],
+            {
+                "resource_type": "L4PortSetServiceEntry",
+                "l4_protocol": "TCP",
+                "source_ports": ["1-65535"],
+                "destination_ports": ["443"],
+            },
+        )
 
         self.assertEquals(rules[rule["id"]].get("action"), "ALLOW")
         self.assertEquals(rules[rule["id"]].get("ip_protocol"), "IPV4")
         self.assertEquals(rules[rule["id"]].get("direction"), "IN")
         self.assertEquals(rules[rule["id"]].get("destination_groups"), ["ANY"])
         self.assertEquals(rules[rule["id"]].get("disabled"), False)
-
 
     @responses.activate
     def test_security_group_rules_service_ip_protocol(self):
@@ -398,7 +376,7 @@ class TestProviderPolicy(base.BaseTestCase):
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
-            "rules": []
+            "rules": [],
         }
 
         rule_hopopt = {
@@ -433,18 +411,17 @@ class TestProviderPolicy(base.BaseTestCase):
         inv = self.inventory.inventory
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy.get("rules")}
+        rules = {r.get("id"): r for r in policy.get("rules")}
 
-        self.assertEquals(rules[rule_hopopt["id"]].get("service_entries")[0], {
-            "resource_type": "IPProtocolServiceEntry", 
-            "protocol_number": 0
-        })
+        self.assertEquals(
+            rules[rule_hopopt["id"]].get("service_entries")[0],
+            {"resource_type": "IPProtocolServiceEntry", "protocol_number": 0},
+        )
 
-        self.assertEquals(rules[rule_0["id"]].get("service_entries")[0], {
-            "resource_type": "IPProtocolServiceEntry", 
-            "protocol_number": 0
-        })
-
+        self.assertEquals(
+            rules[rule_0["id"]].get("service_entries")[0],
+            {"resource_type": "IPProtocolServiceEntry", "protocol_number": 0},
+        )
 
     @responses.activate
     def test_security_group_rules_service_icmp(self):
@@ -453,7 +430,7 @@ class TestProviderPolicy(base.BaseTestCase):
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
-            "rules": []
+            "rules": [],
         }
 
         rule_valid = {
@@ -488,17 +465,14 @@ class TestProviderPolicy(base.BaseTestCase):
         inv = self.inventory.inventory
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy.get("rules")}
+        rules = {r.get("id"): r for r in policy.get("rules")}
 
-        self.assertEquals(rules[rule_valid["id"]].get("service_entries")[0], {
-            "resource_type": "ICMPTypeServiceEntry",
-            "protocol": "ICMPv4",
-            "icmp_code": "1", 
-            "icmp_type": "5"
-        })
+        self.assertEquals(
+            rules[rule_valid["id"]].get("service_entries")[0],
+            {"resource_type": "ICMPTypeServiceEntry", "protocol": "ICMPv4", "icmp_code": "1", "icmp_type": "5"},
+        )
 
         self.assertEquals(len(rules), 1)
-
 
     @responses.activate
     def test_outdated(self):
@@ -506,13 +480,13 @@ class TestProviderPolicy(base.BaseTestCase):
             {"id": str(uuid.uuid4()), "revision_number": 1, "tags": [], "rules": []},
             {"id": str(uuid.uuid4()), "revision_number": 2, "tags": [], "rules": []},
             {"id": str(uuid.uuid4()), "revision_number": 3, "tags": [], "rules": []},
-            {"id": str(uuid.uuid4()), "revision_number": 4, "tags": [], "rules": []}
+            {"id": str(uuid.uuid4()), "revision_number": 4, "tags": [], "rules": []},
         ]
 
         meta = {
-            sg[0]['id']: "1", # same
-            sg[1]['id']: "3", # updated
-            sg[2]['id']: "8" # updated
+            sg[0]["id"]: "1",  # same
+            sg[1]["id"]: "3",  # updated
+            sg[2]["id"]: "8"  # updated
             # 4 was removed => orphaned
         }
 
@@ -524,18 +498,39 @@ class TestProviderPolicy(base.BaseTestCase):
 
         LOG.info(json.dumps(self.inventory.inventory, indent=4))
 
-        outdated,current = provider.outdated(provider.SG_RULES, meta)
+        outdated, current = provider.outdated(provider.SG_RULES, meta)
 
-        self.assertItemsEqual(outdated, [sg[1]['id'],sg[2]['id'],sg[3]['id']])
-        self.assertItemsEqual(current, [sg[0]['id']])
+        self.assertItemsEqual(outdated, [sg[1]["id"], sg[2]["id"], sg[3]["id"]])
+        self.assertItemsEqual(current, [sg[0]["id"]])
 
     @responses.activate
     def test_security_group_stateful(self):
-        sg1 = { "id": "1", "revision_number": 2,"rules": [] }
-        sg2 = dict(sg1, **{'id': '2', 'stateful': False})
+        sg1 = {"id": "1", "revision_number": 2, "rules": []}
+        sg2 = dict(sg1, **{"id": "2", "stateful": False})
         provider = provider_nsx_policy.Provider()
         provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg2)
         inv = self.inventory.inventory
         self.assertTrue(self.get_by_name(inv[Inventory.POLICIES], sg1["id"]).get("stateful"))
         self.assertFalse(self.get_by_name(inv[Inventory.POLICIES], sg2["id"]).get("stateful"))
+
+    @responses.activate
+    def test_security_group_revision_retry(self):
+        global test_is_revision_wrong
+        test_is_revision_wrong = True
+
+        def request_callback(request):
+            global test_is_revision_wrong
+            cond = test_is_revision_wrong
+            test_is_revision_wrong = False
+            return (422, {}, json.dumps(json.loads(request.body))) if cond else self.inventory.api(request)
+
+        r = responses
+        r.reset()
+        r.add_callback(r.PUT, re.compile(r".*"), callback=request_callback)
+        for m in [r.GET, r.POST, r.DELETE, r.PATCH]:
+            r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
+
+        sg1 = {"id": "1", "revision_number": 2, "rules": [], "_revision": 1}
+        provider = provider_nsx_policy.Provider()
+        provider.sg_rules_realize(sg1)
