@@ -2,11 +2,11 @@
 Openstack NSXv3 driver end to end testing script
 ************************************************
 
-1. Programming language: `bash`
+1. Programming language: ``bash``
 
-2. Script location: `networking-nsx-t/networking_nsxv3/tests/end_to_end/test_trunk.sh`
+2. Script location: ``networking-nsx-t/networking_nsxv3/tests/end_to_end/test_trunk.sh``
 
-3. Command line paramters: `None`
+3. Command line paramters: ``None``
 
 4. Environment variables expected by the script:
   - TEST_NSX_HOSTNAME - NSX FQDN or IP address
