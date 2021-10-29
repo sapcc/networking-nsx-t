@@ -14,8 +14,7 @@ from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common import synchronization as sync
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    provider_nsx_mgmt, provider_nsx_policy, realization)
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, provider_nsx_policy, realization
 from networking_nsxv3.prometheus import exporter
 from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
@@ -27,8 +26,9 @@ except ImportError:
 
 # Eventlet Best Practices
 # https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
-if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
+if not os.environ.get("DISABLE_EVENTLET_PATCHING"):
     import eventlet
+
     eventlet.monkey_patch()
 
 LOG = logging.getLogger(__name__)
@@ -49,8 +49,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def get_network_bridge(self, context, current, network_segments, network_current):
         try_create_port = False
-        if current.get('binding:vif_type') == portbindings.VIF_TYPE_UNBOUND and \
-                current.get('status') == nsxv3_constants.neutron_constants.ACTIVE:
+        if (
+            current.get("binding:vif_type") == portbindings.VIF_TYPE_UNBOUND
+            and current.get("status") == nsxv3_constants.neutron_constants.ACTIVE
+        ):
             # This is a double-bound port with inactive new binding, proactivly sync it
             self.port_update(context, port=current)
         else:
@@ -81,7 +83,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def port_update(self, context, **kwargs):
         # Ensure security groups attached to the port are synced first
-        for sg in kwargs["port"].get('security_groups', []):
+        for sg in kwargs["port"].get("security_groups", []):
             self.callback(sg, self.realizer.security_group_rules)
         self.callback(kwargs["port"]["id"], self.realizer.port)
 
@@ -103,7 +105,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
-
     def __init__(self, rpc, synchronization=True, monitoring=True, force_api=None):
         super(NSXv3Manager, self).__init__()
 
@@ -115,7 +116,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
 
         info = "Activating %s API in primary mode and %s API in legacy mode."
 
-        if (force_api == "Management" if force_api else provider_version < (3, 0)):
+        if force_api == "Management" if force_api else provider_version < (3, 0):
             LOG.info(info, "Management", "Policy")
             tmp_provider = legacy_provider
             legacy_provider = provider
@@ -123,16 +124,12 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         else:
             LOG.info(info, "Policy", "Management")
 
-        self.runner = sync.Runner(
-            workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
+        self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
 
         self.realizer = realization.AgentRealizer(
-            rpc=rpc,
-            callback=self._sync_delayed,
-            kpi=self.kpi,
-            provider=provider,
-            legacy_provider=legacy_provider)
+            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi, provider=provider, legacy_provider=legacy_provider
+        )
 
         self.synchronization = synchronization
         self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
@@ -158,10 +155,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         self.runner.run(sync.Priority.HIGH, ids, realizer)
 
     def kpi(self):
-        return {
-            "active": self.runner.active(),
-            "passive": self.runner.passive()
-        }
+        return {"active": self.runner.active(), "passive": self.runner.passive()}
 
     def reload(self):
         if self.synchronization:
@@ -214,15 +208,16 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         """
         c = cfg.CONF.NSXV3
         return {
-            'nsxv3_connection_retry_count': c.nsxv3_connection_retry_count,
-            'nsxv3_connection_retry_sleep': c.nsxv3_connection_retry_sleep,
-            'nsxv3_request_timeout': c.nsxv3_request_timeout,
-            'nsxv3_host': c.nsxv3_login_hostname,
-            'nsxv3_port': c.nsxv3_login_port,
-            'nsxv3_user': c.nsxv3_login_user,
-            'nsxv3_password': c.nsxv3_login_password,
-            'nsxv3_managed_hosts': c.nsxv3_managed_hosts,
-            'nsxv3_transport_zone': c.nsxv3_transport_zone_name}
+            "nsxv3_connection_retry_count": c.nsxv3_connection_retry_count,
+            "nsxv3_connection_retry_sleep": c.nsxv3_connection_retry_sleep,
+            "nsxv3_request_timeout": c.nsxv3_request_timeout,
+            "nsxv3_host": c.nsxv3_login_hostname,
+            "nsxv3_port": c.nsxv3_login_port,
+            "nsxv3_user": c.nsxv3_login_user,
+            "nsxv3_password": c.nsxv3_login_password,
+            "nsxv3_managed_hosts": c.nsxv3_managed_hosts,
+            "nsxv3_transport_zone": c.nsxv3_transport_zone_name,
+        }
 
     def get_agent_id(self):
         """Calculate the agent id that should be used on this host
@@ -241,9 +236,10 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         :return: class - the class containing the agent rpc callback methods.
             It must reflect the CommonAgentManagerRpcCallBackBase Interface.
         """
-        if not hasattr(self, 'rpc'):
-            self.rpc = NSXv3AgentManagerRpcCallBackBase(context, agent,
-                sg_agent, callback=self._sync_immediate, realizer=self.realizer)
+        if not hasattr(self, "rpc"):
+            self.rpc = NSXv3AgentManagerRpcCallBackBase(
+                context, agent, sg_agent, callback=self._sync_immediate, realizer=self.realizer
+            )
         return self.rpc
 
     def get_agent_api(self, **kwargs):
@@ -261,7 +257,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             [topics.PORT, topics.UPDATE],
             [topics.PORT, topics.DELETE],
             [topics.SECURITY_GROUP, topics.UPDATE],
-            [nsxv3_constants.NSXV3, topics.UPDATE]
+            [nsxv3_constants.NSXV3, topics.UPDATE],
         ]
 
     def setup_arp_spoofing_protection(self, device, device_details):
@@ -299,7 +295,7 @@ def main():
     LOG.info("VMware NSXv3 Agent initializing ...")
 
     try:
-        resolution = os.getenv('DEBUG_BLOCKING')
+        resolution = os.getenv("DEBUG_BLOCKING")
         if resolution is not None:
             eventlet.debug.hub_blocking_detection(state=True, resolution=float(resolution))
         else:
@@ -312,8 +308,8 @@ def main():
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,
-        nsxv3_constants.NSXV3_BIN
+        nsxv3_constants.NSXV3_BIN,
     )
 
     LOG.info("VMware NSXv3 Agent initialized successfully.")
-    service.launch(cfg.CONF, agent, restart_method='mutate').wait()
+    service.launch(cfg.CONF, agent, restart_method="mutate").wait()
