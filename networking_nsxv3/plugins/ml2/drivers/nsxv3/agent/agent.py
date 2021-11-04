@@ -58,7 +58,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
         network_meta = dict()
         for ns in network_segments:
-            cfg.CONF.NSXV3.nsxv3_transport_zone_name
             seg_id = ns.get("segmentation_id")
             net_type = ns.get("network_type")
             if seg_id and net_type in nsxv3_constants.NSXV3_AGENT_NETWORK_TYPES:

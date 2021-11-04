@@ -63,6 +63,9 @@ class AgentRealizer(object):
             sg_meta = self._os_meta(r.get_security_groups_with_revisions)
             qos_meta = self._os_meta(r.get_qos_policies_with_revisions)
 
+            # Only force networks refresh
+            p.metadata_refresh(p.NETWORK)
+
             # Refresh entire metadata with its latest state
             LOG.info("Inventory metadata is going to be refreshed.")
             port_outdated, port_current = p.outdated(p.PORT, port_meta)
@@ -74,8 +77,6 @@ class AgentRealizer(object):
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, _ = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
-            # Only force networks refresh
-            p.metadata_refresh(p.NETWORK)
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:

@@ -624,6 +624,16 @@ class Provider(abs.Provider):
                         if resource_type == Provider.SG_RULES:
                             if not res.has_valid_os_uuid:
                                 continue
+                        if resource_type == Provider.PORT:
+                            # Ensure this port is attached to a agent managed
+                            # logical switch, else skip it
+                            is_valid_vlan = False
+                            for name, ls in self._metadata[Provider.NETWORK].meta.meta.items():
+                                if ls.id == res.resource.get('logical_switch_id') and name.isnumeric():
+                                    is_valid_vlan = True
+                                    break
+                            if not is_valid_vlan:
+                                continue
                         provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
