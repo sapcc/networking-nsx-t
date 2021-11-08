@@ -4,6 +4,7 @@ import re
 import eventlet
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import excutils
 
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
@@ -308,8 +309,16 @@ class Provider(provider_nsx_mgmt.Provider):
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)
-        return self.client.put(path=API.GROUP.format(id),
-                               data=self.payload.sg_rule_remote(cidr)).json()
+        path = API.GROUP.format(id)
+        data = self.payload.sg_rule_remote(cidr)
+        try:
+            return self.client.put(path=path, data=data).json()
+        except Exception as e:
+            with excutils.save_and_reraise_exception() as ctxt:
+                if 'already exists' in e.message:
+                    ctxt.reraise = False
+                    return self.client.patch(path=path, data=data).json()
+                return id
     
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
