@@ -745,9 +745,9 @@ class Provider(abs.Provider):
         outdated = k1.difference(k2)
         orphaned = k2.difference(k1)
 
-        # Remove Member orphans still in use
+        # Don't count orphans for members, we don't know yet if they are really orphaned
         if resource_type == Provider.SG_MEMBERS:
-            orphaned = orphaned.difference(self._metadata.get(Provider.SG_RULES).meta.keys())
+            orphaned = set()
 
         # Remove Ports not yet exceeding delete timeout
         if resource_type == Provider.PORT:

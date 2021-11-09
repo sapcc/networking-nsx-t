@@ -76,7 +76,7 @@ class AgentRealizer(object):
             legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, _ = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, sgm_maybe_orphans = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:
@@ -102,6 +102,7 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
+            # sgm_outdated only includes missing objects, orphans are removed by ageing
             outdated = list(itertools.islice(sgm_outdated, _slice))
             _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Security Group Members",
@@ -120,7 +121,7 @@ class AgentRealizer(object):
 
             current = p.age(p.PORT, port_current)
             current += p.age(p.SG_RULES, sgr_current)
-            current += p.age(p.SG_MEMBERS, sgm_outdated)
+            current += p.age(p.SG_MEMBERS, sgm_maybe_orphans)
             current += p.age(p.QOS, qos_current)
 
             # Sanitize when there are no elements or the eldest age > current age
