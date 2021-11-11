@@ -479,9 +479,10 @@ class Payload(object):
             min = int(min) if str(min).isdigit() else min
             max = int(max) if str(max).isdigit() else max
 
-            if (min is None or min in VALID_ICMP_RANGES[ethertype] and
-                (VALID_ICMP_RANGES[ethertype][min] == None) or
-                    (max is None or max in VALID_ICMP_RANGES[ethertype][min])):
+            if (min is None or min in VALID_ICMP_RANGES[ethertype]) and (
+                (VALID_ICMP_RANGES[ethertype][min] == None)
+                or (max is None or max in VALID_ICMP_RANGES[ethertype][min])
+            ):
 
                 icmp_type = str(min) if min is not None else ""
                 icmp_code = str(
