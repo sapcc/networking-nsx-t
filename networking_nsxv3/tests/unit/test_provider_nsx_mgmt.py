@@ -394,7 +394,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "remote_group_id": "",
             "remote_ip_prefix": "192.168.10.0/24",
             "security_group_id": "",
-            "port_range_min": None,
+            "port_range_min": "3",
             "port_range_max": "1",
             "protocol": "icmp",
         }
@@ -430,12 +430,20 @@ class TestProviderMgmt(base.BaseTestCase):
                     "protocol": "ICMPv4",
                     "resource_type": "ICMPTypeNSService"
                 }
-            }
+            },
+            {
+                "service": {
+                    "icmp_code": "1",
+                    "icmp_type": "3",
+                    "protocol": "ICMPv4",
+                    "resource_type": "ICMPTypeNSService"
+                }
+            },
         ]
 
         self.assertDictContainsSubset(sg_meta_rules.get(rule1.get("id")).get("services")[0], generic_icmp_expected[0])
         self.assertDictContainsSubset(sg_meta_rules.get(rule2.get("id")).get("services")[0], generic_icmp_expected[1])
-        self.assertDictContainsSubset(sg_meta_rules.get(rule3.get("id")).get("services")[0], generic_icmp_expected[0])
+        self.assertDictContainsSubset(sg_meta_rules.get(rule3.get("id")).get("services")[0], generic_icmp_expected[2])
 
 
     @responses.activate
@@ -719,7 +727,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "remote_ip_prefix": "192.168.10.0/24",
             "security_group_id": "",
             "port_range_min": "5",
-            "port_range_max": "",
+            "port_range_max": "5",
             "protocol": "icmp",
         }
 
