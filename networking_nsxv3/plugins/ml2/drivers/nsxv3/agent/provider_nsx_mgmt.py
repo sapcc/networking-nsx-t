@@ -480,8 +480,8 @@ class Payload(object):
             max = int(max) if str(max).isdigit() else max
 
             if (min is None or min in VALID_ICMP_RANGES[ethertype]) and (
-                (VALID_ICMP_RANGES[ethertype][min] == None)
-                or (max is None or max in VALID_ICMP_RANGES[ethertype][min])
+                (min is None or VALID_ICMP_RANGES[ethertype][min] == None)
+                or (min is None or max is None or max in VALID_ICMP_RANGES[ethertype][min])
             ):
 
                 icmp_type = str(min) if min is not None else ""
