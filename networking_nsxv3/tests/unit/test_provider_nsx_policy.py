@@ -475,8 +475,8 @@ class TestProviderPolicy(base.BaseTestCase):
             "remote_group_id": "",
             "remote_ip_prefix": "192.168.10.0/24",
             "security_group_id": "",
-            "port_range_min": "5",
-            "port_range_max": "",
+            "port_range_min": "22",
+            "port_range_max": "22",
             "protocol": "icmp",
         }
 
