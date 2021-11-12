@@ -148,6 +148,10 @@ class AgentRealizer(object):
                     len(outdated), len(legacy_sgr_outdated))
 
                 def legacy_sg_rules_realize(id):
+                    # Safeguard, don't delete mgmt SGs without existing Policy
+                    if id in sg_meta and id not in sgr_current:
+                        LOG.warning("Skip deletion of mgmt-sg %s due to missing policy", id)
+                        return
                     l.sg_rules_realize({"id": id}, delete=True)
                 self.callback(outdated, legacy_sg_rules_realize)
                 if _slice <= 0:
