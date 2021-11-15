@@ -798,8 +798,8 @@ class Provider(abs.Provider):
             if parent_port:
                 provider_port["parent_id"] = parent_port.id
             else:
-                LOG.error("Not found. Parent Port:%s",
-                          os_port.get("parent_id"))
+                LOG.warning("Not found. Parent Port:%s for Child Port:%s",
+                          os_port.get("parent_id"), os_port.get("id"))
                 return
         else:
             # Parent port is NOT always created externally
