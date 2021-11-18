@@ -11,6 +11,7 @@ from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
+import json
 
 LOG = logging.getLogger(__name__)
 
@@ -315,10 +316,10 @@ class Provider(provider_nsx_mgmt.Provider):
             return self.client.put(path=path, data=data).json()
         except Exception as e:
             with excutils.save_and_reraise_exception() as ctxt:
-                if 'already exists' in e.message:
+                if 'already exists' in e.args[1]:
                     ctxt.reraise = False
                     return self.client.patch(path=path, data=data).json()
-                return id
+                ctxt.reraise = True
     
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
