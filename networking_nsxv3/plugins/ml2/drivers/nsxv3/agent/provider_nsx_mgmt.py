@@ -52,7 +52,7 @@ class Meta(object):
 
     def __init__(self):
         self.meta = dict()
-        self.meta_transaction = None # TODO: That field seems never populated with data?
+        self.meta_transaction = None  # TODO: That field seems never populated with data?
 
     def __enter__(self):
         self.meta_transaction = dict()
@@ -445,28 +445,22 @@ class Payload(object):
             min = int(min) if str(min).isdigit() else min
             max = int(max) if str(max).isdigit() else max
 
-            if (
-                min is None
-                or min in VALID_ICMP_RANGES[ethertype]
-                and (VALID_ICMP_RANGES[ethertype][min] == None)
-                or (max is None or max in VALID_ICMP_RANGES[ethertype][min])
-            ):
-
-                icmp_type = str(min) if min is not None else ""
-                icmp_code = (
-                    str(max) if max is not None and min is not None and VALID_ICMP_RANGES[ethertype][min] else ""
-                )
-                return (
-                    {
-                        "resource_type": "ICMPType{}".format(subtype),
-                        "icmp_type": icmp_type,
-                        "icmp_code": icmp_code,
-                        "protocol": {"IPv4": "ICMPv4", "IPv6": "ICMPv6"}.get(ethertype),
-                    },
-                    None,
-                )
-            else:
+            if min and VALID_ICMP_RANGES[ethertype].get(min) is None:
                 return (None, "Not supported ICMP Range {}-{}".format(min, max))
+            if max and max not in VALID_ICMP_RANGES[ethertype].get(min, []):
+                return (None, "Not supported ICMP Range {}-{}".format(min, max))
+
+            icmp_type = str(min) if min is not None else ""
+            icmp_code = str(max) if max is not None and min is not None and VALID_ICMP_RANGES[ethertype][min] else ""
+            return (
+                {
+                    "resource_type": "ICMPType{}".format(subtype),
+                    "icmp_type": icmp_type,
+                    "icmp_code": icmp_code,
+                    "protocol": {"IPv4": "ICMPv4", "IPv6": "ICMPv6"}.get(ethertype),
+                },
+                None,
+            )
 
         if protocol in ["tcp", "udp"]:
             if not min and not max:
@@ -593,6 +587,16 @@ class Provider(abs.Provider):
                         if resource_type == Provider.SG_RULES:
                             if not res.has_valid_os_uuid:
                                 continue
+                        if resource_type == Provider.PORT:
+                            # Ensure this port is attached to a agent managed
+                            # logical switch, else skip it
+                            is_valid_vlan = False
+                            for name, ls in self._metadata[Provider.NETWORK].meta.meta.items():
+                                if ls.id == res.resource.get("logical_switch_id") and name.isnumeric():
+                                    is_valid_vlan = True
+                                    break
+                            if not is_valid_vlan:
+                                continue
                         provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
@@ -706,9 +710,9 @@ class Provider(abs.Provider):
         outdated = k1.difference(k2)
         orphaned = k2.difference(k1)
 
-        # Remove Member orphans still in use
+        # Don't count orphans for members, we don't know yet if they are really orphaned
         if resource_type == Provider.SG_MEMBERS:
-            orphaned = orphaned.difference(self._metadata.get(Provider.SG_RULES).meta.keys())
+            orphaned = set()
 
         # Remove Ports not yet exceeding delete timeout
         if resource_type == Provider.PORT:
@@ -761,7 +765,7 @@ class Provider(abs.Provider):
             if parent_port:
                 provider_port["parent_id"] = parent_port.id
             else:
-                LOG.error("Not found. Parent Port:%s", os_port.get("parent_id"))
+                LOG.warning("Not found. Parent Port:%s for Child Port:%s", os_port.get("parent_id"), os_port.get("id"))
                 return
         else:
             # Parent port is NOT always created externally

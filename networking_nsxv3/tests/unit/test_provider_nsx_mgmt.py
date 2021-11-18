@@ -394,7 +394,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "remote_group_id": "",
             "remote_ip_prefix": "192.168.10.0/24",
             "security_group_id": "",
-            "port_range_min": None,
+            "port_range_min": "3",
             "port_range_max": "1",
             "protocol": "icmp",
         }
@@ -430,12 +430,20 @@ class TestProviderMgmt(base.BaseTestCase):
                     "protocol": "ICMPv4",
                     "resource_type": "ICMPTypeNSService"
                 }
-            }
+            },
+            {
+                "service": {
+                    "icmp_code": "1",
+                    "icmp_type": "3",
+                    "protocol": "ICMPv4",
+                    "resource_type": "ICMPTypeNSService"
+                }
+            },
         ]
 
         self.assertDictContainsSubset(sg_meta_rules.get(rule1.get("id")).get("services")[0], generic_icmp_expected[0])
         self.assertDictContainsSubset(sg_meta_rules.get(rule2.get("id")).get("services")[0], generic_icmp_expected[1])
-        self.assertDictContainsSubset(sg_meta_rules.get(rule3.get("id")).get("services")[0], generic_icmp_expected[0])
+        self.assertDictContainsSubset(sg_meta_rules.get(rule3.get("id")).get("services")[0], generic_icmp_expected[2])
 
 
     @responses.activate
@@ -719,7 +727,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "remote_ip_prefix": "192.168.10.0/24",
             "security_group_id": "",
             "port_range_min": "5",
-            "port_range_max": "",
+            "port_range_max": "5",
             "protocol": "icmp",
         }
 
@@ -1249,6 +1257,8 @@ class TestProviderMgmt(base.BaseTestCase):
         _, _, _, _, os_port_parent, _ = self.port_fixture()
 
         provider = provider_nsx_mgmt.Provider()
+        meta = provider.network_realize(os_port_parent['vif_details']['segmentation_id'])
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
         provider.port_realize(os_port_parent)
 
         meta_p = provider.meta_provider(provider.PORT)
@@ -1267,3 +1277,27 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider.port_realize(os_port_parent, delete=True)
         self.assertEquals(len(meta_p.meta.keys()), 0)
+
+    @responses.activate
+    def test_priveleged_ports(self):
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
+        _, _, _, _, os_port_parent, _ = self.port_fixture()
+
+        provider = provider_nsx_mgmt.Provider()
+
+        # Create non-agent managed port/switch
+        meta = provider.network_realize('vmotion')
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        provider.port_realize(os_port_parent)
+
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 0)
+
+        # Create agent-managed port/switch
+        meta = provider.network_realize('1234')
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        provider.port_realize(os_port_parent)
+
+        # Assume to clean it up
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 1)
