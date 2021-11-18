@@ -201,6 +201,12 @@ class AgentRealizer(object):
                 else:
                     self.provider.sg_members_realize({"id": os_id}, delete=True)
 
+            # TODO - remove after legacy provider is not supported
+            try:
+                self.legacy_provider.sg_members_realize({"id": os_id}, delete=True)
+            except Exception:
+                pass
+
     def security_group_rules(self, os_id):
         """
         Realize security group rules state.
@@ -226,6 +232,12 @@ class AgentRealizer(object):
             else:
                 self.provider.sg_rules_realize({"id": os_id}, delete=True)
                 # Skip members as they can be used as references
+
+            # TODO - remove after legacy provider is not supported
+            try:
+                self.legacy_provider.sg_rules_realize({"id": os_id}, delete=True)
+            except Exception:
+                pass
 
     def precreate_port(self, os_id, network_meta):
         """
