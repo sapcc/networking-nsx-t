@@ -187,7 +187,6 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEquals(policy.get("display_name"), sg.get("id"))
         self.assertEquals(tags["revision_number"], sg.get("revision_number"))
-        self.assertEquals(tags["agent_id"], cfg.CONF.AGENT.agent_id)
         self.assertNotEqual(tags.get("age"), None)
         self.assertEquals(policy.get("scope"), ["/infra/domains/default/groups/{}".format(sg["id"])])
         self.assertEquals(policy.get("rules"), [])
