@@ -3,7 +3,6 @@ import json
 import re
 import uuid
 
-import requests
 import responses
 from networking_nsxv3.common import config
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import \
@@ -63,7 +62,7 @@ class TestProviderPolicy(base.BaseTestCase):
         }
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -84,7 +83,7 @@ class TestProviderPolicy(base.BaseTestCase):
         }
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -94,7 +93,7 @@ class TestProviderPolicy(base.BaseTestCase):
                 ip_addresses = e.get("ip_addresses")
                 break
         self.assertEquals(ip_addresses, ["172.16.0.0/16"])
-    
+
     @responses.activate
     def test_security_group_members_creation_compact_ipv6_cidrs(self):
         sg = {
@@ -104,7 +103,7 @@ class TestProviderPolicy(base.BaseTestCase):
         }
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -131,10 +130,10 @@ class TestProviderPolicy(base.BaseTestCase):
         }
 
         provider = provider_nsx_policy.Provider()
-        
+
         provider.sg_members_realize(sg)
         provider.sg_members_realize(sgu)
-        
+
         inv = self.inventory.inventory
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
@@ -254,7 +253,7 @@ class TestProviderPolicy(base.BaseTestCase):
         sg1 = copy.deepcopy(sg)
         sg1["rules"].append(copy.deepcopy(rule1))
         sg1["rules"].append(copy.deepcopy(rule2))
-    
+
 
         # Add new, update existing, delete existing
         sg2 = copy.deepcopy(sg)
@@ -265,7 +264,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         inv = self.inventory.inventory
         provider = provider_nsx_policy.Provider()
-        
+
         provider.sg_rules_realize(sg1)
         LOG.info(json.dumps(inv, indent=4))
         policy1 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
@@ -291,10 +290,10 @@ class TestProviderPolicy(base.BaseTestCase):
         LOG.info(json.dumps(inv, indent=4))
         policy3 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"):r for r in policy3.get("rules")}
-        
+
         self.assertEquals(len(policy3.get("rules")), 0)
 
-        
+
     @responses.activate
     def test_security_group_rules_remote_group(self):
 
@@ -337,7 +336,7 @@ class TestProviderPolicy(base.BaseTestCase):
         rules = {r.get("id"):r for r in policy.get("rules")}
 
         self.assertEquals(
-            rules[rule["id"]].get("source_groups"), 
+            rules[rule["id"]].get("source_groups"),
             ["/infra/domains/default/groups/{}".format(sg_remote["id"])])
 
 
@@ -373,14 +372,14 @@ class TestProviderPolicy(base.BaseTestCase):
         rules = {r.get("id"):r for r in policy.get("rules")}
 
         self.assertEquals(rules[rule["id"]].get("service_entries")[0], {
-            "resource_type": "L4PortSetServiceEntry", 
-            "l4_protocol": "TCP", 
+            "resource_type": "L4PortSetServiceEntry",
+            "l4_protocol": "TCP",
             "source_ports": [
                 "1-65535"
             ],
             "destination_ports": [
                 "443"
-            ] 
+            ]
         })
 
         self.assertEquals(rules[rule["id"]].get("action"), "ALLOW")
@@ -435,12 +434,12 @@ class TestProviderPolicy(base.BaseTestCase):
         rules = {r.get("id"):r for r in policy.get("rules")}
 
         self.assertEquals(rules[rule_hopopt["id"]].get("service_entries")[0], {
-            "resource_type": "IPProtocolServiceEntry", 
+            "resource_type": "IPProtocolServiceEntry",
             "protocol_number": 0
         })
 
         self.assertEquals(rules[rule_0["id"]].get("service_entries")[0], {
-            "resource_type": "IPProtocolServiceEntry", 
+            "resource_type": "IPProtocolServiceEntry",
             "protocol_number": 0
         })
 
@@ -492,7 +491,7 @@ class TestProviderPolicy(base.BaseTestCase):
         self.assertEquals(rules[rule_valid["id"]].get("service_entries")[0], {
             "resource_type": "ICMPTypeServiceEntry",
             "protocol": "ICMPv4",
-            "icmp_code": "1", 
+            "icmp_code": "1",
             "icmp_type": "5"
         })
 
@@ -538,3 +537,36 @@ class TestProviderPolicy(base.BaseTestCase):
         inv = self.inventory.inventory
         self.assertTrue(self.get_by_name(inv[Inventory.POLICIES], sg1["id"]).get("stateful"))
         self.assertFalse(self.get_by_name(inv[Inventory.POLICIES], sg2["id"]).get("stateful"))
+
+    @responses.activate
+    def test_double_creation_of_default_group(self):
+        r = responses
+        r.reset()
+
+        # Simulate default group exists response
+        r.add(
+            r.PUT,
+            re.compile("(.*)" + provider_nsx_policy.API.GROUP.format("0-0-0-0-0")),
+            status=400,
+            json={
+                "httpStatus": "BAD_REQUEST",
+                "error_code": 500127,
+                "module_name": "Policy",
+                "error_message": "Cannot create an object with path=[/infra/domains/default/groups/0-0-0-0-0] as it already exists.",
+            },
+        )
+        # Add the rest of the callbacks
+        for m in [r.GET, r.POST, r.DELETE, r.PATCH]:
+            r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
+
+        provider = provider_nsx_policy.Provider()
+        o = provider._create_sg_provider_rule_remote_prefix("0.0.0.0/0")
+
+        expected = {
+            "display_name": "0.0.0.0/0",
+            "expression": [{"resource_type": "IPAddressExpression", "ip_addresses": ["0.0.0.0/0"]}],
+            "tags": [{"scope": "agent_id", "tag": "nsxm-l-01a.corp.local"}, {"scope": "age", "tag": 1637251144}],
+        }
+
+        self.assertEqual(o["display_name"], expected["display_name"])
+        self.assertEqual(o["expression"][0]["ip_addresses"][0], expected["expression"][0]["ip_addresses"][0])
