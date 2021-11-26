@@ -178,10 +178,6 @@ class TestProviderMgmt(base.BaseTestCase):
             "display_name": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "tags": [
                 {
-                    "scope": "agent_id", 
-                    "tag": "nsxm-l-01a.corp.local"
-                }, 
-                {
                     "scope": "revision_number", 
                     "tag": 2
                 }
@@ -202,10 +198,6 @@ class TestProviderMgmt(base.BaseTestCase):
                 }
             ],
             "tags": [
-                {
-                    "scope": "agent_id", 
-                    "tag": "nsxm-l-01a.corp.local"
-                }, 
                 {
                     "scope": "revision_number", 
                     "tag": 2
@@ -506,7 +498,6 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
         sg_rule_ipset = self.get_by_name(inv[Inventory.IPSETS], sg_rule.get("sources")[0].get("target_display_name"))
 
-        self.assertEquals(self.get_tag(sg_rule_ipset, "agent_id"), "nsxm-l-01a.corp.local")
         self.assertEquals(self.get_tag(sg_rule_ipset, "revision_number"), None)
         self.assertEquals(sg_rule_ipset.get("ip_addresses"), [rule.get("remote_ip_prefix")])
 
@@ -931,7 +922,6 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(provider_port.get("address_bindings"), os_port_parent.get("address_bindings"))
 
         self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_parent.get("security_groups"))
-        self.assertEquals(self.get_tag(provider_port, "agent_id"), "nsxm-l-01a.corp.local")
         self.assertEquals(self.get_tag(provider_port, "revision_number"), os_port_parent.get("revision_number"))
 
     @responses.activate
@@ -956,7 +946,6 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(provider_port.get("address_bindings"), os_port_child.get("address_bindings"))
 
         self.assertEquals([self.get_tag(provider_port, "security_group")], os_port_child.get("security_groups"))
-        self.assertEquals(self.get_tag(provider_port, "agent_id"), "nsxm-l-01a.corp.local")
         self.assertEquals(self.get_tag(provider_port, "revision_number"), os_port_child.get("revision_number"))
     
     @responses.activate
