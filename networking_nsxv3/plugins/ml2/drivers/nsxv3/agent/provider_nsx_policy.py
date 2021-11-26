@@ -11,7 +11,6 @@ from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
-import json
 
 LOG = logging.getLogger(__name__)
 
@@ -84,7 +83,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "display_name": cidr,
             "expression": [{
                 "resource_type": "IPAddressExpression",
-                "ip_addresses": [cidr]   
+                "ip_addresses": [cidr]
             }],
             "tags": self.tags(None)
         }
@@ -126,7 +125,7 @@ class Payload(provider_nsx_mgmt.Payload):
         if err:
             LOG.error("Not supported service for Rule:%s. Error:%s", os_id, err)
             return
-        
+
         service_entries = [service] if service else []
 
         res = {
@@ -219,7 +218,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt*pause)
                 eventlet.sleep(pause)
         # When multiple policies did not get realized in the defined timeframe,
-        # this is a symptom for another issue. 
+        # this is a symptom for another issue.
         # This should be detected by the Prometheus after a while
         exporter.REALIZED.labels(resource_type, status).inc()
         raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
@@ -232,8 +231,8 @@ class Provider(provider_nsx_mgmt.Provider):
             return super(Provider, self)._realize(resource_type, delete, convertor, os_o, provider_o)
 
         os_id = provider_id = os_o.get("id")
-        
-        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)        
+
+        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
 
         meta = self.metadata(resource_type, os_id)
         if meta:
@@ -319,8 +318,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 if 'already exists' in e.args[1]:
                     ctxt.reraise = False
                     return self.client.patch(path=path, data=data).json()
-                ctxt.reraise = True
-    
+
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
 
@@ -328,7 +326,7 @@ class Provider(provider_nsx_mgmt.Provider):
     def sanitize(self, slice):
         if slice <= 0:
             return ([], None)
-            
+
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
 
