@@ -152,7 +152,7 @@ class Resource(object):
 
             if self.type == "LogicalPort":
                 att_id = self.resource.get("attachment", {}).get("id")
-                if user != "nsx_policy" and att_id:
+                if user != "nsx_policy" and user != "system" and att_id:
                     return True
         return False
 
