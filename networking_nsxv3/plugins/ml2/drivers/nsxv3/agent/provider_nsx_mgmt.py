@@ -219,7 +219,9 @@ class Payload(object):
         return compacted_cidrs
 
     def tags(self, os_obj, more=dict()):
-        tags = {NSXV3_AGENT_SCOPE: cfg.CONF.AGENT.agent_id, NSXV3_AGE_SCOPE: int(time.time())}
+        tags = {
+            NSXV3_AGE_SCOPE: int(time.time())
+        }
         if os_obj:
             tags[NSXV3_REVISION_SCOPE] = os_obj.get("revision_number")
         tags.update(more)

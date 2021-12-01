@@ -4,6 +4,7 @@ import re
 import eventlet
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import excutils
 
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
@@ -105,8 +106,11 @@ class Payload(provider_nsx_mgmt.Payload):
         # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
         return {
             "display_name": cidr,
-            "expression": [{"resource_type": "IPAddressExpression", "ip_addresses": [cidr]}],
-            "tags": self.tags(None),
+            "expression": [{
+                "resource_type": "IPAddressExpression",
+                "ip_addresses": [cidr]
+            }],
+            "tags": self.tags(None)
         }
 
     def sg_rules_container(self, os_sg, provider_sg):
@@ -372,7 +376,15 @@ class Provider(provider_nsx_mgmt.Provider):
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)
-        return self.client.put(path=API.GROUP.format(id), data=self.payload.sg_rule_remote(cidr)).json()
+        path = API.GROUP.format(id)
+        data = self.payload.sg_rule_remote(cidr)
+        try:
+            return self.client.put(path=path, data=data).json()
+        except Exception as e:
+            with excutils.save_and_reraise_exception() as ctxt:
+                if 'already exists' in e.args[1]:
+                    ctxt.reraise = False
+                    return self.client.patch(path=path, data=data).json()
 
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))

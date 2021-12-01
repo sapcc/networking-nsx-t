@@ -350,11 +350,8 @@ def get_remote_security_groups_for_host(context, host, limit, cursor):
 
 
 def has_security_group_used_by_host(context, host, security_group_id):
-    return context.session.query(
+    if context.session.query(
         sg_db.SecurityGroup.id
-    ).outerjoin(
-        sg_db.SecurityGroupRule,
-        sg_db.SecurityGroupRule.security_group_id == sg_db.SecurityGroup.id
     ).join(
         sg_db.SecurityGroupPortBinding,
         sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroup.id
@@ -362,11 +359,28 @@ def has_security_group_used_by_host(context, host, security_group_id):
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
     ).filter(
-        (sg_db.SecurityGroup.id == security_group_id) | \
-        (sg_db.SecurityGroupRule.remote_group_id == security_group_id),
+        sg_db.SecurityGroup.id == security_group_id,
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
-    ).limit(1).first() is not None
+    ).limit(1).first() is not None:
+        return True
+
+    if context.session.query(
+        sg_db.SecurityGroupRule.remote_group_id,
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroupRule.security_group_id
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        sg_db.SecurityGroupRule.remote_group_id == security_group_id,
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).limit(1).first() is not None:
+        return True
+
+    return False
 
 
 def get_security_group_members_ips(context, security_group_id):
