@@ -173,8 +173,9 @@ def get_port(context, host, port_id):
         QosPortPolicyBinding.port_id == port_id
     ).one_or_none()
 
-    parent_port_id = context.session.query(
-        trunk_model.Trunk.port_id
+    parent_port = context.session.query(
+        trunk_model.Trunk.port_id,
+        trunk_model.SubPort.segmentation_id
     ).join(
         trunk_model.SubPort
     ).filter(
@@ -188,11 +189,12 @@ def get_port(context, host, port_id):
 
     return {
         "id": id,
-        "parent_id": parent_port_id if parent_port_id else "",
+        "parent_id": parent_port[0] if parent_port else "",
+        "traffic_tag": parent_port[1] if parent_port else None,
         "mac_address": mac,
         "admin_state_up": up,
         "status": status,
-        "qos_policy_id": qos_id if qos_id else "",
+        "qos_policy_id": qos_id[0] if qos_id else "",
         "security_groups": [],
         "address_bindings": [],
         "revision_number": rev,
