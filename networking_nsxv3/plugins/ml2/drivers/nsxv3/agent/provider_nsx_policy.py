@@ -11,6 +11,7 @@ from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
+import ipaddress
 
 LOG = logging.getLogger(__name__)
 
@@ -118,6 +119,10 @@ class Payload(provider_nsx_mgmt.Payload):
             target = [group_ref(provider_rule.get("remote_ip_prefix_id"))]
         elif os_rule.get("remote_ip_prefix"):
             target = [os_rule.get("remote_ip_prefix")]
+            # Workaround for NSX-T glitch when IPv4-mapped IPv6 with prefix used in rules target
+            self._filter_out_ipv4_mapped_ipv6_nets(target)
+            if not len(target):
+                return
         else:
             target = ["ANY"]
 
@@ -139,13 +144,21 @@ class Payload(provider_nsx_mgmt.Payload):
             "service_entries": service_entries,
             "action": "ALLOW",
             "logged": False,  # TODO selective logging
-            "tag": os_id.replace("-",""),
-            "scope": ["ANY"], # Will be overwritten by Policy Scope
-            "services": ["ANY"], # Required by NSX-T Policy validation
+            "tag": os_id.replace("-", ""),
+            "scope": ["ANY"],  # Will be overwritten by Policy Scope
+            "services": ["ANY"],  # Required by NSX-T Policy validation
         }
         if '_revision' in provider_rule:
             res["_revision"] = provider_rule["_revision"]
         return res
+
+    def _filter_out_ipv4_mapped_ipv6_nets(self, target):
+        for cidr in target:
+            t = cidr.split("/")
+            ip_obj = ipaddress.ip_address(t[0])
+            if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped and (len(t) > 1):
+                target.remove(cidr)
+                LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
 
 class Provider(provider_nsx_mgmt.Provider):
@@ -215,7 +228,7 @@ class Provider(provider_nsx_mgmt.Provider):
                 exporter.REALIZED.labels(resource_type, status).inc()
                 return True
             else:
-                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt*pause)
+                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt * pause)
                 eventlet.sleep(pause)
         # When multiple policies did not get realized in the defined timeframe,
         # this is a symptom for another issue.
@@ -270,7 +283,6 @@ class Provider(provider_nsx_mgmt.Provider):
                 return meta
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
 
-
     def sg_rules_realize(self, os_sg, delete=False):
         os_id = os_sg.get("id")
 
@@ -321,7 +333,6 @@ class Provider(provider_nsx_mgmt.Provider):
 
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
-
 
     def sanitize(self, slice):
         if slice <= 0:
