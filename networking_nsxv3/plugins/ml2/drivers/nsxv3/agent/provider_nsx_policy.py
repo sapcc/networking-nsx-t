@@ -158,7 +158,7 @@ class Payload(provider_nsx_mgmt.Payload):
             ip_obj = ipaddress.ip_address(t[0])
             if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped and (len(t) > 1):
                 target.remove(cidr)
-                LOG.error(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
+                LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
 
 class Provider(provider_nsx_mgmt.Provider):
