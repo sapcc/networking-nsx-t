@@ -251,6 +251,19 @@ class NeutronMock(object):
         })
 
         port["vif_details"] = vif
+        
+    def test_synchronous_port_create(self, name, segmentation_id):
+        port = self._get_by_name(NeutronMock.PORT, name)
+        network_segments = [
+            {
+                "id": "57a75c56-5c77-4650-a93c-d9e66e0316af",
+                "network_type": "vlan",
+                "physical_network": "physnet1",
+                "segmentation_id": segmentation_id,
+                "network_id": "11208e2b-8662-4c99-a303-3d71b39e165c",
+            }
+        ]
+        self.notifier.notify(self.NETWORK, {"current": port, "network_segments": network_segments}, None)
 
 
 class TestNSXv3ServerRpcApi(object):
