@@ -276,10 +276,9 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_rules_realize(sg3)
         LOG.info(json.dumps(inv, indent=4))
         policy3 = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy3.get("rules")}
+        rules = {r.get("id"): r for r in policy3.get("rules")}
 
         self.assertEquals(len(policy3.get("rules")), 0)
-
 
     @responses.activate
     def test_security_group_rules_remote_group(self):
@@ -322,7 +321,6 @@ class TestProviderPolicy(base.BaseTestCase):
             rules[rule["id"]].get("source_groups"),
             ["/infra/domains/default/groups/{}".format(sg_remote["id"])])
 
-
     @responses.activate
     def test_security_group_rules_service_l4(self):
 
@@ -352,7 +350,7 @@ class TestProviderPolicy(base.BaseTestCase):
         inv = self.inventory.inventory
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy.get("rules")}
+        rules = {r.get("id"): r for r in policy.get("rules")}
 
         self.assertEquals(rules[rule["id"]].get("service_entries")[0], {
             "resource_type": "L4PortSetServiceEntry",
@@ -413,7 +411,7 @@ class TestProviderPolicy(base.BaseTestCase):
         inv = self.inventory.inventory
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
-        rules = {r.get("id"):r for r in policy.get("rules")}
+        rules = {r.get("id"): r for r in policy.get("rules")}
 
         self.assertEquals(rules[rule_hopopt["id"]].get("service_entries")[0], {
             "resource_type": "IPProtocolServiceEntry",
@@ -493,9 +491,9 @@ class TestProviderPolicy(base.BaseTestCase):
         ]
 
         meta = {
-            sg[0]["id"]: "1",  # same
-            sg[1]["id"]: "3",  # updated
-            sg[2]["id"]: "8"  # updated
+            sg[0]['id']: "1",  # same
+            sg[1]['id']: "3",  # updated
+            sg[2]['id']: "8"  # updated
             # 4 was removed => orphaned
         }
 
@@ -509,13 +507,13 @@ class TestProviderPolicy(base.BaseTestCase):
 
         outdated, current = provider.outdated(provider.SG_RULES, meta)
 
-        self.assertItemsEqual(outdated, [sg[1]["id"], sg[2]["id"], sg[3]["id"]])
-        self.assertItemsEqual(current, [sg[0]["id"]])
+        self.assertItemsEqual(outdated, [sg[1]['id'], sg[2]['id'], sg[3]['id']])
+        self.assertItemsEqual(current, [sg[0]['id']])
 
     @responses.activate
     def test_security_group_stateful(self):
         sg1 = {"id": "1", "revision_number": 2, "rules": []}
-        sg2 = dict(sg1, **{"id": "2", "stateful": False})
+        sg2 = dict(sg1, **{'id': '2', 'stateful': False})
         provider = provider_nsx_policy.Provider()
         provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg2)
@@ -543,7 +541,7 @@ class TestProviderPolicy(base.BaseTestCase):
         sg1 = {"id": "1", "revision_number": 2, "rules": [], "_revision": 1}
         provider = provider_nsx_policy.Provider()
         provider.sg_rules_realize(sg1)
-        
+
     @responses.activate
     def test_double_creation_of_default_group(self):
         r = responses
@@ -576,3 +574,49 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEqual(o["display_name"], expected["display_name"])
         self.assertEqual(o["expression"][0]["ip_addresses"][0], expected["expression"][0]["ip_addresses"][0])
+
+    @responses.activate
+    def test_security_group_rules_skip_ipv4_mapped_ipv6s(self):
+        sg = {
+            "id": "53C33143-3607-4CB2-B6E4-FA5F5C9E3C21",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": []
+        }
+
+        rule_valid = {
+            "id": "1",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "192.168.10.0/24",
+            "security_group_id": "",
+            "port_range_min": "65535",
+            "port_range_max": "1",
+            "protocol": "tcp",
+        }
+
+        rule_invalid = {
+            "id": "2",
+            "ethertype": "IPv6",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "::ffff:10.180.0.0/112",
+            "security_group_id": "",
+            "port_range_min": "1",
+            "port_range_max": "65535",
+            "protocol": "tcp",
+        }
+
+        sg["rules"].append(rule_valid)
+        sg["rules"].append(rule_invalid)
+
+        provider_nsx_policy.Provider().sg_rules_realize(sg)
+
+        inv = self.inventory.inventory
+
+        policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
+        rules = {r.get("id"): r for r in policy.get("rules")}
+
+        self.assertEquals(len(rules), 1)
+        self.assertEquals(rules[rule_valid["id"]].get("source_groups"), ['192.168.10.0/24'])

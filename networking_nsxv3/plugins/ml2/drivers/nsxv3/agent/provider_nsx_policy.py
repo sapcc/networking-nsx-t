@@ -11,6 +11,7 @@ from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
+import ipaddress
 
 LOG = logging.getLogger(__name__)
 
@@ -139,6 +140,10 @@ class Payload(provider_nsx_mgmt.Payload):
             target = [group_ref(provider_rule.get("remote_ip_prefix_id"))]
         elif os_rule.get("remote_ip_prefix"):
             target = [os_rule.get("remote_ip_prefix")]
+            # Workaround for NSX-T glitch when IPv4-mapped IPv6 with prefix used in rules target
+            self._filter_out_ipv4_mapped_ipv6_nets(target)
+            if not len(target):
+                return
         else:
             target = ["ANY"]
 
@@ -167,6 +172,14 @@ class Payload(provider_nsx_mgmt.Payload):
         if "_revision" in provider_rule:
             res["_revision"] = provider_rule["_revision"]
         return res
+
+    def _filter_out_ipv4_mapped_ipv6_nets(self, target):
+        for cidr in target:
+            t = cidr.split("/")
+            ip_obj = ipaddress.ip_address(t[0])
+            if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped and (len(t) > 1):
+                target.remove(cidr)
+                LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
 
 class Provider(provider_nsx_mgmt.Provider):
