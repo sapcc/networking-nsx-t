@@ -32,7 +32,8 @@ class Inventory(object):
                 "97C47802-2781-4CBF-825B-08689269B077": {
                     "id": "97C47802-2781-4CBF-825B-08689269B077",
                     "resource_type": "TransportZone",
-                    "display_name": "openstack-tz"
+                    "display_name": "openstack-tz",
+                    "_create_user": "admin"
                 }
             },
             Inventory.PROFILES: dict(),
@@ -43,7 +44,8 @@ class Inventory(object):
             Inventory.SECTIONS: dict(),
             Inventory.POLICIES: {
                 "default-layer3-section": {
-                    "rules": [{"action": "DROP"}]
+                    "rules": [{"action": "DROP"}],
+                    "_create_user": "system"
                 }
             },
             Inventory.GROUPS: dict(),
