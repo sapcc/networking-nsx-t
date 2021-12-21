@@ -50,7 +50,6 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_type = portbindings.VIF_TYPE_OVS
         self.vif_details = {
             portbindings.CAP_PORT_FILTER: sg_enabled,
-            portbindings.OVS_HYBRID_PLUG: sg_enabled,
             portbindings.VIF_DETAILS_CONNECTIVITY:
                 portbindings.CONNECTIVITY_L2
         }
