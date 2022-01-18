@@ -4,7 +4,6 @@ import re
 
 import eventlet
 import responses
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.tests.unit import provider
@@ -17,8 +16,8 @@ LOG = logging.getLogger(__name__)
 
 # TODO - replace static wait/sleep with active polling
 
+
 class TestAgentRealizer(base.BaseTestCase):
-    
     def setUp(self):
         super(TestAgentRealizer, self).setUp()
 
@@ -37,13 +36,11 @@ class TestAgentRealizer(base.BaseTestCase):
 
         self.url = "https://{}:{}".format(hostname, port)
 
-
     def _mock(self, r):
         self.inventory = provider.Inventory(self.url)
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
-    
     def test_creation(self):
         with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
             self._mock(resp)
@@ -102,11 +99,44 @@ class TestAgentRealizer(base.BaseTestCase):
             self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
             self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
             self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        
+
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
+    def test_synchronous_creation(self):
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
+            self._mock(resp)
+            c = coverage
+
+            env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+            with env:
+                i = env.openstack_inventory
+                i.test_synchronous_port_create(c.PORT_FRONTEND_EXTERNAL["name"], "1001")
+                eventlet.sleep(30)
+
+        p = env.manager.realizer.provider
+        m = env.dump_provider_inventory(printable=False)
+
+        # Validate network creation
+        self.assertEquals("1001" in m[p.NETWORK]["meta"], True)
+
+        # Validate QoS State
+        self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], True)
+
+        # Validate Security Groups Members
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
+
+        # Validate Security Group Rules Sections
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], True)
+
+        if env.is_management_api_mode():
+            # Validate Security Group Rules NSGroups
+            self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
+
+        # Validate Security Group Remote Prefix IPSets
+        for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
     def test_cleanup(self):
         with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
@@ -130,10 +160,8 @@ class TestAgentRealizer(base.BaseTestCase):
                 LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
 
                 # Add orphan IPSets
-                p.client.post(path="/api/v1/ip-sets",
-                            data=p.payload.sg_rule_remote("192.168.0.0/12"))
-                p.client.post(path="/api/v1/ip-sets",
-                            data=p.payload.sg_rule_remote("::ffff/64"))
+                p.client.post(path="/api/v1/ip-sets", data=p.payload.sg_rule_remote("192.168.0.0/12"))
+                p.client.post(path="/api/v1/ip-sets", data=p.payload.sg_rule_remote("::ffff/64"))
 
                 i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
                 eventlet.sleep(10)
@@ -142,7 +170,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
                 LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
-    
+
         metadata = m = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
@@ -181,4 +209,3 @@ class TestAgentRealizer(base.BaseTestCase):
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
-
