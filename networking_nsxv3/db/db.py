@@ -16,7 +16,7 @@ from neutron_lib.api.definitions import portbindings
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
-    return context.session.query(
+    return set(context.session.query(
         Port.id,
         StandardAttribute.revision_number,
         Port.standard_attr_id
@@ -31,7 +31,7 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id > cursor,
     ).limit(
         limit
-    ).all() # TODO: only uniques
+    ).all())
 
 
 def get_qos_policies_with_revisions(context, host, limit, cursor):
@@ -173,8 +173,9 @@ def get_port(context, host, port_id):
         QosPortPolicyBinding.port_id == port_id
     ).one_or_none()
 
-    parent_port_id = context.session.query(
-        trunk_model.Trunk.port_id
+    parent_port = context.session.query(
+        trunk_model.Trunk.port_id,
+        trunk_model.SubPort.segmentation_id
     ).join(
         trunk_model.SubPort
     ).filter(
@@ -188,11 +189,12 @@ def get_port(context, host, port_id):
 
     return {
         "id": id,
-        "parent_id": parent_port_id if parent_port_id else "",
+        "parent_id": parent_port[0] if parent_port else "",
+        "traffic_tag": parent_port[1] if parent_port else None,
         "mac_address": mac,
         "admin_state_up": up,
         "status": status,
-        "qos_policy_id": qos_id if qos_id else "",
+        "qos_policy_id": qos_id[0] if qos_id else "",
         "security_groups": [],
         "address_bindings": [],
         "revision_number": rev,
@@ -348,7 +350,22 @@ def get_remote_security_groups_for_host(context, host, limit, cursor):
 
 
 def has_security_group_used_by_host(context, host, security_group_id):
-    return context.session.query(
+    if context.session.query(
+        sg_db.SecurityGroup.id
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroup.id
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
+    ).filter(
+        sg_db.SecurityGroup.id == security_group_id,
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).limit(1).first() is not None:
+        return True
+
+    if context.session.query(
         sg_db.SecurityGroupRule.remote_group_id,
     ).join(
         sg_db.SecurityGroupPortBinding,
@@ -357,24 +374,26 @@ def has_security_group_used_by_host(context, host, security_group_id):
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
     ).filter(
-        (sg_db.SecurityGroupRule.remote_group_id == security_group_id) | \
-        (sg_db.SecurityGroupRule.security_group_id == security_group_id),
+        sg_db.SecurityGroupRule.remote_group_id == security_group_id,
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
-    ).limit(1).first() is not None
+    ).limit(1).first() is not None:
+        return True
+
+    return False
 
 
 def get_security_group_members_ips(context, security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
     return context.session.query(
-            IPAllocation.ip_address
-        ).join(
-            sg_db.SecurityGroupPortBinding,
-            IPAllocation.port_id == port_id
-        ).filter(
-            security_group_id == group_id
-        ).all()
+        IPAllocation.ip_address
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        IPAllocation.port_id == port_id
+    ).filter(
+        security_group_id == group_id
+    ).all()
 
 
 def get_security_group_members_address_bindings_ips(context,
@@ -382,10 +401,10 @@ def get_security_group_members_address_bindings_ips(context,
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
     return context.session.query(
-            AllowedAddressPair.ip_address
-        ).join(
-            sg_db.SecurityGroupPortBinding,
-            AllowedAddressPair.port_id == port_id
-        ).filter(
-            security_group_id == group_id
-        ).all()
+        AllowedAddressPair.ip_address
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        AllowedAddressPair.port_id == port_id
+    ).filter(
+        security_group_id == group_id
+    ).all()

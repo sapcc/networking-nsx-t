@@ -1,16 +1,17 @@
-import json
-import os
+import functools
 import re
 
 import eventlet
-import netaddr
+from oslo_config import cfg
+from oslo_log import log as logging
+from oslo_utils import excutils
+
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
-from networking_nsxv3.prometheus import exporter
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
-from oslo_config import cfg
-from oslo_log import log as logging
+from networking_nsxv3.prometheus import exporter
+import ipaddress
 
 LOG = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ class API(provider_nsx_mgmt.API):
 
     POLICIES = "/policy/api/v1/infra/domains/default/security-policies"
     POLICY = "/policy/api/v1/infra/domains/default/security-policies/{}"
+    RULES = "/policy/api/v1/infra/domains/default/security-policies/{}/rules"
 
     GROUPS = "/policy/api/v1/infra/domains/default/groups"
     GROUP = "/policy/api/v1/infra/domains/default/groups/{}"
@@ -28,6 +30,23 @@ class API(provider_nsx_mgmt.API):
     SERVICE = "/policy/api/v1/infra/services/{}"
 
     STATUS = "/policy/api/v1/infra/realized-state/status"
+
+
+def refresh_and_retry(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        self = args[0]
+        resource_type = args[1]
+        os_id = args[4].get("id")
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            LOG.warning("Resource: %s with ID: %s failed to be updated, retrying after metadata refresh",
+                        resource_type, os_id)
+            self.metadata_refresh(resource_type)
+            return func(*args, **kwargs)
+
+    return wrapper
 
 
 class Payload(provider_nsx_mgmt.Payload):
@@ -65,7 +84,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "display_name": cidr,
             "expression": [{
                 "resource_type": "IPAddressExpression",
-                "ip_addresses": [cidr]   
+                "ip_addresses": [cidr]
             }],
             "tags": self.tags(None)
         }
@@ -100,6 +119,10 @@ class Payload(provider_nsx_mgmt.Payload):
             target = [group_ref(provider_rule.get("remote_ip_prefix_id"))]
         elif os_rule.get("remote_ip_prefix"):
             target = [os_rule.get("remote_ip_prefix")]
+            # Workaround for NSX-T glitch when IPv4-mapped IPv6 with prefix used in rules target
+            self._filter_out_ipv4_mapped_ipv6_nets(target)
+            if not len(target):
+                return
         else:
             target = ["ANY"]
 
@@ -107,11 +130,10 @@ class Payload(provider_nsx_mgmt.Payload):
         if err:
             LOG.error("Not supported service for Rule:%s. Error:%s", os_id, err)
             return
-        
+
         service_entries = [service] if service else []
 
-
-        return {
+        res = {
             "id": os_id,
             "direction": {'ingress': 'IN', 'egress': 'OUT'}.get(direction),
             "ip_protocol": {'IPv4': 'IPV4', 'IPv6': 'IPV6'}.get(ethertype),
@@ -122,10 +144,21 @@ class Payload(provider_nsx_mgmt.Payload):
             "service_entries": service_entries,
             "action": "ALLOW",
             "logged": False,  # TODO selective logging
-            "tag": os_id.replace("-",""),
-            "scope": ["ANY"], # Will be overwritten by Policy Scope
-            "services": ["ANY"] # Required by NSX-T Policy validation
+            "tag": os_id.replace("-", ""),
+            "scope": ["ANY"],  # Will be overwritten by Policy Scope
+            "services": ["ANY"],  # Required by NSX-T Policy validation
         }
+        if '_revision' in provider_rule:
+            res["_revision"] = provider_rule["_revision"]
+        return res
+
+    def _filter_out_ipv4_mapped_ipv6_nets(self, target):
+        for cidr in target:
+            t = cidr.split("/")
+            ip_obj = ipaddress.ip_address(t[0])
+            if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped and (len(t) > 1):
+                target.remove(cidr)
+                LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
 
 class Provider(provider_nsx_mgmt.Provider):
@@ -195,14 +228,15 @@ class Provider(provider_nsx_mgmt.Provider):
                 exporter.REALIZED.labels(resource_type, status).inc()
                 return True
             else:
-                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt*pause)
+                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt * pause)
                 eventlet.sleep(pause)
         # When multiple policies did not get realized in the defined timeframe,
-        # this is a symptom for another issue. 
+        # this is a symptom for another issue.
         # This should be detected by the Prometheus after a while
         exporter.REALIZED.labels(resource_type, status).inc()
         raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
 
+    @refresh_and_retry
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         path = self._metadata.get(resource_type).endpoint
         if "policy" not in path:
@@ -210,8 +244,8 @@ class Provider(provider_nsx_mgmt.Provider):
             return super(Provider, self)._realize(resource_type, delete, convertor, os_o, provider_o)
 
         os_id = provider_id = os_o.get("id")
-        
-        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)        
+
+        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
 
         meta = self.metadata(resource_type, os_id)
         if meta:
@@ -223,7 +257,12 @@ class Provider(provider_nsx_mgmt.Provider):
             else:
                 LOG.info(report, "updated")
                 data = convertor(os_o, provider_o)
-                self.client.patch(path=path, data=data)
+                if meta._revision is not None:
+                    data["_revision"] = meta._revision
+
+                res = self.client.put(path=path, data=data)
+                res.raise_for_status()
+                data = res.json()
                 data["id"] = provider_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
@@ -234,14 +273,15 @@ class Provider(provider_nsx_mgmt.Provider):
                 path = "{}/{}".format(path, os_id)
                 LOG.info(report, "created")
                 data = convertor(os_o, provider_o)
-                self.client.put(path=path, data=data)
+                res = self.client.put(path=path, data=data)
+                res.raise_for_status()
+                data = res.json()
                 data["id"] = provider_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
                 self._wait_to_realize(resource_type, os_id)
                 return meta
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
-
 
     def sg_rules_realize(self, os_sg, delete=False):
         os_id = os_sg.get("id")
@@ -251,9 +291,11 @@ class Provider(provider_nsx_mgmt.Provider):
             return
 
         provider_rules = []
+        meta = self.metadata(Provider.SG_RULE, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
-            provider_rule = self._get_sg_provider_rule(rule, None)
+            revision = meta.get(rule['id'], {}).get('_revision') if meta else None
+            provider_rule = self._get_sg_provider_rule(rule, revision)
             provider_rule = self.payload.sg_rule(rule, provider_rule)
 
             if provider_rule:
@@ -266,19 +308,36 @@ class Provider(provider_nsx_mgmt.Provider):
 
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
 
+    def metadata(self, resource_type, os_id) -> provider_nsx_mgmt.ResourceMeta:
+        if resource_type == Provider.SG_RULE:
+            with LockManager.get_lock(Provider.SG_RULES):
+                meta = self._metadata[Provider.SG_RULES].meta.get(os_id)
+                if meta:
+                    rules = self.client.get_all(API.RULES.format(meta.id))
+                    meta = {provider_nsx_mgmt.Resource(o).os_id: o for o in rules}
+                return meta
+
+        return super(Provider, self).metadata(resource_type, os_id)
+
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         id = re.sub(r"\.|:|\/", "-", cidr)
-        return self.client.put(path=API.GROUP.format(id),
-                               data=self.payload.sg_rule_remote(cidr)).json()
-    
+        path = API.GROUP.format(id)
+        data = self.payload.sg_rule_remote(cidr)
+        try:
+            return self.client.put(path=path, data=data).json()
+        except Exception as e:
+            with excutils.save_and_reraise_exception() as ctxt:
+                if 'already exists' in e.args[1]:
+                    ctxt.reraise = False
+                    return self.client.patch(path=path, data=data).json()
+
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
-
 
     def sanitize(self, slice):
         if slice <= 0:
             return ([], None)
-            
+
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
 
