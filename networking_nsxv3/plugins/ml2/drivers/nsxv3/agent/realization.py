@@ -9,12 +9,11 @@ LOG = logging.getLogger(__name__)
 
 
 class AgentRealizer(object):
-    def __init__(self, rpc, callback, kpi, provider, legacy_provider):
+    def __init__(self, rpc, callback, kpi, provider):
         self.rpc = rpc
         self.callback = callback
         self.kpi = kpi
         self.provider = provider
-        self.legacy_provider = legacy_provider
         self.age = int(time.time())
         # Initializing metadata
         self.all(dryrun=True)
@@ -55,7 +54,6 @@ class AgentRealizer(object):
 
             _slice = cfg.CONF.AGENT.synchronization_queue_size
             p = self.provider
-            l = self.legacy_provider
             r = self.rpc
 
             port_meta = self._os_meta(r.get_ports_with_revisions)
@@ -70,9 +68,6 @@ class AgentRealizer(object):
             port_outdated, port_current = p.outdated(p.PORT, port_meta)
             sgr_outdated, sgr_current = p.outdated(p.SG_RULES, sg_meta)
             qos_outdated, qos_current = p.outdated(p.QOS, qos_meta)
-            # Refresh legacy metadata
-            legacy_sgr_outdated, _ = l.outdated(l.SG_RULES, dict())
-            legacy_sgm_outdated, _ = l.outdated(l.SG_MEMBERS, dict())
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, sgm_maybe_orphans = p.outdated(p.SG_MEMBERS, {sg: 0 for sg in sg_meta})
@@ -137,50 +132,6 @@ class AgentRealizer(object):
                 if _slice <= 0:
                     return
 
-                outdated = list(itertools.islice(legacy_sgr_outdated, _slice))
-                _slice -= len(outdated)
-                LOG.info(
-                    "Realizing %s/%s resources of Type:Security Group Rules (Legacy)",
-                    len(outdated),
-                    len(legacy_sgr_outdated),
-                )
-
-                def legacy_sg_rules_realize(id):
-                    # Safeguard, don't delete mgmt SGs without existing Policy
-                    if id in sg_meta and id not in sgr_current:
-                        LOG.warning("Skip deletion of mgmt-sg %s due to missing policy", id)
-                        return
-                    l.sg_rules_realize({"id": id}, delete=True)
-
-                self.callback(outdated, legacy_sg_rules_realize)
-                if _slice <= 0:
-                    return
-
-                outdated = list(itertools.islice(legacy_sgm_outdated, _slice))
-                _slice -= len(outdated)
-                LOG.info(
-                    "Realizing %s/%s resources of Type:Security Group Members (Legacy)",
-                    len(outdated),
-                    len(legacy_sgm_outdated),
-                )
-
-                def legacy_sg_members_realize(id):
-                    l.sg_members_realize({"id": id}, delete=True)
-
-                self.callback(outdated, legacy_sg_members_realize)
-                if _slice <= 0:
-                    return
-
-                LOG.info("Sanitizing (Legacy) provider based on age cycles")
-
-                sanitize = l.sanitize(_slice)
-                for id, callback in sanitize:
-                    self.callback(id, callback)
-
-                _slice -= len(sanitize)
-                if _slice <= 0:
-                    return
-
                 self.age = int(time.time())
 
     def security_group_members(self, os_id, reference=False):
@@ -200,12 +151,6 @@ class AgentRealizer(object):
                     self.provider.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": "0"})
                 else:
                     self.provider.sg_members_realize({"id": os_id}, delete=True)
-
-            # TODO - remove after legacy provider is not supported
-            try:
-                self.legacy_provider.sg_members_realize({"id": os_id}, delete=True)
-            except Exception:
-                pass
 
     def security_group_rules(self, os_id):
         """
@@ -232,12 +177,6 @@ class AgentRealizer(object):
             else:
                 self.provider.sg_rules_realize({"id": os_id}, delete=True)
                 # Skip members as they can be used as references
-
-            # TODO - remove after legacy provider is not supported
-            try:
-                self.legacy_provider.sg_rules_realize({"id": os_id}, delete=True)
-            except Exception:
-                pass
 
     def precreate_port(self, os_id, network_meta):
         """

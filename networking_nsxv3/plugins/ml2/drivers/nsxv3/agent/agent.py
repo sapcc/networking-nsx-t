@@ -113,22 +113,19 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         provider_version = provider.client.version
         LOG.info("Detected NSX-T %s version.", provider_version)
 
-        info = "Activating %s API in primary mode and %s API in legacy mode."
+        info = "Activating %s API"
 
         if force_api == "Management" if force_api else provider_version < (3, 0):
-            LOG.info(info, "Management", "Policy")
-            tmp_provider = legacy_provider
-            legacy_provider = provider
-            provider = tmp_provider
+            LOG.info(info, "Management")
+            provider = legacy_provider
         else:
-            LOG.info(info, "Policy", "Management")
+            LOG.info(info, "Policy")
 
         self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
 
         self.realizer = realization.AgentRealizer(
-            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi, provider=provider, legacy_provider=legacy_provider
-        )
+            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi, provider=provider)
 
         self.synchronization = synchronization
         self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
@@ -307,7 +304,7 @@ def main():
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,
-        nsxv3_constants.NSXV3_BIN,
+        nsxv3_constants.NSXV3_BIN
     )
 
     LOG.info("VMware NSXv3 Agent initialized successfully.")
