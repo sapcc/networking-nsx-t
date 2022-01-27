@@ -14,7 +14,7 @@ from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common import synchronization as sync
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, provider_nsx_policy, realization
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import mp_to_policy_migration, provider_nsx_mgmt, provider_nsx_policy, realization
 from networking_nsxv3.prometheus import exporter
 from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
@@ -107,6 +107,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
     def __init__(self, rpc, synchronization=True, monitoring=True, force_api=None):
         super(NSXv3Manager, self).__init__()
 
+        migration_provider = mp_to_policy_migration.Provider()
         legacy_provider = provider_nsx_mgmt.Provider()
         provider = provider_nsx_policy.Provider()
 
@@ -120,6 +121,12 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             provider = legacy_provider
         else:
             LOG.info(info, "Policy")
+            if force_api == "MP-TO-POLICY":
+                if provider_version >= (3, 1):
+                    LOG.info("Activating MP-TO-POLICY API Provider.")
+                    provider = migration_provider
+                else:
+                    LOG.warning("MP-TO-POLICY API is supported from NSX-T ver. 3.1.x onward.")
 
         self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
@@ -300,7 +307,8 @@ def main():
         LOG.error("Initializing Eventlet blocking behavior detection has failed.")
 
     agent = ca.CommonAgentLoop(
-        NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi()),
+        NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
+                     force_api="MP-TO-POLICY" if cfg.CONF.AGENT.force_mp_to_policy else None),
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,

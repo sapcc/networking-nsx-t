@@ -51,6 +51,11 @@ agent_opts = [
         'synchronization_queue_size',
         default=20,
         help="The maximum amount of objects witing in the queue for update."
+    ),
+    cfg.BoolOpt(
+        'force_mp_to_policy',
+        default=False,
+        help="Force NSX-T Manager API objects to be promoted to Policy API objects."
     )
 ]
 
