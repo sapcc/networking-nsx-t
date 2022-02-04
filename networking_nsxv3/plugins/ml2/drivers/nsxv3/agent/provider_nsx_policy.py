@@ -1,3 +1,4 @@
+import array
 import functools
 import re
 
@@ -42,17 +43,37 @@ def refresh_and_retry(func):
 class API(provider_nsx_mgmt.API):
     POLICY_BASE = "/policy/api/v1"
 
-    POLICIES = "/policy/api/v1/infra/domains/default/security-policies"
-    POLICY = "/policy/api/v1/infra/domains/default/security-policies/{}"
-    RULES = "/policy/api/v1/infra/domains/default/security-policies/{}/rules"
+    IP_DISCOVERY_PROFILES = POLICY_BASE + "/infra/ip-discovery-profiles"
+    MAC_DISCOVERY_PROFILES = POLICY_BASE + "/infra/mac-discovery-profiles"
+    PORT_MIRRORING_PROFILES = POLICY_BASE + "/infra/port-mirroring-profiles"
+    SEGMENT_SEC_PROFILES = POLICY_BASE + "/infra/segment-security-profiles"
+    SPOOFGUARD_PROFILES = POLICY_BASE + "/infra/spoofguard-profiles"
+    QOS_PROFILES = POLICY_BASE + "/infra/qos-profiles"
 
-    GROUPS = "/policy/api/v1/infra/domains/default/groups"
-    GROUP = "/policy/api/v1/infra/domains/default/groups/{}"
+    IP_DISCOVERY_PROFILE = IP_DISCOVERY_PROFILES + "/{}"
+    MAC_DISCOVERY_PROFILE = MAC_DISCOVERY_PROFILES + "/{}"
+    PORT_MIRRORING_PROFILE = PORT_MIRRORING_PROFILES + "/{}"
+    SEGMENT_SEC_PROFILE = SEGMENT_SEC_PROFILES + "/{}"
+    SPOOFGUARD_PROFILE = SPOOFGUARD_PROFILES + "/{}"
+    QOS_PROFILE = QOS_PROFILES + "/{}"
 
-    SERVICES = "/policy/api/v1/infra/services"
-    SERVICE = "/policy/api/v1/infra/services/{}"
+    POLICIES = POLICY_BASE + "/infra/domains/default/security-policies"
+    POLICY = POLICY_BASE + "/infra/domains/default/security-policies/{}"
+    RULES = POLICY_BASE + "/infra/domains/default/security-policies/{}/rules"
 
-    STATUS = "/policy/api/v1/infra/realized-state/status"
+    SEGMENT_PORTS = POLICY_BASE + "/infra/segments/{}/ports"
+    SEGMENT_PORT = POLICY_BASE + "/infra/segments/{}/ports/{}"
+
+    SEGMENTS = POLICY_BASE + "/infra/segments"
+    SEGMENT = POLICY_BASE + "/infra/segments/{}"
+
+    GROUPS = POLICY_BASE + "/infra/domains/default/groups"
+    GROUP = POLICY_BASE + "/infra/domains/default/groups/{}"
+
+    SERVICES = POLICY_BASE + "/infra/services"
+    SERVICE = POLICY_BASE + "/infra/services/{}"
+
+    STATUS = POLICY_BASE + "/infra/realized-state/status"
 
 
 class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
@@ -70,11 +91,11 @@ class PolicyResource(provider_nsx_mgmt.Resource):
         rulez = self.resource.get("rules", [])
         _rules = {provider_nsx_mgmt.Resource(r).os_id: r for r in rulez}
         tags = self.tags
-        # Set age to most recent and rev to 0 NSGroups to always skip the update
+
         return PolicyResourceMeta(
             id=self.id,
-            rev=tags.get(NSXV3_REVISION_SCOPE),  # empty set for NSGroup
-            age=int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
+            rev=tags.get(NSXV3_REVISION_SCOPE),
+            age=tags.get(NSXV3_AGE_SCOPE),
             _revision=self.resource.get("_revision"),
             _last_modified_time=self.resource.get("_last_modified_time"),
             rules=_rules,
@@ -303,6 +324,19 @@ class Provider(provider_nsx_mgmt.Provider):
                 return meta
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
 
+    def get_non_default_switching_profiles(self) -> array:
+        prfls = [
+            API.IP_DISCOVERY_PROFILES,
+            API.MAC_DISCOVERY_PROFILES,
+            API.PORT_MIRRORING_PROFILES,
+            API.SEGMENT_SEC_PROFILES,
+            API.SPOOFGUARD_PROFILES,
+            API.QOS_PROFILES
+        ]
+        prfls = [self.client.get_all(path=p) for p in prfls]
+        # filter/flattern the list
+        return [p for sublist in prfls for p in sublist if p and p.get("id").find("default") == -1]
+
     # overrides
     def sg_rules_realize(self, os_sg, delete=False):
         os_id = os_sg.get("id")
@@ -409,13 +443,14 @@ class Provider(provider_nsx_mgmt.Provider):
 
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
-
+        LOG.error("==========================================================================================")
+        LOG.error("SANITIZE START")
         sanitize = super(Provider, self).sanitize(slice)
-
+        LOG.error("SANITIZE LEN: {}".format(len(sanitize)))
         if len(sanitize) < slice:
             services = self.client.get_all(path=API.SERVICES, params={"default_service": False})
             # Mitigating bug with 3.0.1 which ignores default_service = False
             for service in [sv for sv in services if not sv.get("is_default")]:
                 sanitize.append((service.get("id"), remove_orphan_service))
-
+        LOG.error("sanitize: {}".format(sanitize))
         return sanitize

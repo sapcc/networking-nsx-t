@@ -565,6 +565,9 @@ class Provider(abs.Provider):
             Provider.NETWORK: MetaProvider(API.SWITCHES),
         }
 
+    def get_all_switching_profiles(self):
+        return self.client.get_all(path=API.PROFILES, params=API.PARAMS_GET_DEFAULT_PROFILES)
+
     def metadata_refresh(self, resource_type, params=dict()):
 
         if resource_type != Provider.SG_RULE:
