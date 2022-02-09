@@ -39,4 +39,10 @@ class TestProviderMpToPolicy(base.BaseTestCase):
 
     @responses.activate
     def test_ensure_switching_profiles(self):
-        mp_to_policy_migration.Provider()._ensure_switching_profiles()
+        # TODO
+        mp_to_policy_migration.Provider()
+
+    @responses.activate
+    def test_port_migration(self):
+        # TODO
+        mp_to_policy_migration.Provider()._migrate_port("1")

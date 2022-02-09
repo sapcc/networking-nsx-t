@@ -566,7 +566,7 @@ class Provider(abs.Provider):
         }
 
     def get_all_switching_profiles(self):
-        return self.client.get_all(path=API.PROFILES, params=API.PARAMS_GET_DEFAULT_PROFILES)
+        return self.client.get_all(path=API.PROFILES)
 
     def metadata_refresh(self, resource_type, params=dict()):
 
