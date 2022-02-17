@@ -1,6 +1,7 @@
 import copy
 import json
 import re
+import time
 import uuid
 
 import responses
@@ -621,10 +622,70 @@ class TestProviderPolicy(base.BaseTestCase):
         self.assertEquals(len(rules), 1)
         self.assertEquals(rules[rule_valid["id"]].get("source_groups"), ['192.168.10.0/24'])
 
+    def port_fixture(self):
+        os_sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [{
+                "id": "1",
+                "ethertype": "IPv4",
+                "direction": "ingress",
+                "remote_group_id": "",
+                "remote_ip_prefix": "192.168.10.0/24",
+                "security_group_id": "",
+                "port_range_min": "5",
+                "port_range_max": "1",
+                "protocol": "icmp"
+            }]
+        }
+
+        os_sg_second = {
+            "id": "FB8B899A-2DAF-4DFA-9E6A-D2869C16BCD0",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [{
+                "id": "1",
+                "ethertype": "IPv4",
+                "direction": "ingress",
+                "remote_group_id": "",
+                "remote_ip_prefix": "192.168.11.0/24",
+                "security_group_id": "",
+                "port_range_min": "5",
+                "port_range_max": "1",
+                "protocol": "icmp"
+            }]
+        }
+
+        os_qos = {
+            "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
+            "revision_number": "3",
+            "name": "test",
+            "rules": [{"dscp_mark": "5"}]
+        }
+
+        os_port_parent = {
+            "id": "80372EA3-5F58-4B06-8456-3067D60B3023",
+            "revision_number": "2",
+            "parent_id": "",
+            "mac_address": "fa:16:3e:e4:11:f1",
+            "admin_state_up": "UP",
+            "qos_policy_id": os_qos.get("id"),
+            "security_groups": [os_sg.get("id"), os_sg_second.get("id")],
+            "address_bindings": ["172.24.4.3", "172.24.4.4"],
+            "vif_details": {
+                "nsx-logical-switch-id": "712CAD71-B3F5-4AA0-8C3F-8D453DCBF2F2",
+                "segmentation_id": "3200"
+            },
+            "_last_modified_time": time.time()
+        }
+
+        return (os_sg, os_sg_second, os_qos, os_port_parent)
+
     @responses.activate
     def test_priveleged_ports(self):
         cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
-        _, _, _, _, os_port_parent, _ = self.port_fixture()
+        _, _, _, os_port_parent = self.port_fixture()
 
         provider = provider_nsx_policy.Provider()
 
