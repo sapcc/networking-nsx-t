@@ -17,8 +17,13 @@ LOG = logging.getLogger(__name__)
 def is_not_found(response):
     return re.search("The path.*is invalid", response.text)
 
+
 def is_atomic_request_error(response):
     return response.status_code == 400 and re.search("The object AtomicRequest", response.text)
+
+
+def is_migration_bussy_error(response):
+    return response.status_code == 400 and re.search("Migration coordinator backend is busy", response.text)
 
 
 class RetryPolicy(object):
@@ -26,15 +31,7 @@ class RetryPolicy(object):
     def __call__(self, func):
 
         def decorator(self, *args, **kwargs):
-
-            requestInfo = ""
-
-            if 'path' in kwargs and 'session/create' in kwargs.get('path'):
-                requestInfo = "Function {} Argumetns {}".format(
-                    func.__name__.upper(), str(kwargs))
-            else:
-                requestInfo = "Function {} Argumetns {}".format(
-                    func.__name__.upper(), str(kwargs))
+            request_info = "Function {} Argumetns {}".format(func.__name__.upper(), str(kwargs))
 
             until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
             pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
@@ -57,14 +54,12 @@ class RetryPolicy(object):
                     if 200 <= response.status_code < 300:
                         return response
 
-                    last_err = "Error Code={} Message={}"\
-                        .format(response.status_code, response.content)
-                    log_msg = "Request={} Response={}".format(requestInfo,
-                                                              last_err)
+                    last_err = "Error Code={} Message={}".format(response.status_code, response.content)
+                    log_msg = "Request={} Response={}".format(request_info, last_err)
 
                     # Handle resource not found gently
                     if is_not_found(response):
-                        LOG.info("Unable to find Resource={}"\
+                        LOG.info("Unable to find Resource={}"
                             .format(kwargs["path"]))
                         LOG.debug(log_msg)
                         return response
@@ -74,14 +69,14 @@ class RetryPolicy(object):
                         continue
 
                     # Retry for The object AtomicRequest/10844 is already present in the system.
-                    if not is_atomic_request_error(response):
+                    # Retry for Migration coordinator backend is busy. Please try again after some time.
+                    if not is_atomic_request_error(response) or not is_migration_bussy_error(response):
                         # skip retry on the ramaining NSX errors
                         LOG.error(log_msg)
                         break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
-                    LOG.error("Request={} Response={}".format(requestInfo,
-                                                              last_err))
+                    LOG.error("Request={} Response={}".format(request_info, last_err))
 
                 msg = pattern.format(attempt, until, pause, method)
 
@@ -93,13 +88,36 @@ class RetryPolicy(object):
         return decorator
 
 
+class MigrationRetryPolicy(object):
+
+    def __call__(self, func):
+
+        def decorator(self, *args, **kwargs):
+            until = cfg.CONF.NSXV3.mp_to_policy_retry_count
+            pause = cfg.CONF.NSXV3.mp_to_policy_retry_sleep
+
+            method = "{}.{}".format(self.__class__.__name__, func.__name__)
+
+            for attempt in range(1, until + 1):
+                response = func(self, *args, **kwargs)
+
+                if is_migration_bussy_error(response):
+                    LOG.info("Will retry due to: Code=%s Message=%s", response.status_code, response.content)
+                else:
+                    return response
+
+                LOG.debug("Retrying request ({}/{}) with timeout {}s for {}".format(attempt, until, pause, method))
+                eventlet.sleep(pause)
+
+        return decorator
+
 
 class Client:
 
     def __init__(self):
-        rate=cfg.CONF.NSXV3.nsxv3_requests_per_second
-        timeout=cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
-        limit=1
+        rate = cfg.CONF.NSXV3.nsxv3_requests_per_second
+        timeout = cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
+        limit = 1
 
         self._api_scheduler = Scheduler(rate, limit, timeout)
 
@@ -141,7 +159,7 @@ class Client:
                 resp = requests.post(**self._params(path=self._login_path,
                                                     data=self._login_data,
                                                     verify=self._session.verify))
-                
+
                 resp.raise_for_status()
 
                 self._session.headers["Cookie"] = \
@@ -167,6 +185,7 @@ class Client:
         return kwargs
 
     @RetryPolicy()
+    @MigrationRetryPolicy()
     def post(self, path, data):
         with self._api_scheduler:
             return self._session.post(**self._params(path=path, json=data))
@@ -180,7 +199,7 @@ class Client:
     def put(self, path, data):
         with self._api_scheduler:
             return self._session.put(**self._params(path=path, json=data))
-    
+
     @RetryPolicy()
     def delete(self, path, params=dict()):
         with self._api_scheduler:

@@ -443,10 +443,7 @@ class Provider(provider_nsx_mgmt.Provider):
 
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
-        LOG.error("==========================================================================================")
-        LOG.error("SANITIZE START")
         sanitize = super(Provider, self).sanitize(slice)
-        LOG.error("SANITIZE LEN: {}".format(len(sanitize)))
         if len(sanitize) < slice:
             services = self.client.get_all(path=API.SERVICES, params={"default_service": False})
             # Mitigating bug with 3.0.1 which ignores default_service = False

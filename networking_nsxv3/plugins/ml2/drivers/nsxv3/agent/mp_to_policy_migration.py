@@ -1,7 +1,9 @@
 # import re
 
-# import eventlet
+import eventlet
+from array import array
 from time import sleep
+from unittest.mock import patch
 from oslo_config import cfg
 from oslo_log import log as logging
 # from oslo_utils import excutils
@@ -16,16 +18,22 @@ LOG = logging.getLogger(__name__)
 
 class API(provider_nsx_policy.API):
     MIGR_BASE = "/api/v1/migration"
-    MIGR_PLAN = MIGR_BASE + "/plan"
-    MIGR_STATUS_SUM = MIGR_BASE + "/status-summary"
-    MP_TO_POLICY = MIGR_BASE + "/mp-to-policy"
-    MP_TO_POLICY_WORKFLOW = MP_TO_POLICY + "/workflow"
+    MIGR_PLAN = f"{MIGR_BASE}/plan"
 
-    MP_TO_POLICY_INIT = MP_TO_POLICY_WORKFLOW + "?action=INITIATE"
-    MP_TO_POLICY_END = MP_TO_POLICY_WORKFLOW + "?action=DONE"
-    MIGRATION_START = MIGR_PLAN + "?action=start"
-    MIGRATION_CONTINUE = MIGR_PLAN + "?action=continue"
-    MIGRATION_ABORT = MIGR_PLAN + "?action=abort"
+    MIGR_STATUS_SUM = f"{MIGR_BASE}/status-summary"
+    MIGR_STATUS_PRE = f"{MIGR_STATUS_SUM}?component_type=MP_TO_POLICY_PRECHECK"
+    MIGR_STATUS_POS = f"{MIGR_STATUS_SUM}?component_type=MP_TO_POLICY_MIGRATION"
+
+    MP_TO_POLICY = f"{MIGR_BASE}/mp-to-policy"
+    MP_TO_POLICY_WORKFLOW = f"{MP_TO_POLICY}/workflow"
+
+    MP_TO_POLICY_INIT = f"{MP_TO_POLICY_WORKFLOW}?action=INITIATE"
+    MP_TO_POLICY_DONE = f"{MP_TO_POLICY_WORKFLOW}?action=DONE"
+    MIGRATION_START = f"{MIGR_PLAN}?action=start"
+    MIGRATION_CONTINUE = f"{MIGR_PLAN}?action=continue"
+    MIGRATION_ABORT = f"{MIGR_PLAN}?action=abort"
+
+    MIGRATION_ROLLBACK = f"{MP_TO_POLICY}/rollback"
 
 
 class PolicyResourceMeta(provider_nsx_policy.PolicyResourceMeta):
@@ -37,6 +45,17 @@ class PolicyResource(provider_nsx_policy.PolicyResource):
 
 
 class Payload(provider_nsx_policy.Payload):
+    SUPPORTED_RESOURCE_TYPES = {
+        "SwitchSecuritySwitchingProfile": "SEGMENT_SECURITY_PROFILES",
+        "SpoofGuardSwitchingProfile": "SPOOFGUARD_PROFILES",
+        "IpDiscoverySwitchingProfile": "IPDISCOVERY_PROFILES",
+        "MacManagementSwitchingProfile": "MACDISCOVERY_PROFILES",
+        "QosSwitchingProfile": "QOS_PROFILES",
+        # "PortMirroringSwitchingProfile": "NOT SUPPORTED"
+        "LogicalSwitch": "LOGICAL_SWITCH",
+        "LogicalPort": "LOGICAL_PORT"
+    }
+
     def mp2p_mapping(resource_type: str) -> str or None:
         """Maps Manager Resource types with MP-TO-POLICY types
 
@@ -46,17 +65,7 @@ class Payload(provider_nsx_policy.Payload):
         Returns:
             str or None: MP-TO-POLICY API Object Type
         """
-        resource_map = {
-                "SwitchSecuritySwitchingProfile": "SEGMENT_SECURITY_PROFILES",
-                "SpoofGuardSwitchingProfile": "SPOOFGUARD_PROFILES",
-                "IpDiscoverySwitchingProfile": "IPDISCOVERY_PROFILES",
-                "MacManagementSwitchingProfile": "MACDISCOVERY_PROFILES",
-                "QosSwitchingProfile": "QOS_PROFILES",
-                # "PortMirroringSwitchingProfile": "NOT SUPPORTED"
-                "LogicalSwitch": "LOGICAL_SWITCH",
-                "LogicalPort": "LOGICAL_PORT"
-        }
-        return resource_map.get(resource_type, None)
+        return Payload.SUPPORTED_RESOURCE_TYPES.get(resource_type, None)
 
     class MigrationData(object):
         def __init__(self):
@@ -96,49 +105,91 @@ class Provider(provider_nsx_policy.Provider):
         self.mgmt_provider = super(provider_nsx_policy.Provider, self)
         self._ensure_switching_profiles()
 
-    def migration(build_migr_data):
+    def migration(build_migr_data_func):
         def wrapper(self, *args, **kwargs):
             if self.migration_on:
                 try:
                     self._initiate_migration()
-                    migr_data: Payload.MigrationData = build_migr_data(self, *args, **kwargs)
-                    json_migdata = migr_data.json() if migr_data else None
+                    m_data: Payload.MigrationData = build_migr_data_func(self, *args, **kwargs)
+                    json_migdata = m_data.json() if m_data else None
                     if not json_migdata:
                         LOG.warn("No migration data provided. Migration skiped.")
                         return
-                    self._set_migration(json_migdata)
-                    self._start_migration(json_migdata)
-                    self._await_migration(json_migdata)
+                    self._set_migration(migr_data=json_migdata)
+                    self._start_migration(migr_data=json_migdata)
+                    self._precheck_migration(migr_data=json_migdata)
+                    self._continue_migration(migr_data=json_migdata)
+                    self._await_migration(migr_data=json_migdata)
+                    LOG.info("Migration completed.")
                 finally:
                     self._end_migration()
             else:
                 LOG.info("Migration to Policy is disabled.")
         return wrapper
 
+    def rollback(migration_func):
+        def wrapper(self, *args, **kwargs):
+            try:
+                return migration_func(self, *args, **kwargs)
+            except Exception as e:
+                LOG.error(str(e))
+                m_data = kwargs['migr_data'] if (migration_func.__name__ != "_set_migration") else None
+                self._try_rollback(migr_data=m_data)
+                raise e
+        return wrapper
+
+    def await_status(seconds):
+        def decorator(status_func):
+            def wrapper(*args, **kwargs):
+                res = {}
+                r = seconds
+                while r > 0:
+                    res = status_func(*args, **kwargs)
+                    overal_status = res.get("overall_migration_status", "FAILED")
+                    results = res.get("component_status", [])
+
+                    if overal_status == "FAILED" or len(results) < 1 or results[0].get("status") == "FAILED":
+                        raise RuntimeError(f"Migration status check FAILED! Result: {res}")
+
+                    if results[0].get("status") != "SUCCESS" and results[0].get("percent_complete") < 100:
+                        r = r - 1
+                        eventlet.sleep(1)
+                    else:
+                        return
+                raise RuntimeError(f"Migration status check FAILED! Result: {res}")
+            return wrapper
+        return decorator
+
     def _ensure_switching_profiles(self):
         self.mgmt_sw_profiles = self.mgmt_provider.get_all_switching_profiles()
         self.policy_sw_profiles = self.plcy_provider.get_non_default_switching_profiles()
 
-        mgmt_profile_ids = [p.get("id") for p in self.mgmt_sw_profiles if p]
+        mgmt_profile_ids = [p.get("id") for p in self.mgmt_sw_profiles
+                            if p and p.get("resource_type") in Payload.SUPPORTED_RESOURCE_TYPES]
         plcy_profile_ids = [p.get("id") for p in self.policy_sw_profiles if p]
-
-        LOG.info(mgmt_profile_ids)
-        LOG.info(plcy_profile_ids)
 
         not_migrated_ids = [p_id for p_id in mgmt_profile_ids if p_id not in plcy_profile_ids]
 
         if len(not_migrated_ids) > 0:
-            not_migrated = [(p.get("id"), p.get("resource_type"))
+            not_migrated = [(p.get("id"), p.get("resource_type"), p.get("_system_owned"))
                             for p in self.mgmt_sw_profiles if p and p.get("id") in not_migrated_ids]
             LOG.info(f"Not migrated to policy switching profiles: {not_migrated}")
             try:
-                self._migrate_sw_profiles(not_migrated)
+                # migrate first system owned
+                not_migrated_sys_owned = [(p_id, p_type) for p_id, p_type, sys_owned in not_migrated if sys_owned]
+                if len(not_migrated_sys_owned) > 0:
+                    self._migrate_sw_profiles(not_migrated_sys_owned)
+                # migrate non system owned
+                not_migrated_not_sys_owned = [(p_id, p_type)
+                                              for p_id, p_type, sys_owned in not_migrated if not sys_owned]
+                if len(not_migrated_not_sys_owned) > 0:
+                    self._migrate_sw_profiles(not_migrated_not_sys_owned)
             except Exception as e:
                 LOG.warning(str(e))
                 self.migration_on = False
 
     @migration
-    def _migrate_sw_profiles(self, not_migrated: tuple) -> Payload.MigrationData:
+    def _migrate_sw_profiles(self, not_migrated: list) -> Payload.MigrationData:
         LOG.info("Trying to migrate the missing switching profiles ...")
         data = Payload.MigrationData()
         for p_id, p_type in not_migrated:
@@ -150,52 +201,46 @@ class Provider(provider_nsx_policy.Provider):
         # TODO: Do port migration
         pass
 
+    @rollback
+    def _set_migration(self, migr_data: dict):
+        LOG.debug("Setting migration data ...")
+        self.client.post(path=API.MP_TO_POLICY, data=migr_data)
+
+    @rollback
+    def _start_migration(self, migr_data: dict):
+        LOG.debug("Starting migration ...")
+        self.client.post(path=API.MIGRATION_START, data=None)
+
+    @rollback
+    @await_status(seconds=5)
+    def _precheck_migration(self, migr_data: dict) -> dict:
+        LOG.debug("Pre-checking migration ...")
+        return self.client.get(path=API.MIGR_STATUS_PRE).json()
+
+    @rollback
+    def _continue_migration(self, migr_data: dict):
+        LOG.debug("Continuing migration ...")
+        self.client.post(path=API.MIGRATION_CONTINUE, data=None)
+
+    @rollback
+    @await_status(seconds=10)
+    def _await_migration(self, migr_data: dict):
+        LOG.debug("Post-checking migration ...")
+        return self.client.get(path=API.MIGR_STATUS_POS).json()
+
     def _initiate_migration(self):
         LOG.debug("Initiating migration window ...")
         self.client.post(path=API.MP_TO_POLICY_INIT, data=None)
 
     def _end_migration(self):
         LOG.debug("Closing migration window ...")
-        self.client.post(path=API.MP_TO_POLICY_END, data=None)
+        self.client.post(path=API.MP_TO_POLICY_DONE, data=None)
 
-    def _set_migration(self, migr_data: dict):
-        LOG.debug("Setting migration data ...")
-        try:
-            self.client.post(path=API.MP_TO_POLICY, data=migr_data)
-        except Exception as e:
-            self._try_rollback(migr_data=None)
-            raise e
-
-    def _start_migration(self, migr_data: dict):
-        LOG.debug("Starting migration ...")
-        try:
-            self.client.post(path=API.MIGRATION_START, data=None)
-            # TODO: do prechecks
-            sleep(2)  # TODO remove
-            # TODO: split and retry or poll due to: (None, 'Error Code=400 Message=b\'{\\n  "httpStatus" : "BAD_REQUEST",\\n  "error_code" : 30722,\\n  "module_name" : "migration-coordinator",\\n  "error_message" : "Migration coordinator backend is busy. Please try again after some time."\\n}\'')
-            self.client.post(path=API.MIGRATION_CONTINUE, data=None)
-        except Exception as e:
-            # TODO
-            self._try_rollback(migr_data)
-            raise e
-
-    def _await_migration(self, migr_data: dict):
-        try:
-            # TODO
-            pass
-        except Exception as e:
-            # TODO
-            self._try_rollback(migr_data)
-            raise e
-
-    # TODO: retry or poll due to: (None, 'Error Code=400 Message=b\'{\\n  "httpStatus" : "BAD_REQUEST",\\n  "error_code" : 30722,\\n  "module_name" : "migration-coordinator",\\n  "error_message" : "Migration coordinator backend is busy. Please try again after some time."\\n}\'')
     def _try_rollback(self, migr_data: dict):
+        LOG.debug("Rolling back the migration ...")
         try:
-            sleep(3)  # TODO remove when retry is implemented
             self.client.post(path=API.MIGRATION_ABORT, data=None)
-            # TODO check the status
             if migr_data is not None:
-                # TODO actual rollback
-                pass
+                self.client.post(path=API.MIGRATION_ROLLBACK, data=migr_data)
         except Exception as e:
             LOG.error(str(e))

@@ -39,6 +39,7 @@ class API(object):
     SECTION = "/api/v1/firewall/sections/{}"
 
     PARAMS_GET_DEFAULT_PROFILES = {"switching_profile_type": "IpDiscoverySwitchingProfile,SpoofGuardSwitchingProfile"}
+    PARAMS_ALL_PROFILES = {"include_system_owned": True}
 
     PARAMS_GET_QOS_PROFILES = {"switching_profile_type": "QosSwitchingProfile"}
 
@@ -566,7 +567,7 @@ class Provider(abs.Provider):
         }
 
     def get_all_switching_profiles(self):
-        return self.client.get_all(path=API.PROFILES)
+        return self.client.get_all(path=API.PROFILES, params=API.PARAMS_ALL_PROFILES)
 
     def metadata_refresh(self, resource_type, params=dict()):
 
