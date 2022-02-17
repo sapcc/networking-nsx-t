@@ -620,3 +620,27 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEquals(len(rules), 1)
         self.assertEquals(rules[rule_valid["id"]].get("source_groups"), ['192.168.10.0/24'])
+
+    @responses.activate
+    def test_priveleged_ports(self):
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
+        _, _, _, _, os_port_parent, _ = self.port_fixture()
+
+        provider = provider_nsx_policy.Provider()
+
+        # Create non-agent managed port/switch
+        meta = provider.network_realize('vmotion')
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        provider.port_realize(os_port_parent)
+
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 0)
+
+        # Create agent-managed port/switch
+        meta = provider.network_realize('1234')
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        provider.port_realize(os_port_parent)
+
+        # Assume to clean it up
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 1)
