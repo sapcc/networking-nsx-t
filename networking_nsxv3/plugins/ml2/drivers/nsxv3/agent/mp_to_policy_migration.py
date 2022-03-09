@@ -1,19 +1,12 @@
-# import re
-
+from typing import List
 import eventlet
-from array import array
-from time import sleep
-from unittest.mock import patch
 from oslo_config import cfg
 from oslo_log import log as logging
-# from oslo_utils import excutils
 
 from networking_nsxv3.common.constants import *
-# from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
-# from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class API(provider_nsx_policy.API):
@@ -36,14 +29,6 @@ class API(provider_nsx_policy.API):
     MIGRATION_ROLLBACK = f"{MP_TO_POLICY}/rollback"
 
 
-class PolicyResourceMeta(provider_nsx_policy.PolicyResourceMeta):
-    pass
-
-
-class PolicyResource(provider_nsx_policy.PolicyResource):
-    pass
-
-
 class Payload(provider_nsx_policy.Payload):
     SUPPORTED_RESOURCE_TYPES = {
         "SwitchSecuritySwitchingProfile": "SEGMENT_SECURITY_PROFILES",
@@ -56,7 +41,7 @@ class Payload(provider_nsx_policy.Payload):
         "LogicalPort": "LOGICAL_PORT"
     }
 
-    def mp2p_mapping(resource_type: str) -> str or None:
+    def mp2p_mapping(resource_type: str) -> str:
         """Maps Manager Resource types with MP-TO-POLICY types
 
         Args:
@@ -78,7 +63,7 @@ class Payload(provider_nsx_policy.Payload):
         def clear(self):
             self._resource_ids = {}
 
-        def json(self) -> dict or None:
+        def json(self) -> dict:
             """Build up and returns the added migration data
 
             Returns:
@@ -97,13 +82,36 @@ class Payload(provider_nsx_policy.Payload):
 
 
 class Provider(provider_nsx_policy.Provider):
-    def __init__(self, payload=Payload):
+    def __init__(self, payload: Payload = Payload()):
         super(Provider, self).__init__(payload=payload)
         self.provider = "MP-TO-POLICY"
         self.migration_on = cfg.CONF.AGENT.force_mp_to_policy
         self.plcy_provider = super(Provider, self)
         self.mgmt_provider = super(provider_nsx_policy.Provider, self)
-        self._ensure_switching_profiles()
+        if self.migration_on:
+            self._ensure_switching_profiles()
+
+    def network_realize(self, segmentation_id):
+        self.migration_on = False
+        if self.migration_on:
+            # TODO: get from Policy/Manager and decide migration
+            # TODO: check port has more than 27 SGs attached
+            # TODO: if more than 27 SGs attached:
+            # TODO:
+            pass
+        else:
+            self.plcy_provider.network_realize(segmentation_id)
+
+    def port_realize(self, os_port, delete=False):
+        self.migration_on = False
+        if self.migration_on:
+            # TODO: get from Policy/Manager and decide migration
+            # TODO: check port has more than 27 SGs attached
+            # TODO: if more than 27 SGs attached:
+            # TODO:
+            pass
+        else:
+            self.plcy_provider.port_realize(os_port=os_port, delete=delete)
 
     def migration(build_migr_data_func):
         def wrapper(self, *args, **kwargs):
@@ -160,46 +168,55 @@ class Provider(provider_nsx_policy.Provider):
             return wrapper
         return decorator
 
-    def _ensure_switching_profiles(self):
-        self.mgmt_sw_profiles = self.mgmt_provider.get_all_switching_profiles()
-        self.policy_sw_profiles = self.plcy_provider.get_non_default_switching_profiles()
-
-        mgmt_profile_ids = [p.get("id") for p in self.mgmt_sw_profiles
-                            if p and p.get("resource_type") in Payload.SUPPORTED_RESOURCE_TYPES]
-        plcy_profile_ids = [p.get("id") for p in self.policy_sw_profiles if p]
-
-        not_migrated_ids = [p_id for p_id in mgmt_profile_ids if p_id not in plcy_profile_ids]
-
-        if len(not_migrated_ids) > 0:
-            not_migrated = [(p.get("id"), p.get("resource_type"), p.get("_system_owned"))
-                            for p in self.mgmt_sw_profiles if p and p.get("id") in not_migrated_ids]
-            LOG.info(f"Not migrated to policy switching profiles: {not_migrated}")
-            try:
-                # migrate first system owned
-                not_migrated_sys_owned = [(p_id, p_type) for p_id, p_type, sys_owned in not_migrated if sys_owned]
-                if len(not_migrated_sys_owned) > 0:
-                    self._migrate_sw_profiles(not_migrated_sys_owned)
-                # migrate non system owned
-                not_migrated_not_sys_owned = [(p_id, p_type)
-                                              for p_id, p_type, sys_owned in not_migrated if not sys_owned]
-                if len(not_migrated_not_sys_owned) > 0:
-                    self._migrate_sw_profiles(not_migrated_not_sys_owned)
-            except Exception as e:
-                LOG.warning(str(e))
-                self.migration_on = False
-
     @migration
-    def _migrate_sw_profiles(self, not_migrated: list) -> Payload.MigrationData:
+    def migrate_sw_profiles(self, not_migrated: List[tuple], data: Payload.MigrationData = None) -> Payload.MigrationData:
+        """Promote switching profiles to segment profiles
+
+        Args:
+            not_migrated (list): List of tupples (sw_profile_id, sw_profile_type) to be promoted
+            data (Payload.MigrationData, optional): Append existing data. Defaults to None.
+
+        Returns:
+            Payload.MigrationData: Payload used by the migration wrapper for the actual migration.
+        """
         LOG.info("Trying to migrate the missing switching profiles ...")
-        data = Payload.MigrationData()
+        data = Payload.MigrationData() if not data else data
         for p_id, p_type in not_migrated:
             data.add(resource_type=p_type, resource_id=p_id)
         return data
 
     @migration
-    def _migrate_port(self, port_id: str) -> Payload.MigrationData:
-        # TODO: Do port migration
-        pass
+    def migrate_ports(self, port_ids: List[str], data: Payload.MigrationData = None) -> Payload.MigrationData:
+        """Promote switching ports to segment ports
+
+        Args:
+            port_ids (list): List of strings (port_ids) to be promoted
+            data (Payload.MigrationData, optional): Append existing data. Defaults to None.
+
+        Returns:
+            Payload.MigrationData: Payload used by the migration wrapper for the actual migration.
+        """
+        LOG.info(f"Trying to migrate ports: {port_ids}")
+        data = Payload.MigrationData() if not data else data
+        for p_id in port_ids:
+            data.add(resource_type="LogicalPort", resource_id=p_id)
+        return data
+
+    @migration
+    def migrate_switch(self, switch_id: str, data: Payload.MigrationData = None) -> Payload.MigrationData:
+        """Promote switch to segment
+
+        Args:
+            switch_id (str): Switch ID to be promoted
+            data (Payload.MigrationData, optional): Append existing data. Defaults to None.
+
+        Returns:
+            Payload.MigrationData: Payload used by the migration wrapper for the actual migration.
+        """
+        LOG.info(f"Trying to migrate switch: {switch_id}")
+        data = Payload.MigrationData() if not data else data
+        data.add(resource_type="LogicalSwitch", resource_id=switch_id)
+        return data
 
     @rollback
     def _set_migration(self, migr_data: dict):
@@ -244,3 +261,31 @@ class Provider(provider_nsx_policy.Provider):
                 self.client.post(path=API.MIGRATION_ROLLBACK, data=migr_data)
         except Exception as e:
             LOG.error(str(e))
+
+    def _ensure_switching_profiles(self):
+        self.mgmt_sw_profiles = self.mgmt_provider.get_all_switching_profiles()
+        self.policy_sw_profiles = self.plcy_provider.get_non_default_switching_profiles()
+
+        mgmt_profile_ids = [p.get("id") for p in self.mgmt_sw_profiles
+                            if p and p.get("resource_type") in Payload.SUPPORTED_RESOURCE_TYPES]
+        plcy_profile_ids = [p.get("id") for p in self.policy_sw_profiles if p]
+
+        not_migrated_ids = [p_id for p_id in mgmt_profile_ids if p_id not in plcy_profile_ids]
+
+        if len(not_migrated_ids) > 0:
+            not_migrated = [(p.get("id"), p.get("resource_type"), p.get("_system_owned"))
+                            for p in self.mgmt_sw_profiles if p and p.get("id") in not_migrated_ids]
+            LOG.info(f"Not migrated to policy switching profiles: {not_migrated}")
+            try:
+                # migrate first system owned
+                not_migrated_sys_owned = [(p_id, p_type) for p_id, p_type, sys_owned in not_migrated if sys_owned]
+                if len(not_migrated_sys_owned) > 0:
+                    self.migrate_sw_profiles(not_migrated_sys_owned)
+                # migrate non system owned
+                not_migrated_not_sys_owned = [(p_id, p_type)
+                                              for p_id, p_type, sys_owned in not_migrated if not sys_owned]
+                if len(not_migrated_not_sys_owned) > 0:
+                    self.migrate_sw_profiles(not_migrated_not_sys_owned)
+            except Exception as e:
+                LOG.warning(str(e))
+                self.migration_on = False
