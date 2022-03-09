@@ -18,4 +18,5 @@ netaddr
 tooz
 ratelimiter                     # Apache-2.0
 prometheus_client               # Apache-2.0
+redis                           # MIT License
 attrs                           # MIT License

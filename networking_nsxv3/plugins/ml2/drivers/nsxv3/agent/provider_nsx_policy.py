@@ -54,6 +54,8 @@ class API(provider_nsx_mgmt.API):
 
     STATUS = "/policy/api/v1/infra/realized-state/status"
 
+    INFRA = "/policy/api/v1/infra"
+
 
 class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
     def __init__(self, id, rev, age, _revision, _last_modified_time, rules):
@@ -180,6 +182,85 @@ class Payload(provider_nsx_mgmt.Payload):
             if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped and (len(t) > 1):
                 target.remove(cidr)
                 LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
+
+    def update_default_policies(self):
+        return
+        raise Exception('cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy: ' + str(cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy))
+        context = {
+            "resource_type": "Infra",
+            "connectivity_strategy": cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy,
+            "children": [
+                {
+                    "resource_type": "ChildResourceReference",
+                    "id": "default",
+                    "target_type": "Domain",
+                    "children": []
+                }
+            ]
+        }
+
+        logging_scope = nsxv3_constants.NSXV3_LOGGING_SCOPE
+        logging_tag = nsxv3_constants.NSXV3_LOGGING_ENABLED
+
+        section = {
+            "resource_type": "ChildSecurityPolicy",
+            "SecurityPolicy": {
+                "resource_type": "SecurityPolicy",
+                "id": DEFAULT_POLICY_ID,
+                "display_name": DEFAULT_POLICY_ID,
+                "category": "Application",
+                # Enforce sequence 1 less than the Default L2 Policy
+                "sequence_number": 999999,
+                "internal_sequence_number": 999999,
+                "stateful": true,
+                "tags": self._get_tags(),
+                "children": [
+                    {
+                        "resource_type": "ChildRule",
+                        "Rule": {
+                            "resource_type": "Rule",
+                            "id": DEFAULT_LOGGING_ID,
+                            "display_name": DEFAULT_LOGGING_ID,
+                            "action": "REJECT",
+                            "destination_groups": ["ANY"],
+                            "direction": "IN_OUT",
+                            "disabled": False,
+                            "ip_protocol": "IPV4_IPV6",
+                            "logged": True,
+                            "notes": "",
+                            "profiles": ["ANY"],
+                            "scope": ["/infra/domains/default/groups/{}".format(DEFAULT_LOGGING_ID)],
+                            "services": ["ANY"],
+                            "source_groups": ["ANY"],
+                            "tag": ""
+                        }
+                    }
+                ]
+            }
+        }
+        group = {
+            "resource_type": "ChildGroup",
+            "Group": {
+                "resource_type": "Group",
+                "id": DEFAULT_LOGGING_ID,
+                "display_name": DEFAULT_LOGGING_ID,
+                "expression": [
+                    {
+                        "key": "Tag",
+                        "member_type": "SegmentPort",
+                        "operator": "EQUALS",
+                        "resource_type": "Condition",
+                        "value": "{}|{}".format(logging_scope, logging_tag)
+                    }
+                ]
+            }
+        }
+
+        context["children"][0]["children"] += [section, group]
+
+        raise Exception("Up to here")
+
+        return context
 
 
 class Provider(provider_nsx_mgmt.Provider):
@@ -429,3 +510,9 @@ class Provider(provider_nsx_mgmt.Provider):
                 sanitize.append((service.get("id"), remove_orphan_service))
 
         return sanitize
+
+    def update_default_policies(self):
+        data = self.payload.update_default_policies()
+        LOG.error('datasssssssssssssssssssssss: ' + str(data))
+        return
+        self.client.patch(path=API.INFRA, data=data)

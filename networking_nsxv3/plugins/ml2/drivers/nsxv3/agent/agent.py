@@ -18,6 +18,7 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, 
 from networking_nsxv3.prometheus import exporter
 from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
+from networking_nsxv3.redis.logging import LoggingMetadata
 
 try:
     from neutron.conf.agent import common as agent_config
@@ -46,6 +47,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(context, agent, sg_agent)
         self.callback = callback
         self.realizer = realizer
+        # Start section: SELECTIVE LOGGING
+        self.logging_metadata = LoggingMetadata()
+        self.realizer.provider.update_default_policies()
+        # End section: SELECTIVE LOGGING
 
     def get_network_bridge(self, context, current, network_segments, network_current):
         try_create_port = False

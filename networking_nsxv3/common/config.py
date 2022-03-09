@@ -51,7 +51,19 @@ agent_opts = [
         'synchronization_queue_size',
         default=20,
         help="The maximum amount of objects witing in the queue for update."
+    ),
+    # Start section: SELECTIVE LOGGING
+    cfg.StrOpt(
+        'logging_url',
+        default='unix:///var/run/redis/socket/redis.sock',
+        help="Redis URL"
+    ),
+    cfg.IntOpt(
+        'logging_expire',
+        default=1,
+        help="Redis key expiration time in days"
     )
+    # End section: SELECTIVE LOGGING
 ]
 
 agent_cli_opts = [
