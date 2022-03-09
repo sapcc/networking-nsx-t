@@ -183,9 +183,21 @@ class Payload(provider_nsx_mgmt.Payload):
                 target.remove(cidr)
                 LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
+    def _get_tags(self, infra_object=None):
+        tags = [{
+            "scope": NSXV3_AGENT_SCOPE,
+            "tag": cfg.CONF.AGENT.agent_id
+        }]
+
+        if infra_object is not None:
+            tags.append({
+                "scope": NSXV3_REVISION_SCOPE,
+                "tag": infra_object.revision
+            })
+
+        return tags
+
     def update_default_policies(self):
-        return
-        raise Exception('cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy: ' + str(cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy))
         context = {
             "resource_type": "Infra",
             "connectivity_strategy": cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy,
@@ -199,28 +211,28 @@ class Payload(provider_nsx_mgmt.Payload):
             ]
         }
 
-        logging_scope = nsxv3_constants.NSXV3_LOGGING_SCOPE
-        logging_tag = nsxv3_constants.NSXV3_LOGGING_ENABLED
+        logging_scope = NSXV3_LOGGING_SCOPE
+        logging_tag = NSXV3_LOGGING_ENABLED
 
         section = {
             "resource_type": "ChildSecurityPolicy",
             "SecurityPolicy": {
                 "resource_type": "SecurityPolicy",
-                "id": DEFAULT_POLICY_ID,
-                "display_name": DEFAULT_POLICY_ID,
+                "id": NSXV3_DEFAULT_POLICY_ID,
+                "display_name": NSXV3_DEFAULT_POLICY_ID,
                 "category": "Application",
                 # Enforce sequence 1 less than the Default L2 Policy
                 "sequence_number": 999999,
                 "internal_sequence_number": 999999,
-                "stateful": true,
+                "stateful": True,
                 "tags": self._get_tags(),
                 "children": [
                     {
                         "resource_type": "ChildRule",
                         "Rule": {
                             "resource_type": "Rule",
-                            "id": DEFAULT_LOGGING_ID,
-                            "display_name": DEFAULT_LOGGING_ID,
+                            "id": NSXV3_DEFAULT_LOGGING_ID,
+                            "display_name": NSXV3_DEFAULT_LOGGING_ID,
                             "action": "REJECT",
                             "destination_groups": ["ANY"],
                             "direction": "IN_OUT",
@@ -229,7 +241,7 @@ class Payload(provider_nsx_mgmt.Payload):
                             "logged": True,
                             "notes": "",
                             "profiles": ["ANY"],
-                            "scope": ["/infra/domains/default/groups/{}".format(DEFAULT_LOGGING_ID)],
+                            "scope": ["/infra/domains/default/groups/{}".format(NSXV3_DEFAULT_LOGGING_ID)],
                             "services": ["ANY"],
                             "source_groups": ["ANY"],
                             "tag": ""
@@ -242,8 +254,8 @@ class Payload(provider_nsx_mgmt.Payload):
             "resource_type": "ChildGroup",
             "Group": {
                 "resource_type": "Group",
-                "id": DEFAULT_LOGGING_ID,
-                "display_name": DEFAULT_LOGGING_ID,
+                "id": NSXV3_DEFAULT_LOGGING_ID,
+                "display_name": NSXV3_DEFAULT_LOGGING_ID,
                 "expression": [
                     {
                         "key": "Tag",
@@ -255,11 +267,7 @@ class Payload(provider_nsx_mgmt.Payload):
                 ]
             }
         }
-
         context["children"][0]["children"] += [section, group]
-
-        raise Exception("Up to here")
-
         return context
 
 
@@ -512,7 +520,6 @@ class Provider(provider_nsx_mgmt.Provider):
         return sanitize
 
     def update_default_policies(self):
-        data = self.payload.update_default_policies()
-        LOG.error('datasssssssssssssssssssssss: ' + str(data))
         return
+        data = self.payload.update_default_policies()
         self.client.patch(path=API.INFRA, data=data)
