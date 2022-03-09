@@ -1,15 +1,23 @@
 import itertools
 import time
-
+from typing import Callable, List
 from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import Provider
+from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from oslo_config import cfg
 from oslo_log import log as logging
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class AgentRealizer(object):
-    def __init__(self, rpc, callback, kpi, provider):
+    def __init__(
+        self,
+        rpc: NSXv3ServerRpcApi,
+        callback: Callable[[dict, Callable[[dict], None]], None],
+        kpi: Callable[[], dict],
+        provider: Provider
+    ):
         self.rpc = rpc
         self.callback = callback
         self.kpi = kpi
@@ -18,7 +26,7 @@ class AgentRealizer(object):
         # Initializing metadata
         self.all(dryrun=True)
 
-    def _os_meta(self, query):
+    def _os_meta(self, query: Callable):
         step = cfg.CONF.AGENT.rpc_max_records_per_query
         cursor = 0
         meta = dict()
@@ -28,7 +36,7 @@ class AgentRealizer(object):
             cursor = result[-1][2] if len(result) >= step else -1
         return meta
 
-    def refresh(self, list_aged):
+    def refresh(self, list_aged: List[dict]):
         p = self.provider
 
         for o in list_aged:
@@ -62,9 +70,11 @@ class AgentRealizer(object):
 
             # Only force networks refresh
             p.metadata_refresh(p.NETWORK)
+            # TODO: add segment
 
             # Refresh entire metadata with its latest state
             LOG.info("Inventory metadata is going to be refreshed.")
+            # TODO: add SEGMENT_PORT
             port_outdated, port_current = p.outdated(p.PORT, port_meta)
             sgr_outdated, sgr_current = p.outdated(p.SG_RULES, sg_meta)
             qos_outdated, qos_current = p.outdated(p.QOS, qos_meta)
@@ -134,7 +144,7 @@ class AgentRealizer(object):
 
                 self.age = int(time.time())
 
-    def security_group_members(self, os_id, reference=False):
+    def security_group_members(self, os_id: str, reference=False):
         """
         Realize security group members state.
         Realization will happen only if the group has active ports on the host
@@ -152,7 +162,7 @@ class AgentRealizer(object):
                 else:
                     self.provider.sg_members_realize({"id": os_id}, delete=True)
 
-    def security_group_rules(self, os_id):
+    def security_group_rules(self, os_id: str):
         """
         Realize security group rules state.
         Realization will happen only if the group has active ports on the host.
@@ -178,7 +188,7 @@ class AgentRealizer(object):
                 self.provider.sg_rules_realize({"id": os_id}, delete=True)
                 # Skip members as they can be used as references
 
-    def precreate_port(self, os_id, network_meta):
+    def precreate_port(self, os_id: str, network_meta: dict):
         """
         Try to precreate port on first binding request.
         :os_id: -- OpenStack ID of the Port
@@ -196,7 +206,7 @@ class AgentRealizer(object):
 
                 self.provider.port_realize(port)
 
-    def port(self, os_id):
+    def port(self, os_id: str):
         """
         Realize port state.
         :os_id: -- OpenStack ID of the Port
@@ -211,7 +221,7 @@ class AgentRealizer(object):
             else:
                 self.provider.port_realize({"id": os_id}, delete=True)
 
-    def qos(self, os_id, reference=False):
+    def qos(self, os_id: str, reference=False):
         """
         Realize QoS Policy state.
         :os_id: -- OpenStack ID of the QoS Policy
@@ -226,7 +236,7 @@ class AgentRealizer(object):
                 else:
                     self.provider.qos_realize({"id": os_id}, delete=True)
 
-    def network(self, os_seg_id):
+    def network(self, os_seg_id: str):
         """
         Realize Network state.
         :os_seg_id: -- OpenStack Network Segmentation ID

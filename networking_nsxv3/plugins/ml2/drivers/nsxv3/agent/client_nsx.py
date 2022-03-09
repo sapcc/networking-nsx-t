@@ -11,7 +11,7 @@ from oslo_log import log as logging
 from oslo_utils import versionutils
 from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 def is_not_found(response):
@@ -186,31 +186,31 @@ class Client:
 
     @RetryPolicy()
     @MigrationRetryPolicy()
-    def post(self, path, data):
+    def post(self, path: str, data: dict):
         with self._api_scheduler:
             return self._session.post(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def patch(self, path, data):
+    def patch(self, path: str, data: dict):
         with self._api_scheduler:
             return self._session.patch(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def put(self, path, data):
+    def put(self, path: str, data: dict):
         with self._api_scheduler:
             return self._session.put(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def delete(self, path, params=dict()):
+    def delete(self, path: str, params: dict = dict()):
         with self._api_scheduler:
             return self._session.delete(**self._params(path=path, params=params))
 
     @RetryPolicy()
-    def get(self, path, params=dict()):
+    def get(self, path: str, params: dict = dict()):
         with self._api_scheduler:
             return self._session.get(**self._params(path=path, params=params))
 
-    def get_unique(self, path, params=dict()):
+    def get_unique(self, path: str, params: dict = dict()):
         results = self.get(path=path, params=params).json().get("results")
         if isinstance(results, list):
             if results:
@@ -221,10 +221,11 @@ class Client:
         elif results:
             return results
 
-    def get_all(self, path, params=dict(), cursor=""):
+    def get_all(self, path: str, params: dict = None, cursor: str = ""):
         # FYI - NSX does not allow to filter by custom property
         # Search API has hard limit of 50k objects (with cursor)
         PAGE_SIZE = cfg.CONF.NSXV3.nsxv3_max_records_per_query
+        params = params or dict()
         params.update({"page_size": PAGE_SIZE, "cursor": cursor})
 
         response = self.get(path=path, params=params)
@@ -232,7 +233,10 @@ class Client:
             return []
 
         content = response.json()
-        cursor = content.get("cursor", None)
+        cursor = content.get("cursor", "")
+        page_size = content.get("result_count", 0)
 
-        all = content.get("results", [])
-        return self.get_all(path, params, cursor) + all if cursor else all
+        _all = content.get("results", [])
+        plcy_cond = (cursor.isdigit() and int(cursor) != page_size)
+        mgmt_cond = (cursor and not cursor.isdigit())
+        return self.get_all(path, params, cursor) + _all if (plcy_cond or mgmt_cond) else _all

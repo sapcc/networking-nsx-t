@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Callable
 
 import oslo_messaging
 from neutron.common import config as common_config
@@ -16,6 +17,7 @@ from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common import synchronization as sync
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import mp_to_policy_migration, provider_nsx_mgmt, provider_nsx_policy, realization
 from networking_nsxv3.prometheus import exporter
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.realization import AgentRealizer
 from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
 
@@ -31,7 +33,7 @@ if not os.environ.get("DISABLE_EVENTLET_PATCHING"):
 
     eventlet.monkey_patch()
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
@@ -42,7 +44,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, agent, sg_agent, callback, realizer):
+    def __init__(
+        self,
+        context,
+        agent,
+        sg_agent,
+        callback: Callable[[dict, Callable[[dict], None]], None],
+        realizer: AgentRealizer
+    ):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(context, agent, sg_agent)
         self.callback = callback
         self.realizer = realizer
@@ -104,7 +113,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
-    def __init__(self, rpc, synchronization=True, monitoring=True, force_api=None):
+    def __init__(self, rpc: nsxv3_rpc.NSXv3ServerRpcApi, synchronization=True, monitoring=True, force_api=None):
         super(NSXv3Manager, self).__init__()
 
         migration_provider = mp_to_policy_migration.Provider()

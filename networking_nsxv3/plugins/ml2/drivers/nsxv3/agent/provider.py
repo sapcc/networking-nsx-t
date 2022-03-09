@@ -1,9 +1,8 @@
 import abc
 
 
-class Provider:
-    """
-    Provider interface used for realization of OpenStack objects 
+class Provider(abc.ABC):
+    """Provider interface used for realization of OpenStack objects
     """
 
     __metaclass__ = abc.ABCMeta
@@ -14,6 +13,8 @@ class Provider:
     SG_RULES = "Security Group (Rules)"
     SG_RULE = "Rule"
     NETWORK = "Network"
+    SEGMENT = "Segment"
+    SEGMENT_PORT = "SegmentPort"
 
     @abc.abstractmethod
     def metadata_refresh(self, resource_type):
@@ -38,7 +39,7 @@ class Provider:
         :os_meta: {os_id:os_revision} -- OpenStack resource ID
         :return: (set(<outdated>), set(<current>)) -- Outdated OpenStack IDs
         """
-    
+
     @abc.abstractmethod
     def age(self, resource_type, os_ids):
         """
@@ -155,4 +156,3 @@ class Provider:
         :slice: number - the number of objects that can be cleaned up at this time
         :returns: list(id, callback) - where callback is a function accepting the ID
         """
-    
