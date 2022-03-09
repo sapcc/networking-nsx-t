@@ -12,7 +12,7 @@ from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 # INFO - Can introduce responses to directly run the tests against live NSX-T
@@ -694,14 +694,15 @@ class TestProviderPolicy(base.BaseTestCase):
         os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
         provider.port_realize(os_port_parent)
 
-        outdated, _ = provider.outdated(provider.PORT, {})
+        outdated, _ = provider.outdated(provider.SEGMENT_PORT, {})
         self.assertEquals(len(outdated), 0)
 
         # Create agent-managed port/switch
         meta = provider.network_realize('1234')
         os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        os_port_parent["id"] = "80372EA3-5F58-4B06-8456-3067D60B3024"
         provider.port_realize(os_port_parent)
 
         # Assume to clean it up
-        outdated, _ = provider.outdated(provider.PORT, {})
+        outdated, _ = provider.outdated(provider.SEGMENT_PORT, {})
         self.assertEquals(len(outdated), 1)

@@ -11,7 +11,7 @@ from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 # TODO - replace static wait/sleep with active polling
@@ -48,8 +48,8 @@ class TestAgentRealizer(base.BaseTestCase):
 
             env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
             with env:
-                LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
-                LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
+                # LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                # LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
 
                 i = env.openstack_inventory
                 i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
@@ -59,8 +59,8 @@ class TestAgentRealizer(base.BaseTestCase):
 
                 eventlet.sleep(30)
 
-                LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
-                LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
+                # LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
 
         provider = p = env.manager.realizer.provider
 
@@ -156,8 +156,8 @@ class TestAgentRealizer(base.BaseTestCase):
 
                 eventlet.sleep(30)
 
-                LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
-                LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
+                # LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                # LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
 
                 # Add orphan IPSets
                 p.client.post(path="/api/v1/ip-sets", data=p.payload.sg_rule_remote("192.168.0.0/12"))
@@ -168,8 +168,8 @@ class TestAgentRealizer(base.BaseTestCase):
                 i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
                 eventlet.sleep(40)
 
-                LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
-                LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
+                # LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
+                # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
 
         metadata = m = env.dump_provider_inventory(printable=False)
 

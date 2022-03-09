@@ -1,11 +1,12 @@
 import copy
 import json
 import re
+import time
 import uuid
 
 import responses
 from networking_nsxv3.common import config
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import mp_to_policy_migration
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import mp_to_policy_migration, provider_nsx_policy
 from networking_nsxv3.tests.unit.provider import Inventory
 from neutron.tests import base
 from oslo_config import cfg
@@ -45,4 +46,4 @@ class TestProviderMpToPolicy(base.BaseTestCase):
     @responses.activate
     def test_port_migration(self):
         # TODO
-        mp_to_policy_migration.Provider()._migrate_port("1")
+        mp_to_policy_migration.Provider().migrate_ports(["1"])
