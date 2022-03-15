@@ -1,4 +1,5 @@
 import itertools
+import json
 import time
 
 from networking_nsxv3.common.locking import LockManager
@@ -227,7 +228,10 @@ class AgentRealizer(object):
                     if remote_id:
                         self.security_group_members(remote_id, reference=True)
 
-                self.provider.sg_rules_realize(os_sg)
+                logged = self.rpc.has_security_group_logging(os_id)
+                LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")
+                logged = not not logged
+                self.provider.sg_rules_realize(os_sg, logged=logged)
 
             else:
                 self.provider.sg_rules_realize({"id": os_id}, delete=True)
@@ -299,3 +303,33 @@ class AgentRealizer(object):
                 self.provider.network_realize(os_seg_id)
                 meta = self.provider.metadata(self.provider.NETWORK, os_seg_id)
             return {"nsx-logical-switch-id": meta.id, "external-id": meta.id, "segmentation_id": os_seg_id}
+
+    def enable_policy_logging(self, log_obj):
+        """
+        Realize security policy logging state enablement.
+        :os_seg_id: -- OpenStack Security Group ID
+        :return: -- None
+        """
+        LOG.warning(f"AgentRealizer: enable_policy_logging: {json.dumps(log_obj, indent=2)}")
+        with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
+            self.provider.enable_policy_logging(log_obj)
+
+    def disable_policy_logging(self, log_obj):
+        """
+        Realize security policy logging state disablement.
+        :os_seg_id: -- OpenStack Security Group ID
+        :return: -- None
+        """
+        LOG.warning(f"AgentRealizer: disable_policy_logging: {json.dumps(log_obj, indent=2)}")
+        with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
+            self.provider.disable_policy_logging(log_obj)
+
+    def update_policy_logging(self, log_obj):
+        """
+        Realize security policy logging state update.
+        :os_seg_id: -- OpenStack Security Group ID
+        :return: -- None
+        """
+        LOG.warning(f"AgentRealizer: update_policy_logging: {json.dumps(log_obj, indent=2)}")
+        with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
+            self.provider.update_policy_logging(log_obj)

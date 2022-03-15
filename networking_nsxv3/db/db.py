@@ -410,7 +410,6 @@ def get_security_group_members_address_bindings_ips(context,
         security_group_id == group_id
     ).all()
 
-# Start section: SELECTIVE LOGGING
 
 def get_port_logging(context, port_id):
     return context.session.query(
@@ -421,12 +420,13 @@ def get_port_logging(context, port_id):
         Log.target_id == port_id
     ).one_or_none()
 
+
 def has_security_group_logging(context, security_group_id):
     result = context.session.query(
-        Log.resource_id
+        Log.resource_id,
+        Log.enabled
     ).filter(
-        Log.resource_id == security_group_id
+        Log.resource_id == security_group_id,
+        Log.enabled
     ).one_or_none()
     return True if result else False
-
-# End section: SELECTIVE LOGGING

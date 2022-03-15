@@ -19,6 +19,7 @@ NSXV3_REVISION_SCOPE = "revision_number"
 NSXV3_AGE_SCOPE = "age"
 
 # Start section: SELECTIVE LOGGING
+NSXV3_AGENT_SCOPE = "agent_id"
 # DFW Logging
 NSXV3_LOGGING_SCOPE = "logging"
 NSXV3_LOGGING_ENABLED = "enabled"

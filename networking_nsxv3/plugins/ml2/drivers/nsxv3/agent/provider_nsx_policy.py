@@ -1,4 +1,5 @@
 import functools
+import json
 import re
 
 import eventlet
@@ -127,7 +128,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "rules": provider_sg.get("rules"),
         }
 
-    def sg_rule(self, os_rule, provider_rule):
+    def sg_rule(self, os_rule, provider_rule, logged=False):
         os_id = os_rule["id"]
         ethertype = os_rule["ethertype"]
         direction = os_rule["direction"]
@@ -166,7 +167,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "display_name": os_id,
             "service_entries": service_entries,
             "action": "ALLOW",
-            "logged": False,  # TODO selective logging
+            "logged": logged,  # TODO selective logging
             "tag": os_id.replace("-", ""),
             "scope": ["ANY"],  # Will be overwritten by Policy Scope
             "services": ["ANY"],  # Required by NSX-T Policy validation
@@ -197,7 +198,8 @@ class Payload(provider_nsx_mgmt.Payload):
 
         return tags
 
-    def update_default_policies(self):
+    def update_default_policies(self, res):
+        # TODO: make rest call. Clieent rest endpoint path should be changed as well ???
         context = {
             "resource_type": "Infra",
             "connectivity_strategy": cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy,
@@ -278,7 +280,10 @@ class Provider(provider_nsx_mgmt.Provider):
         if cfg.CONF.NSXV3.nsxv3_default_policy_infrastructure_rules:
             self._setup_default_infrastructure_rules()
         if self.client.version >= (3, 0):
-            self._ensure_default_l3_policy()
+            res = self._ensure_default_l3_policy()
+            # Start section: SELECTIVE LOGGING
+            # self.update_default_policies(res)
+            # End section: SELECTIVE LOGGING
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
@@ -286,6 +291,7 @@ class Provider(provider_nsx_mgmt.Provider):
         for rule in res.json()["rules"]:
             if rule["action"] not in ["DROP", "REJECT"]:
                 raise Exception("Default l3 section rule is not drop/reject, bailing out")
+        return res.json()
 
     def _setup_default_infrastructure_rules(self):
         LOG.info("Looking for the default Infrastructure Rules.")
@@ -393,24 +399,24 @@ class Provider(provider_nsx_mgmt.Provider):
             LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
 
     # overrides
-    def sg_rules_realize(self, os_sg, delete=False):
+    def sg_rules_realize(self, os_sg, delete=False, logged=False):
         os_id = os_sg.get("id")
 
         if delete:
             self._realize(Provider.SG_RULES, delete, None, os_sg, dict())
             return
 
-        provider_sg = self._create_provider_sg(os_sg, os_id)
+        provider_sg = self._create_provider_sg(os_sg, os_id, logged=logged)
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
 
-    def _create_provider_sg(self, os_sg, os_id):
+    def _create_provider_sg(self, os_sg, os_id, logged=False):
         provider_rules = []
         meta = self.metadata(Provider.SG_RULES, os_id)
         for rule in os_sg.get("rules"):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
             revision = meta.rules.get(rule["id"], {}).get("_revision") if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)
-            provider_rule = self.payload.sg_rule(rule, provider_rule)
+            provider_rule = self.payload.sg_rule(rule, provider_rule, logged=logged)
 
             if provider_rule:
                 provider_rules.append(provider_rule)
@@ -519,7 +525,42 @@ class Provider(provider_nsx_mgmt.Provider):
 
         return sanitize
 
-    def update_default_policies(self):
-        return
-        data = self.payload.update_default_policies()
+    def set_policy_logging(self, log_obj, enable_logging):
+        LOG.warning(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")
+
+        # Check for a valid request
+        if log_obj['resource_type'] != 'security_group':
+            LOG.error(f"set_policy_logging: incompatible resource type: {log_obj['resource_type']}")
+            return
+
+        # Get current rules configuration
+        res = self.client.get(API.POLICY.format(log_obj['resource_id']))
+        res.raise_for_status()
+
+        # Prepare update data
+        data = {
+            'rules': res.json()['rules']
+        }
+        for rule in data['rules']:
+            rule['logged'] = enable_logging
+            # rule['_revision'] = rule['_revision'] + 1
+
+        # Update the logging state
+        res = self.client.patch(path=API.POLICY.format(log_obj['resource_id']), data=data)
+        res.raise_for_status()
+
+    def enable_policy_logging(self, log_obj):
+        LOG.warning(f"PROVIDER: enable_policy_logging")
+        return self.set_policy_logging(log_obj, True)
+
+    def disable_policy_logging(self, log_obj):
+        LOG.warning(f"PROVIDER: disable_policy_logging")
+        return self.set_policy_logging(log_obj, False)
+
+    def update_policy_logging(self, log_obj):
+        LOG.warning(f"PROVIDER: update_policy_logging")
+        return self.set_policy_logging(log_obj, log_obj['enabled'])
+
+    def update_default_policies(self, res):
+        data = self.payload.update_default_policies(res)
         self.client.patch(path=API.INFRA, data=data)
