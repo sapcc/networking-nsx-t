@@ -36,7 +36,7 @@ class TestProviderMgmt(base.BaseTestCase):
         return r.pop(0) if len(r) == 1 else None
 
     def get_by_name(self, container, name):
-        result = [obj for id,obj in container.items() if obj.get("display_name") == name]
+        result = [obj for id, obj in container.items() if obj.get("display_name") == name]
         return result.pop(0) if result else None
 
     def get_tag(self, resource, scope):
@@ -74,18 +74,17 @@ class TestProviderMgmt(base.BaseTestCase):
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.5.0/24"],
             "revision_number": 0
-        },{
+        }, {
             "resource_type": "IPSet",
             "ip_addresses": ["172.16.1.1", "172.16.1.2", "172.16.2.0/24", "172.16.5.0/24"]
         })
 
         provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
-        
+
         inv = self.inventory.inventory
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
-        for k,v in sg[1].items():
+        for k, v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
-
 
     @responses.activate
     def test_security_group_members_creation_compact_ipv4_cidrs(self):
@@ -93,7 +92,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["172.16.1.1/32", "172.16.1.2", "172.16.2.0/24", "172.16.0.0/16"],
             "revision_number": 2
-        },{
+        }, {
             "resource_type": "IPSet",
             "ip_addresses": ["172.16.0.0/16"]
         })
@@ -101,16 +100,16 @@ class TestProviderMgmt(base.BaseTestCase):
         provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
         inv = self.inventory.inventory
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
-        for k,v in sg[1].items():
+        for k, v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
-    
+
     @responses.activate
     def test_security_group_members_creation_compact_ipv6_cidrs(self):
         sg = ({
             "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "cidrs": ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370/128"],
             "revision_number": 2
-        },{
+        }, {
             "resource_type": "IPSet",
             "ip_addresses": ["fd2e:faa4:fe14:e370:fd2e:faa4:fe14:e370"]
         })
@@ -118,7 +117,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
         inv = self.inventory.inventory
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
-        for k,v in sg[1].items():
+        for k, v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
 
     @responses.activate
@@ -134,7 +133,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "cidrs": ["172.16.1.2/16"],
             "revision_number": 3
         }
-        
+
         provider = provider_nsx_mgmt.Provider()
         provider.sg_members_realize(sg)
         provider.sg_members_realize(sgu)
@@ -143,7 +142,6 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg["id"])
         self.assertEquals(sg_ipset.get("ip_addresses"), ["172.16.1.2/16"])
 
-
     @responses.activate
     def test_security_group_members_delete(self):
         sg = {
@@ -151,7 +149,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "cidrs": ["172.16.1.1/32"],
             "revision_number": 2
         }
-        
+
         inv = self.inventory.inventory
 
         provider = provider_nsx_mgmt.Provider()
@@ -164,7 +162,6 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg["id"])
         self.assertEquals(sg_ipset, None)
 
-
     @responses.activate
     def test_security_group_rules_create(self):
 
@@ -173,33 +170,33 @@ class TestProviderMgmt(base.BaseTestCase):
             "revision_number": 2,
             "tags": ["capability_tcp_strict"],
             "rules": []
-        },{
+        }, {
             "resource_type": "FirewallSection",
             "display_name": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "tags": [
                 {
-                    "scope": "revision_number", 
+                    "scope": "revision_number",
                     "tag": 2
                 }
             ],
             "tcp_strict": True
         },
-        {
+            {
             "resource_type": "NSGroup",
             "display_name": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
             "membership_criteria": [
                 {
-                    "target_type": "LogicalPort", 
-                    "tag_op": "EQUALS", 
-                    "scope_op": "EQUALS", 
-                    "tag": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19", 
-                    "scope": "security_group", 
+                    "target_type": "LogicalPort",
+                    "tag_op": "EQUALS",
+                    "scope_op": "EQUALS",
+                    "tag": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+                    "scope": "security_group",
                     "resource_type": "NSGroupTagExpression"
                 }
             ],
             "tags": [
                 {
-                    "scope": "revision_number", 
+                    "scope": "revision_number",
                     "tag": 2
                 }
             ]
@@ -210,24 +207,23 @@ class TestProviderMgmt(base.BaseTestCase):
         inv = self.inventory.inventory
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg[0]["id"])
-        for k,v in sg[1].items():
+        for k, v in sg[1].items():
             if k == "tags":
-                tags = set([(t["scope"],t["tag"]) for t in sg_section.get(k, dict())])
-                tags_exp = set([(t["scope"],t["tag"]) for t in sg[1].get(k)])
+                tags = set([(t["scope"], t["tag"]) for t in sg_section.get(k, dict())])
+                tags_exp = set([(t["scope"], t["tag"]) for t in sg[1].get(k)])
                 self.assertEquals(tags_exp.intersection(tags), tags_exp)
             else:
                 self.assertEquals(sg_section.get(k), sg[1].get(k))
 
         sg_nsgroup = self.get_by_name(inv[Inventory.NSGROUPS], sg[0]["id"])
-        for k,v in sg[2].items():
+        for k, v in sg[2].items():
             if k == "tags":
-                tags = set([(t["scope"],t["tag"]) for t in sg_nsgroup.get(k)])
+                tags = set([(t["scope"], t["tag"]) for t in sg_nsgroup.get(k)])
                 # NS Group should not have revision tag
-                tags_exp = set([(t["scope"],t["tag"]) for t in sg[2].get(k) if t["scope"] != "revision_number"])
+                tags_exp = set([(t["scope"], t["tag"]) for t in sg[2].get(k) if t["scope"] != "revision_number"])
                 self.assertEquals(tags_exp.intersection(tags), tags_exp)
             else:
                 self.assertEquals(sg_nsgroup.get(k), sg[2].get(k))
-
 
     @responses.activate
     def test_security_group_rules_update(self):
@@ -291,7 +287,6 @@ class TestProviderMgmt(base.BaseTestCase):
         sg1["id"] = str(uuid.uuid4())
         sg1["rules"].append(copy.deepcopy(rule1))
         sg1["rules"].append(copy.deepcopy(rule2))
-    
 
         # Add new, update existing, delete existing
         sg2 = copy.deepcopy(sg)
@@ -304,7 +299,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         inv = self.inventory.inventory
         provider = provider_nsx_mgmt.Provider()
-        
+
         provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg2)
         provider.sg_rules_realize(sg3)
@@ -322,9 +317,9 @@ class TestProviderMgmt(base.BaseTestCase):
         rule1_u_expected = [
             {
                 "service": {
-                    "icmp_code": "2", 
-                    "icmp_type": "5", 
-                    "protocol": "ICMPv4", 
+                    "icmp_code": "2",
+                    "icmp_type": "5",
+                    "protocol": "ICMPv4",
                     "resource_type": "ICMPTypeNSService"
                 }
             }
@@ -332,18 +327,17 @@ class TestProviderMgmt(base.BaseTestCase):
         rule3_expected = [
             {
                 "service": {
-                    "protocol_number": 1, 
+                    "protocol_number": 1,
                     "resource_type": "IPProtocolNSService"
                 }
             }
         ]
         self.assertEquals(sg_meta_rules.get(rule1_u.get("id")).get("services"), rule1_u_expected)
         self.assertEquals(sg_meta_rules.get(rule3.get("id")).get("services"), rule3_expected)
-        
+
         provider.sg_rules_realize(sg3)
         sg_meta_rules = provider.metadata(provider.SG_RULE, sg3.get("id"))
         self.assertEquals(len(sg_meta_rules.keys()), 0)
-
 
     @responses.activate
     def test_security_group_icmp_generic_rules(self):
@@ -398,7 +392,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         inv = self.inventory.inventory
         provider = provider_nsx_mgmt.Provider()
-        
+
         provider.sg_rules_realize(sg)
 
         LOG.info(json.dumps(inv, indent=4))
@@ -437,7 +431,6 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertDictContainsSubset(sg_meta_rules.get(rule2.get("id")).get("services")[0], generic_icmp_expected[1])
         self.assertDictContainsSubset(sg_meta_rules.get(rule3.get("id")).get("services")[0], generic_icmp_expected[2])
 
-
     @responses.activate
     def test_security_group_rules_delete(self):
 
@@ -449,7 +442,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         provider = provider_nsx_mgmt.Provider()
-        
+
         provider.sg_rules_realize(sg)
 
         inv = self.inventory.inventory
@@ -463,7 +456,6 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg.get("id"))
 
         self.assertEquals(sg_section, None)
-
 
     @responses.activate
     def test_security_group_rules_remote_ip_prefix_constant_ipset(self):
@@ -537,8 +529,7 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(sg_rule_source.get("target_display_name"), rule.get("remote_ip_prefix"))
         self.assertEquals(sg_rule_source.get("target_id"), rule.get("remote_ip_prefix"))
         self.assertEquals(sg_rule_source.get("target_type"), "IPv4Address")
-        
-        
+
     @responses.activate
     def test_security_group_rules_remote_group(self):
 
@@ -581,7 +572,6 @@ class TestProviderMgmt(base.BaseTestCase):
 
         self.assertEquals(sg_rule_ipset.get("display_name"), sg_remote.get("id"))
 
-
     @responses.activate
     def test_security_group_rules_service_l4(self):
 
@@ -620,14 +610,14 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(sg_rule.get("destinations"), [])
         self.assertEquals(sg_rule.get("disabled"), False)
         self.assertEquals(sg_rule_service, {
-            "resource_type": "L4PortSetNSService", 
-            "l4_protocol": "TCP", 
+            "resource_type": "L4PortSetNSService",
+            "l4_protocol": "TCP",
             "source_ports": [
                 "1-65535"
             ],
             "destination_ports": [
                 "443"
-            ] 
+            ]
         })
 
     @responses.activate
@@ -676,7 +666,7 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_rule_hopopt_service = sg_rule_hopopt.get("services")[0].get("service")
 
         self.assertEquals(sg_rule_hopopt_service, {
-            "resource_type": "IPProtocolNSService", 
+            "resource_type": "IPProtocolNSService",
             "protocol_number": 0
         })
 
@@ -684,7 +674,7 @@ class TestProviderMgmt(base.BaseTestCase):
         sg_rule_0_service = sg_rule_0.get("services")[0].get("service")
 
         self.assertEquals(sg_rule_0_service, {
-            "resource_type": "IPProtocolNSService", 
+            "resource_type": "IPProtocolNSService",
             "protocol_number": 0
         })
 
@@ -736,14 +726,14 @@ class TestProviderMgmt(base.BaseTestCase):
         self.assertEquals(sg_rule_valid_service, {
             "resource_type": "ICMPTypeNSService",
             "protocol": "ICMPv4",
-            "icmp_code": "1", 
+            "icmp_code": "1",
             "icmp_type": "5"
         })
 
         sg_rule_invalid = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule_invalid["id"])
 
         self.assertEquals(sg_rule_invalid, None)
-    
+
     @responses.activate
     def test_security_group_rules_service_udp_any_port(self):
 
@@ -890,7 +880,7 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         return (provider_port, os_sg, os_sg_second, os_qos, os_port_parent, os_port_child)
-    
+
     @responses.activate
     def test_port_parent_create(self):
         provider_port, os_sg, os_sg_second, os_qos, os_port_parent, _ = self.port_fixture()
@@ -917,8 +907,8 @@ class TestProviderMgmt(base.BaseTestCase):
                 "vif_type": "PARENT"
             }
         })
-        
-        self.assertEquals(provider_port.get("attachment"), provider_port_attachment)
+
+        self.assertEquals(provider_port_attachment, provider_port.get("attachment"))
         self.assertEquals(provider_port.get("address_bindings"), os_port_parent.get("address_bindings"))
 
         self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_parent.get("security_groups"))
@@ -941,13 +931,13 @@ class TestProviderMgmt(base.BaseTestCase):
 
         self.assertEquals(meta_port.rev, os_port_child.get("revision_number"))
         provider_port = requests.get(get_url("/api/v1/logical-ports/{}".format(meta_port.id))).json()
-        
+
         self.assertEquals(provider_port.get("attachment").get("id"), os_port_child.get("id"))
         self.assertEquals(provider_port.get("address_bindings"), os_port_child.get("address_bindings"))
 
         self.assertEquals([self.get_tag(provider_port, "security_group")], os_port_child.get("security_groups"))
         self.assertEquals(self.get_tag(provider_port, "revision_number"), os_port_child.get("revision_number"))
-    
+
     @responses.activate
     def test_port_bound_multiple_security_groups(self):
         provider_port, _, _, _, os_port_parent, _ = self.port_fixture()
@@ -961,7 +951,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider_port = requests.get(get_url("/api/v1/logical-ports/{}".format(provider_port.get("id")))).json()
         self.assertEquals(self.get_tag(provider_port, "security_group"), os_port_parent.get("security_groups"))
         self.assertEquals(len(self.get_tag(provider_port, "security_group")), 2)
-    
+
     @responses.activate
     def test_port_delete(self):
         provider_port, os_sg, _, os_qos, os_port_parent, os_port_child = self.port_fixture()
@@ -987,7 +977,6 @@ class TestProviderMgmt(base.BaseTestCase):
 
         self.assertEquals(list(self.inventory.inventory[Inventory.PORTS].keys()), [meta_parent_port])
 
-
     @responses.activate
     def test_qos_create(self):
         os_qos = {
@@ -999,13 +988,13 @@ class TestProviderMgmt(base.BaseTestCase):
                     "dscp_mark": "5"
                 },
                 {
-                    "direction": "ingress", 
-                    "max_kbps": "6400", 
+                    "direction": "ingress",
+                    "max_kbps": "6400",
                     "max_burst_kbps": "128000"
                 },
                 {
-                    "direction": "egress", 
-                    "max_kbps": "7200", 
+                    "direction": "egress",
+                    "max_kbps": "7200",
                     "max_burst_kbps": "256000"
                 },
             ]
@@ -1018,27 +1007,26 @@ class TestProviderMgmt(base.BaseTestCase):
         qos = self.get_result_by_name(result, os_qos.get("id"))
 
         self.assertEquals(qos.get("dscp"), {
-            "priority": 5, 
+            "priority": 5,
             "mode": "UNTRUSTED"
         })
 
         self.assertEquals(qos.get("shaper_configuration"), [
             {
-                "average_bandwidth_mbps": 6, 
-                "peak_bandwidth_mbps": 12, 
-                "enabled": True, 
-                "burst_size_bytes": 16384000, 
+                "average_bandwidth_mbps": 6,
+                "peak_bandwidth_mbps": 12,
+                "enabled": True,
+                "burst_size_bytes": 16384000,
                 "resource_type": "IngressRateShaper"
-            }, 
+            },
             {
-                "average_bandwidth_mbps": 7, 
-                "peak_bandwidth_mbps": 14, 
-                "enabled": True, 
-                "burst_size_bytes": 32768000, 
+                "average_bandwidth_mbps": 7,
+                "peak_bandwidth_mbps": 14,
+                "enabled": True,
+                "burst_size_bytes": 32768000,
                 "resource_type": "EgressRateShaper"
             }
         ])
-
 
     @responses.activate
     def test_qos_update(self):
@@ -1054,14 +1042,14 @@ class TestProviderMgmt(base.BaseTestCase):
         }
 
         rule = {
-            "direction": "ingress", 
-            "max_kbps": "6400", 
+            "direction": "ingress",
+            "max_kbps": "6400",
             "max_burst_kbps": "128000"
         }
 
         provider = provider_nsx_mgmt.Provider()
         provider.qos_realize(os_qos)
-        
+
         os_qos.get("rules").append(rule)
         provider.qos_realize(os_qos)
 
@@ -1070,16 +1058,16 @@ class TestProviderMgmt(base.BaseTestCase):
         qos = self.get_result_by_name(result, os_qos.get("id"))
 
         self.assertEquals(qos.get("dscp"), {
-            "priority": 5, 
+            "priority": 5,
             "mode": "UNTRUSTED"
         })
 
         self.assertEquals(qos.get("shaper_configuration"), [
             {
-                "average_bandwidth_mbps": 6, 
-                "peak_bandwidth_mbps": 12, 
-                "enabled": True, 
-                "burst_size_bytes": 16384000, 
+                "average_bandwidth_mbps": 6,
+                "peak_bandwidth_mbps": 12,
+                "enabled": True,
+                "burst_size_bytes": 16384000,
                 "resource_type": "IngressRateShaper"
             }
         ])
@@ -1108,7 +1096,7 @@ class TestProviderMgmt(base.BaseTestCase):
         result = requests.get(get_url("/{}".format(Inventory.PROFILES))).json()
         qos = self.get_result_by_name(result, os_qos.get("id"))
         self.assertEquals(qos, None)
-    
+
     @responses.activate
     def test_create_network(self):
         segmentation_id = "3200"
@@ -1150,9 +1138,9 @@ class TestProviderMgmt(base.BaseTestCase):
         ]
 
         meta = {
-            sg[0]['id']: "1", # same
-            sg[1]['id']: "3", # updated
-            sg[2]['id']: "8" # updated
+            sg[0]['id']: "1",  # same
+            sg[1]['id']: "3",  # updated
+            sg[2]['id']: "8"  # updated
             # 4th was removed => orphaned
         }
 
@@ -1162,13 +1150,12 @@ class TestProviderMgmt(base.BaseTestCase):
         provider.sg_rules_realize(sg[2])
         provider.sg_rules_realize(sg[3])
 
-        outdated,current = provider.outdated(provider.SG_RULES, meta)
+        outdated, current = provider.outdated(provider.SG_RULES, meta)
 
         LOG.info(json.dumps(self.inventory.inventory, indent=4))
 
-        self.assertItemsEqual(outdated, [sg[1]['id'],sg[2]['id'],sg[3]['id']])
+        self.assertItemsEqual(outdated, [sg[1]['id'], sg[2]['id'], sg[3]['id']])
         self.assertItemsEqual(current, [sg[0]['id']])
-
 
     @responses.activate
     def test_remote_prefix_orphan_cleanup(self):
@@ -1196,17 +1183,17 @@ class TestProviderMgmt(base.BaseTestCase):
         p = provider_nsx_mgmt.Provider()
         inv = self.inventory.inventory
 
-        for i in range(1,10):
+        for i in range(1, 10):
             data = {
                 "resource_type": "IPSet",
                 "display_name": "0.0.0.0/{}".format(i),
                 "ip_addresses": ["0.0.0.0/{}".format(i)]
             }
             p.client.post(path=provider_nsx_mgmt.API.IPSETS, data=data)
-        
+
         self.assertEquals(len(inv[self.inventory.IPSETS]), 9)
-        
-        for i in range(1,3):
+
+        for i in range(1, 3):
             data = {
                 "resource_type": "IPSet",
                 "display_name": "192.168.0.{}".format(i),
@@ -1215,7 +1202,7 @@ class TestProviderMgmt(base.BaseTestCase):
             p.client.post(path=provider_nsx_mgmt.API.IPSETS, data=data)
 
         self.assertEquals(len(inv[self.inventory.IPSETS]), 11)
-        
+
         p.sg_rules_realize(sg)
 
         for id, cleanup in p.sanitize(100):
@@ -1232,7 +1219,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
     @responses.activate
     def test_security_group_stateful(self):
-        sg1 = { "id": str(uuid.uuid4()), "revision_number": 2,"rules": [] }
+        sg1 = {"id": str(uuid.uuid4()), "revision_number": 2, "rules": []}
         sg2 = dict(sg1, **{'id': str(uuid.uuid4()), "stateful": False})
         provider = provider_nsx_mgmt.Provider()
         provider.sg_rules_realize(sg1)
@@ -1254,7 +1241,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider.port_realize(os_port_parent, delete=True)
 
         cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 1000
-        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']:os_port_parent['revision_number']})
+        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']: os_port_parent['revision_number']})
         self.assertEquals(len(outdated), 0)
 
         outdated, _ = provider.outdated(provider.PORT, {})

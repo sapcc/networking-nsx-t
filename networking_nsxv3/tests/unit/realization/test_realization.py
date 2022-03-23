@@ -15,6 +15,7 @@ LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 # TODO - replace static wait/sleep with active polling
+# TODO - split into more granual functional tests
 
 
 class TestAgentRealizer(base.BaseTestCase):
@@ -32,12 +33,12 @@ class TestAgentRealizer(base.BaseTestCase):
 
         o("nsxv3_login_hostname", hostname, "NSXV3")
         o("nsxv3_login_port", port, "NSXV3")
-        o("nsxv3_remove_orphan_ports_after", "0", "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
 
         self.url = "https://{}:{}".format(hostname, port)
 
     def _mock(self, r):
-        self.inventory = provider.Inventory(self.url)
+        self.inventory = provider.Inventory(base_url=self.url, version="3.0.0")
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
@@ -57,51 +58,46 @@ class TestAgentRealizer(base.BaseTestCase):
                 i.port_bind(c.PORT_BACKEND["name"], "3200")
                 i.port_bind(c.PORT_DB["name"], "3200")
 
-                eventlet.sleep(30)
+                eventlet.sleep(10)
 
                 # LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
 
-        provider = p = env.manager.realizer.provider
+        plcy = env.manager.realizer.plcy_provider
+        mngr = env.manager.realizer.mngr_provider
 
-        metadata = m = env.dump_provider_inventory(printable=False)
+        mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
-        self.assertEquals("3200" in m[p.NETWORK]["meta"], True)
+        self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
+        self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
+        self.assertEquals(plcy_meta[plcy.SEGMENT]["meta"], {})
+        self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"], {})
 
         # Validate QoS State
-        self.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], True)
-        self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], True)
-        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in m[p.QOS]["meta"], False)
+        self.assertEquals(c.QOS_INTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
+        self.assertEquals(c.QOS_EXTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
+        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in mngr_meta[mngr.QOS]["meta"], False)
 
         # Validate Security Groups Members
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], False)
 
         # Validate Security Group Rules Sections
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
-
-        if env.is_management_api_mode():
-            # Validate Security Group Rules NSGroups
-            self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-            self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
 
         # Validate Security Group Remote Prefix IPSets
-        for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+        for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
     def test_synchronous_creation(self):
@@ -113,29 +109,26 @@ class TestAgentRealizer(base.BaseTestCase):
             with env:
                 i = env.openstack_inventory
                 i.test_synchronous_port_create(c.PORT_FRONTEND_EXTERNAL["name"], "1001")
-                eventlet.sleep(30)
+                eventlet.sleep(10)
 
-        p = env.manager.realizer.provider
-        m = env.dump_provider_inventory(printable=False)
+        pp = env.manager.realizer.plcy_provider
+        mp = env.manager.realizer.mngr_provider
+        mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1001" in m[p.NETWORK]["meta"], True)
+        self.assertEquals("1001" in mngr_meta[mp.NETWORK]["meta"], True)
 
         # Validate QoS State
-        self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], True)
+        self.assertEquals(c.QOS_EXTERNAL["id"] in mngr_meta[mp.QOS]["meta"], True)
 
         # Validate Security Groups Members
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
 
         # Validate Security Group Rules Sections
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], True)
-
-        if env.is_management_api_mode():
-            # Validate Security Group Rules NSGroups
-            self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
 
         # Validate Security Group Remote Prefix IPSets
-        for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+        for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
     def test_cleanup(self):
@@ -146,66 +139,73 @@ class TestAgentRealizer(base.BaseTestCase):
 
             env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
             with env:
-                inventory = i = env.openstack_inventory
-                provider = p = env.manager.realizer.provider
+                i = env.openstack_inventory
 
                 i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
                 i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
                 i.port_bind(c.PORT_BACKEND["name"], "3200")
                 i.port_bind(c.PORT_DB["name"], "3200")
 
-                eventlet.sleep(30)
+                eventlet.sleep(10)
 
                 # LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 # LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
 
                 # Add orphan IPSets
-                p.client.post(path="/api/v1/ip-sets", data=p.payload.sg_rule_remote("192.168.0.0/12"))
-                p.client.post(path="/api/v1/ip-sets", data=p.payload.sg_rule_remote("::ffff/64"))
+                # pp.client.post(path="/api/v1/ip-sets", data=pp.payload.sg_rule_remote("192.168.0.0/12"))
+                # pp.client.post(path="/api/v1/ip-sets", data=pp.payload.sg_rule_remote("::ffff/64"))
 
                 i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
-                eventlet.sleep(10)
+                eventlet.sleep(1)
                 i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
-                eventlet.sleep(40)
+                eventlet.sleep(10)
 
                 # LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
 
-        metadata = m = env.dump_provider_inventory(printable=False)
+        pp = env.manager.realizer.plcy_provider
+        mp = env.manager.realizer.mngr_provider
+        mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
-        self.assertEquals("3200" in m[p.NETWORK]["meta"], True)
+        self.assertEquals("1000" in mngr_meta[mp.NETWORK]["meta"], True)
+        self.assertEquals("3200" in mngr_meta[mp.NETWORK]["meta"], True)
+
+        # Validate Ports
+        self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
+        self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
+        self.assertEquals(c.PORT_BACKEND["id"] in mngr_meta[mp.PORT]["meta"], True)
+        self.assertEquals(c.PORT_DB["id"] in mngr_meta[mp.PORT]["meta"], True)
 
         # Validate QoS State
-        self.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], False)
-        self.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], False)
-        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in m[p.QOS]["meta"], False)
+        self.assertEquals(c.QOS_INTERNAL["id"] in mngr_meta[mp.QOS]["meta"], False)
+        self.assertEquals(c.QOS_EXTERNAL["id"] in mngr_meta[mp.QOS]["meta"], False)
+        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in mngr_meta[mp.QOS]["meta"], False)
 
         # Validate Security Groups Members
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], False)
 
         # Validate Security Group Rules Sections
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[pp.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[pp.SG_RULES]["meta"], False)
 
         # Validate Security Group Rules NSGroups
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+        # self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[mp.SG_RULES_EXT]["meta"], False)
+        # self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[mp.SG_RULES_EXT]["meta"], True)
+        # self.assertEquals(c.SECURITY_GROUP_DB["id"] in m[mp.SG_RULES_EXT]["meta"], True)
+        # self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[mp.SG_RULES_EXT]["meta"], True)
+        # self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[mp.SG_RULES_EXT]["meta"], False)
+        # self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[mp.SG_RULES_EXT]["meta"], False)
 
         # Validate Security Group Remote Prefix IPSets
-        for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+        for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)

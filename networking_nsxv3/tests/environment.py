@@ -1,7 +1,6 @@
 import json
 
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    agent, provider_nsx_mgmt)
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
 from networking_nsxv3.tests.unit import openstack
 from oslo_log import log as logging
 
@@ -10,9 +9,8 @@ LOG = logging.getLogger(__name__)
 
 class Environment(object):
 
-    def __init__(self, name="Default", inventory=None, synchronization=True, force_api=None):
+    def __init__(self, name="Default", inventory=None, synchronization=True):
         self.name = name
-        self.force_api = force_api
         self.synchronization = synchronization
         self.openstack_inventory = openstack.NeutronMock()
         if inventory:
@@ -20,8 +18,7 @@ class Environment(object):
 
     def __enter__(self):
         self.rpc = openstack.TestNSXv3ServerRpcApi(self.openstack_inventory)
-        self.manager = agent.NSXv3Manager(rpc=self.rpc, synchronization=self.synchronization,
-                                          monitoring=False, force_api=self.force_api)
+        self.manager = agent.NSXv3Manager(rpc=self.rpc, synchronization=self.synchronization, monitoring=False)
         rpc = self.manager.get_rpc_callbacks(None, None, None)
         notifier = openstack.TestNSXv3AgentManagerRpcCallBackBase(rpc)
         self.openstack_inventory.register(notifier)
@@ -35,10 +32,10 @@ class Environment(object):
 
     @property
     def version(self):
-        return self.manager.realizer.provider.client.version
+        return self.manager.realizer.plcy_provider.client.version
 
     def is_management_api_mode(self):
-        return type(self.manager.realizer.provider) is provider_nsx_mgmt.Provider
+        return False
 
     def dump_openstack_inventory(self, printable=True):
         o = self.openstack_inventory.inventory
@@ -64,6 +61,13 @@ class Environment(object):
                 } for k, v in meta.items()
             }
 
-        metadata = self.manager.realizer.provider._metadata
-        o = {r: provider_dict(m) for r, m in metadata.items()}
-        return json.dumps(o, indent=4) if printable else o
+        mngr_metadata = self.manager.realizer.mngr_provider._metadata
+        plcy_metadata = self.manager.realizer.plcy_provider._metadata
+
+        mngr_meta = {r: provider_dict(m) for r, m in mngr_metadata.items()}
+        plcy_meta = {r: provider_dict(m) for r, m in plcy_metadata.items()}
+
+        return\
+            (json.dumps(mngr_meta, indent=4), json.dumps(plcy_meta, indent=4))\
+            if printable else\
+            (mngr_meta, plcy_meta)

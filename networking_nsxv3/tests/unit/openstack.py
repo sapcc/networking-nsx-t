@@ -3,6 +3,7 @@ import json
 import uuid
 
 from oslo_log import log as logging
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
 
 LOG = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ class TestNSXv3AgentManagerRpcCallBackBase(Notifier):
     UPDATE = "update"
     DELETE = "delete"
 
-    def __init__(self, rpc):
-        self.rpc = rpc
+    def __init__(self, rpc: agent.NSXv3AgentManagerRpcCallBackBase):
+        self.rpc: agent.NSXv3AgentManagerRpcCallBackBase = rpc
 
     def notify(self, resource_type, resource, operation):
         o = copy.deepcopy(resource)
@@ -30,10 +31,8 @@ class TestNSXv3AgentManagerRpcCallBackBase(Notifier):
             )
 
         if resource_type == NeutronMock.PORT:
-            # Ports are NOT created by Nova -> vCenter
             if operation == self.ADD:
-                # TODO
-                pass
+                self.rpc.port_create(None, port=o)
             else:
                 self.rpc.port_update(None, port=o)
             self.rpc.security_groups_member_updated(None, security_groups=o.get("security_groups"))
@@ -58,7 +57,7 @@ class NeutronMock(object):
     SECURITY_GROUP_RULE = "security-group-rule"
 
     def __init__(self):
-        self.notifier = Notifier()
+        self.notifier: TestNSXv3AgentManagerRpcCallBackBase = None
         self.reload_inventory()
 
     def _get_by_name(self, resource_type, name):
@@ -239,7 +238,7 @@ class NeutronMock(object):
         if not vif.get("external-id"):
             raise Exception("Unable to bind Port:{} VIF:{}".format(name, vif))
 
-        client = self.notifier.rpc.realizer.provider.client
+        client = self.notifier.rpc.realizer.mngr_provider.client
         client.post("/api/v1/logical-ports", data={
             "logical_switch_id": vif.get("external-id"),
             "display_name": port.get("id"),
@@ -251,7 +250,7 @@ class NeutronMock(object):
         })
 
         port["vif_details"] = vif
-        
+
     def test_synchronous_port_create(self, name, segmentation_id):
         port = self._get_by_name(NeutronMock.PORT, name)
         network_segments = [

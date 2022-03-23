@@ -49,6 +49,7 @@ class Inventory(object):
             Inventory.SECTIONS: dict(),
             Inventory.POLICIES: {
                 "default-layer3-section": {
+                    "id": "default-layer3-section",
                     "rules": [{"action": "DROP"}],
                     "_create_user": "system"
                 }
@@ -76,9 +77,15 @@ class Inventory(object):
             objects = [o for id, o in inventory.items() if id != "_"]
             if "QosSwitchingProfile" in params.get("switching_profile_type", []):
                 objects = [o for o in objects if o.get("resource_type") == "QosSwitchingProfile"]
+            elif params.get("attachment_id"):
+                objects = [o for id, o in inventory.items() if o.get("attachment", {}).get("id")
+                           == params.get("attachment_id")[0]]
+
             return self.resp(200, {"results": objects})
+
         if request.method == "POST":
             resource["id"] = self.identifier(inventory, resource)
+            resource["unique_id"] = self.identifier(inventory, resource)
             resource["_create_user"] = "admin"
             resource["_last_modified_time"] = int(time.time() * 1000)
             resource["_revision"] = 1
@@ -96,6 +103,7 @@ class Inventory(object):
                                            .format(o.get("_revision"), resource.get("_revision"))})
                 resource["_revision"] = int(resource["_revision"]) + 1 if resource.get("_revision") else 1
                 resource["id"] = id
+                resource["unique_id"] = id
                 resource["_create_user"] = "admin"
                 resource["_last_modified_time"] = int(time.time() * 1000)
                 inventory[id] = resource
@@ -124,7 +132,7 @@ class Inventory(object):
                 inventory_dump = json.dumps(self.inventory, indent=2)
                 if id in inventory_dump:
                     inventory[id] = o
-                    return self.resp(417, "Object with ID:{} still in use Inventory:{}".format(id, inventory_dump))
+                    return self.resp(417, "Object with ID:{} still in use Inventory".format(id))
             return self.resp(200) if o else self.resp(404)
 
     def _version(self, request: Request):
@@ -201,8 +209,10 @@ class Inventory(object):
                 return child
 
         if obj_id:
+            LOG.info(f"Using Test obj_id: {obj_id}")
             return self.id(request, inventory, obj_id, resource)
         if obj_type:
+            LOG.info(f"Using Test obj_type: {obj_type}")
             return self.type(request, inventory, resource)
 
     def _get_child_resource(self, inventory, obj_id, child_id, child_type, request, resource):

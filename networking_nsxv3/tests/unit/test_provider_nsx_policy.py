@@ -45,7 +45,7 @@ class TestProviderPolicy(base.BaseTestCase):
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
-        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.0.2")
+        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.1.4")
         r = responses
 
         for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
@@ -524,23 +524,9 @@ class TestProviderPolicy(base.BaseTestCase):
 
     @responses.activate
     def test_security_group_revision_retry(self):
-        global test_is_revision_wrong
-        test_is_revision_wrong = True
-
-        def request_callback(request):
-            global test_is_revision_wrong
-            cond = test_is_revision_wrong
-            test_is_revision_wrong = False
-            return (422, {}, json.dumps(json.loads(request.body))) if cond else self.inventory.api(request)
-
-        r = responses
-        r.reset()
-        r.add_callback(r.PUT, re.compile(r".*"), callback=request_callback)
-        for m in [r.GET, r.POST, r.DELETE, r.PATCH]:
-            r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
-
-        sg1 = {"id": "1", "revision_number": 2, "rules": [], "_revision": 1}
+        sg1 = {"id": "1", "revision_number": 2, "rules": [], "_revision": None}
         provider = provider_nsx_policy.Provider()
+        provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg1)
 
     @responses.activate
@@ -621,88 +607,3 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEquals(len(rules), 1)
         self.assertEquals(rules[rule_valid["id"]].get("source_groups"), ['192.168.10.0/24'])
-
-    def port_fixture(self):
-        os_sg = {
-            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
-            "revision_number": 2,
-            "tags": ["capability_tcp_strict"],
-            "rules": [{
-                "id": "1",
-                "ethertype": "IPv4",
-                "direction": "ingress",
-                "remote_group_id": "",
-                "remote_ip_prefix": "192.168.10.0/24",
-                "security_group_id": "",
-                "port_range_min": "5",
-                "port_range_max": "1",
-                "protocol": "icmp"
-            }]
-        }
-
-        os_sg_second = {
-            "id": "FB8B899A-2DAF-4DFA-9E6A-D2869C16BCD0",
-            "revision_number": 2,
-            "tags": ["capability_tcp_strict"],
-            "rules": [{
-                "id": "1",
-                "ethertype": "IPv4",
-                "direction": "ingress",
-                "remote_group_id": "",
-                "remote_ip_prefix": "192.168.11.0/24",
-                "security_group_id": "",
-                "port_range_min": "5",
-                "port_range_max": "1",
-                "protocol": "icmp"
-            }]
-        }
-
-        os_qos = {
-            "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
-            "revision_number": "3",
-            "name": "test",
-            "rules": [{"dscp_mark": "5"}]
-        }
-
-        os_port_parent = {
-            "id": "80372EA3-5F58-4B06-8456-3067D60B3023",
-            "revision_number": "2",
-            "parent_id": "",
-            "mac_address": "fa:16:3e:e4:11:f1",
-            "admin_state_up": "UP",
-            "qos_policy_id": os_qos.get("id"),
-            "security_groups": [os_sg.get("id"), os_sg_second.get("id")],
-            "address_bindings": ["172.24.4.3", "172.24.4.4"],
-            "vif_details": {
-                "nsx-logical-switch-id": "712CAD71-B3F5-4AA0-8C3F-8D453DCBF2F2",
-                "segmentation_id": "3200"
-            },
-            "_last_modified_time": time.time()
-        }
-
-        return (os_sg, os_sg_second, os_qos, os_port_parent)
-
-    @responses.activate
-    def test_priveleged_ports(self):
-        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
-        _, _, _, os_port_parent = self.port_fixture()
-
-        provider = provider_nsx_policy.Provider()
-
-        # Create non-agent managed port/switch
-        meta = provider.network_realize('vmotion')
-        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
-        provider.port_realize(os_port_parent)
-
-        outdated, _ = provider.outdated(provider.SEGMENT_PORT, {})
-        self.assertEquals(len(outdated), 0)
-
-        # Create agent-managed port/switch
-        meta = provider.network_realize('1234')
-        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
-        os_port_parent["id"] = "80372EA3-5F58-4B06-8456-3067D60B3024"
-        provider.port_realize(os_port_parent)
-
-        # Assume to clean it up
-        outdated, _ = provider.outdated(provider.SEGMENT_PORT, {})
-        self.assertEquals(len(outdated), 1)

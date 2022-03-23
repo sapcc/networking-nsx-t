@@ -42,9 +42,9 @@ class TestAgentRealizer(base.BaseTestCase):
         with env:
             eventlet.sleep(30)
         
-        provider = env.manager.realizer.provider
+        provider = env.manager.realizer.plcy_provider
         for type,meta in env.dump_provider_inventory(printable=False).items():
-            if type != provider.NETWORK and type != provider.SG_RULES_REMOTE_PREFIX:
+            if type != provider.SEGMENT and type != provider.SG_RULES_REMOTE_PREFIX:
                 self.assertEquals(meta["meta"], dict())
 
     def tearDown(self):
@@ -75,7 +75,7 @@ class TestAgentRealizer(base.BaseTestCase):
         env = Environment(inventory=inventory)
         with env:
             inventory = i = env.openstack_inventory
-            provider = p = env.manager.realizer.provider
+            provider = p = env.manager.realizer.plcy_provider
 
             eventlet.sleep(30)
 

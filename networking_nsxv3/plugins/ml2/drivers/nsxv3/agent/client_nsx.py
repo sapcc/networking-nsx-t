@@ -10,6 +10,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import versionutils
 from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
+from requests import Response
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -24,6 +25,19 @@ def is_atomic_request_error(response):
 
 def is_migration_bussy_error(response):
     return response.status_code == 400 and re.search("Migration coordinator backend is busy", response.text)
+
+
+def is_revision_error(response):
+    return response.status_code == 412 and re.search("Fetch the latest copy of the object and retry", response.text)
+
+
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
 
 
 class RetryPolicy(object):
@@ -59,9 +73,11 @@ class RetryPolicy(object):
 
                     # Handle resource not found gently
                     if is_not_found(response):
-                        LOG.info("Unable to find Resource={}"
-                            .format(kwargs["path"]))
+                        LOG.info("Unable to find Resource={}".format(kwargs["path"]))
                         LOG.debug(log_msg)
+                        return response
+
+                    if is_revision_error(response):
                         return response
 
                     if response.status_code in [401, 403]:
@@ -112,7 +128,7 @@ class MigrationRetryPolicy(object):
         return decorator
 
 
-class Client:
+class Client(metaclass=Singleton):
 
     def __init__(self):
         rate = cfg.CONF.NSXV3.nsxv3_requests_per_second
@@ -186,31 +202,31 @@ class Client:
 
     @RetryPolicy()
     @MigrationRetryPolicy()
-    def post(self, path: str, data: dict):
+    def post(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.post(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def patch(self, path: str, data: dict):
+    def patch(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.patch(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def put(self, path: str, data: dict):
+    def put(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.put(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def delete(self, path: str, params: dict = dict()):
+    def delete(self, path: str, params: dict = dict()) -> Response:
         with self._api_scheduler:
             return self._session.delete(**self._params(path=path, params=params))
 
     @RetryPolicy()
-    def get(self, path: str, params: dict = dict()):
+    def get(self, path: str, params: dict = dict()) -> Response:
         with self._api_scheduler:
             return self._session.get(**self._params(path=path, params=params))
 
-    def get_unique(self, path: str, params: dict = dict()):
+    def get_unique(self, path: str, params: dict = dict()) -> dict:
         results = self.get(path=path, params=params).json().get("results")
         if isinstance(results, list):
             if results:
@@ -240,3 +256,18 @@ class Client:
         plcy_cond = (cursor.isdigit() and int(cursor) != page_size)
         mgmt_cond = (cursor and not cursor.isdigit())
         return self.get_all(path, params, cursor) + _all if (plcy_cond or mgmt_cond) else _all
+
+    def get_unique_with_retry(self, path: str, retries: int = 5, params: dict = dict()):
+        retry = 0
+        ex = None
+        while retry < retries:
+            try:
+                o = self.get_unique(path=path, params=params)
+                if not o:
+                    raise Exception("Not found")
+                return o
+            except Exception as e:
+                ex = e
+                retry += 1
+                eventlet.sleep(seconds=10)
+        raise ex
