@@ -1,5 +1,4 @@
 import itertools
-import json
 import time
 
 from networking_nsxv3.common.locking import LockManager
@@ -310,7 +309,6 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Security Group ID
         :return: -- None
         """
-        LOG.warning(f"AgentRealizer: enable_policy_logging: {json.dumps(log_obj, indent=2)}")
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.provider.enable_policy_logging(log_obj)
 
@@ -320,7 +318,6 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Security Group ID
         :return: -- None
         """
-        LOG.warning(f"AgentRealizer: disable_policy_logging: {json.dumps(log_obj, indent=2)}")
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.provider.disable_policy_logging(log_obj)
 
@@ -330,6 +327,5 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Security Group ID
         :return: -- None
         """
-        LOG.warning(f"AgentRealizer: update_policy_logging: {json.dumps(log_obj, indent=2)}")
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.provider.update_policy_logging(log_obj)

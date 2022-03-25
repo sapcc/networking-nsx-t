@@ -13,6 +13,7 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
 import ipaddress
+from networking_nsxv3.redis.logging import LoggingMetadata
 
 LOG = logging.getLogger(__name__)
 
@@ -184,106 +185,16 @@ class Payload(provider_nsx_mgmt.Payload):
                 target.remove(cidr)
                 LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
-    def _get_tags(self, infra_object=None):
-        tags = [{
-            "scope": NSXV3_AGENT_SCOPE,
-            "tag": cfg.CONF.AGENT.agent_id
-        }]
-
-        if infra_object is not None:
-            tags.append({
-                "scope": NSXV3_REVISION_SCOPE,
-                "tag": infra_object.revision
-            })
-
-        return tags
-
-    def update_default_policies(self, res):
-        # TODO: make rest call. Clieent rest endpoint path should be changed as well ???
-        context = {
-            "resource_type": "Infra",
-            "connectivity_strategy": cfg.CONF.NSXV3.nsxv3_dfw_connectivity_strategy,
-            "children": [
-                {
-                    "resource_type": "ChildResourceReference",
-                    "id": "default",
-                    "target_type": "Domain",
-                    "children": []
-                }
-            ]
-        }
-
-        logging_scope = NSXV3_LOGGING_SCOPE
-        logging_tag = NSXV3_LOGGING_ENABLED
-
-        section = {
-            "resource_type": "ChildSecurityPolicy",
-            "SecurityPolicy": {
-                "resource_type": "SecurityPolicy",
-                "id": NSXV3_DEFAULT_POLICY_ID,
-                "display_name": NSXV3_DEFAULT_POLICY_ID,
-                "category": "Application",
-                # Enforce sequence 1 less than the Default L2 Policy
-                "sequence_number": 999999,
-                "internal_sequence_number": 999999,
-                "stateful": True,
-                "tags": self._get_tags(),
-                "children": [
-                    {
-                        "resource_type": "ChildRule",
-                        "Rule": {
-                            "resource_type": "Rule",
-                            "id": NSXV3_DEFAULT_LOGGING_ID,
-                            "display_name": NSXV3_DEFAULT_LOGGING_ID,
-                            "action": "REJECT",
-                            "destination_groups": ["ANY"],
-                            "direction": "IN_OUT",
-                            "disabled": False,
-                            "ip_protocol": "IPV4_IPV6",
-                            "logged": True,
-                            "notes": "",
-                            "profiles": ["ANY"],
-                            "scope": ["/infra/domains/default/groups/{}".format(NSXV3_DEFAULT_LOGGING_ID)],
-                            "services": ["ANY"],
-                            "source_groups": ["ANY"],
-                            "tag": ""
-                        }
-                    }
-                ]
-            }
-        }
-        group = {
-            "resource_type": "ChildGroup",
-            "Group": {
-                "resource_type": "Group",
-                "id": NSXV3_DEFAULT_LOGGING_ID,
-                "display_name": NSXV3_DEFAULT_LOGGING_ID,
-                "expression": [
-                    {
-                        "key": "Tag",
-                        "member_type": "SegmentPort",
-                        "operator": "EQUALS",
-                        "resource_type": "Condition",
-                        "value": "{}|{}".format(logging_scope, logging_tag)
-                    }
-                ]
-            }
-        }
-        context["children"][0]["children"] += [section, group]
-        return context
-
 
 class Provider(provider_nsx_mgmt.Provider):
     def __init__(self, payload=Payload):
         super(Provider, self).__init__(payload=payload)
         self.provider = "Policy"
+        self.logging_metadata = LoggingMetadata()
         if cfg.CONF.NSXV3.nsxv3_default_policy_infrastructure_rules:
             self._setup_default_infrastructure_rules()
         if self.client.version >= (3, 0):
-            res = self._ensure_default_l3_policy()
-            # Start section: SELECTIVE LOGGING
-            # self.update_default_policies(res)
-            # End section: SELECTIVE LOGGING
+            self._ensure_default_l3_policy()
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
@@ -526,7 +437,7 @@ class Provider(provider_nsx_mgmt.Provider):
         return sanitize
 
     def set_policy_logging(self, log_obj, enable_logging):
-        LOG.warning(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")
+        LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")
 
         # Check for a valid request
         if log_obj['resource_type'] != 'security_group':
@@ -549,18 +460,17 @@ class Provider(provider_nsx_mgmt.Provider):
         res = self.client.patch(path=API.POLICY.format(log_obj['resource_id']), data=data)
         res.raise_for_status()
 
+        # Make sure logging has been set before updating Redis cache. That's the reason for the place of this call.
+        self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id']);
+
     def enable_policy_logging(self, log_obj):
-        LOG.warning(f"PROVIDER: enable_policy_logging")
+        LOG.debug(f"PROVIDER: enable_policy_logging")
         return self.set_policy_logging(log_obj, True)
 
     def disable_policy_logging(self, log_obj):
-        LOG.warning(f"PROVIDER: disable_policy_logging")
+        LOG.debug(f"PROVIDER: disable_policy_logging")
         return self.set_policy_logging(log_obj, False)
 
     def update_policy_logging(self, log_obj):
-        LOG.warning(f"PROVIDER: update_policy_logging")
+        LOG.debug(f"PROVIDER: update_policy_logging")
         return self.set_policy_logging(log_obj, log_obj['enabled'])
-
-    def update_default_policies(self, res):
-        data = self.payload.update_default_policies(res)
-        self.client.patch(path=API.INFRA, data=data)

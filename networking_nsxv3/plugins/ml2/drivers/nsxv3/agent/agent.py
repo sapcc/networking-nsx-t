@@ -1,8 +1,6 @@
 import os
 import sys
 
-import json
-
 import oslo_messaging
 from neutron.common import config as common_config
 from neutron.common import profiler
@@ -20,7 +18,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, 
 from networking_nsxv3.prometheus import exporter
 from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
-from networking_nsxv3.redis.logging import LoggingMetadata
 
 try:
     from neutron.conf.agent import common as agent_config
@@ -49,10 +46,6 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(context, agent, sg_agent)
         self.callback = callback
         self.realizer = realizer
-        # Start section: SELECTIVE LOGGING
-        self.logging_metadata = LoggingMetadata()
-        # self.realizer.provider.update_default_policies()
-        # End section: SELECTIVE LOGGING
 
     def get_network_bridge(self, context, current, network_segments, network_current):
         try_create_port = False
@@ -109,32 +102,27 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def validate_policy(self, context, policy):
         pass
 
-    # Start section: SELECTIVE LOGGING
     def create_log(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: create_log - " + json.dumps(log_obj, indent=2))
         self.callback(log_obj, self.realizer.enable_policy_logging)
 
     def create_log_precommit(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: create_log_precommit - " + json.dumps(log_obj, indent=2))
+        pass
 
     def update_log(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: update_log - " + json.dumps(log_obj, indent=2))
         self.callback(log_obj, self.realizer.update_policy_logging)
 
     def update_log_precommit(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: update_log_precommit - " + json.dumps(log_obj, indent=2))
+        pass
 
     def delete_log(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: delete_log - " + json.dumps(log_obj, indent=2))
         self.callback(log_obj, self.realizer.disable_policy_logging)
 
     def delete_log_precommit(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: delete_log_precommit - " + json.dumps(log_obj, indent=2))
+        pass
 
     def resource_update(self, context, log_obj):
-        LOG.warning("NSXv3AgentManagerRpcCallBackBase: resource_update - " + json.dumps(log_obj, indent=2))
+        pass
 
-    # End section: SELECTIVE LOGGING
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
     def __init__(self, rpc, synchronization=True, monitoring=True, force_api=None):

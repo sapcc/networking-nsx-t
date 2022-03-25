@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import oslo_messaging
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
@@ -71,44 +69,40 @@ class NSXv3AgentRpcClient(object):
             return self._get_call_context().cast(
                 self.context, 'validate_policy', policy=policy)
 
-    # Start section: SELECTIVE LOGGING
-
     def create_log(self, context, log_obj):
-        LOG.info("NSXv3AgentRpcClient: (create_log): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (create_log): " + str(log_obj))
         self._get_call_context()\
             .cast(self.context, 'create_log', log_obj=log_obj)
 
     def create_log_precommit(self, context, log_obj):
-        LOG.info("NSXv3AgentRpcClient: (create_log_precommit): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (create_log_precommit): " + str(log_obj))
         self._get_call_context()\
             .cast(self.context, 'create_log_precommit', log_obj=log_obj)
 
     def update_log(self, context, log_obj):
-        LOG.info("NSXv3AgentRpcClient: (update_log): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (update_log): " + str(log_obj))
         self._get_call_context()\
             .cast(self.context, 'update_log', log_obj=log_obj)
 
     def update_log_precommit(self, context, log_obj):
-        LOG.info("NSXv3AgentRpcClient: (update_log_precommit): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (update_log_precommit): " + str(log_obj))
         self._get_call_context()\
             .cast(self.context, 'update_log_precommit', log_obj=log_obj)
 
     def delete_log(self, context, log_obj):
-        LOG.info("NSXv3AgentRpcClient: (delete_log): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (delete_log): " + str(log_obj))
         self._get_call_context()\
             .cast(self.context, 'delete_log', log_obj=log_obj)
 
     def delete_log_precommit(self, context, log_obj):
-        LOG.info("NSXv3AgentRpcClient: (delete_log_precommit): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (delete_log_precommit): " + str(log_obj))
         self._get_call_context()\
             .cast(self.context, 'delete_log_precommit', log_obj=log_obj)
 
     def resource_update(self, context, log_objs):
-        LOG.info("NSXv3AgentRpcClient: (resource_update): " + str(log_obj))
+        LOG.debug("NSXv3AgentRpcClient: (resource_update): " + str(log_objs))
         self._get_call_context()\
             .cast(self.context, 'resource_update', log_objs=log_objs)
-
-    # End section: SELECTIVE LOGGING
 
 
 class NSXv3ServerRpcApi(object):
