@@ -13,7 +13,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
 import ipaddress
-from networking_nsxv3.redis.logging import LoggingMetadata
 
 LOG = logging.getLogger(__name__)
 
@@ -190,7 +189,6 @@ class Provider(provider_nsx_mgmt.Provider):
     def __init__(self, payload=Payload):
         super(Provider, self).__init__(payload=payload)
         self.provider = "Policy"
-        self.logging_metadata = LoggingMetadata()
         if cfg.CONF.NSXV3.nsxv3_default_policy_infrastructure_rules:
             self._setup_default_infrastructure_rules()
         if self.client.version >= (3, 0):
@@ -459,9 +457,6 @@ class Provider(provider_nsx_mgmt.Provider):
         # Update the logging state
         res = self.client.patch(path=API.POLICY.format(log_obj['resource_id']), data=data)
         res.raise_for_status()
-
-        # Make sure logging has been set before updating Redis cache. That's the reason for the place of this call.
-        self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id']);
 
     def enable_policy_logging(self, log_obj):
         LOG.debug(f"PROVIDER: enable_policy_logging")

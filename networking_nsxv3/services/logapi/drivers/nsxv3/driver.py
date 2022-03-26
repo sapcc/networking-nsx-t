@@ -37,6 +37,11 @@ class NSXv3LogDriver(base.DriverBase):
         super(NSXv3LogDriver, self).__init__(**driver_base_args)
         # self._register(SUPPORTED_LOGGING_TYPES[0], event, trigger, payload=None)
 
+    def __call__(self, logging_callback_resource_type, logging_callback):
+        self.logging_callback_resource_type = logging_callback_resource_type
+        self.logging_callback = logging_callback
+        LOG.debug(f"Logging callback handler: {logging_callback_resource_type} / {logging_callback}")
+
     def create_log(self, context, log_obj):
         self.rpc.create_log(context, log_obj)
 

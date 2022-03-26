@@ -4,6 +4,7 @@ import time
 from networking_nsxv3.common.locking import LockManager
 from oslo_config import cfg
 from oslo_log import log as logging
+from networking_nsxv3.redis.logging import LoggingMetadata
 
 LOG = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class AgentRealizer(object):
         self.provider = provider
         self.legacy_provider = legacy_provider
         self.age = int(time.time())
+        self.logging_metadata = LoggingMetadata()
         # Initializing metadata
         self.all(dryrun=True)
 
@@ -229,7 +231,6 @@ class AgentRealizer(object):
 
                 logged = self.rpc.has_security_group_logging(os_id)
                 LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")
-                logged = not not logged
                 self.provider.sg_rules_realize(os_sg, logged=logged)
 
             else:
@@ -311,6 +312,7 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.provider.enable_policy_logging(log_obj)
+            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id']);
 
     def disable_policy_logging(self, log_obj):
         """
@@ -320,6 +322,7 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.provider.disable_policy_logging(log_obj)
+            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id']);
 
     def update_policy_logging(self, log_obj):
         """
@@ -329,3 +332,4 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.provider.update_policy_logging(log_obj)
+            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id']);

@@ -799,7 +799,7 @@ class Provider(abs.Provider):
             return
         return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, sg, dict())
 
-    def sg_rules_realize(self, os_sg, delete=False):
+    def sg_rules_realize(self, os_sg, delete=False, logged=False):
         provider_sg = dict()
 
         nsg_args = [Provider.SG_RULES_EXT, delete, self.payload.sg_rules_ext_container, os_sg, dict()]
@@ -816,13 +816,13 @@ class Provider(abs.Provider):
         meta_sec = self._realize(*sec_args)
 
         # CRUD rules
-        self._sg_rules_realize(os_sg, meta_sec)
+        self._sg_rules_realize(os_sg, meta_sec, logged)
 
         # Update section tags(revision) when all rules applied successfully
         provider_sg["tags_update"] = True
         self._realize(*sec_args)
 
-    def _sg_rules_realize(self, os_sg, meta_sg):
+    def _sg_rules_realize(self, os_sg, meta_sg, logged=False):
 
         sg_rules = {o.get("id"): o for o in os_sg.get("rules")}
 
