@@ -65,8 +65,8 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
         # Register the log driver at Neutron logging api drivers manager
         importutils.import_module('neutron.services.logapi.common.sg_validate')
-        manager.register(resources.SECURITY_GROUP, self.logging)
-        LOG.info("Registered NSXV3 log driver")
+        manager.register(resources.SECURITY_GROUP, self.logging.register_callback_handler)
+        LOG.info("Successfully registered NSXV3 log driver.")
 
         super(VMwareNSXv3MechanismDriver, self).__init__(
                 self.agent_type,
@@ -74,7 +74,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 self.vif_details
             )
 
-        LOG.info("Initialized Mechanism Driver Type=" + str(self.agent_type))
+        LOG.info("Initialized Mechanism Driver Type = " + str(self.agent_type))
 
     def get_workers(self):
         return [service.RpcWorker([self], worker_process_count=0)]

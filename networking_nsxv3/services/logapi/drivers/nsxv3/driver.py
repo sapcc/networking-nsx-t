@@ -31,13 +31,15 @@ class NSXv3LogDriver(base.DriverBase):
 
     def __init__(self, driver_base_args, rpc):
         self.rpc = rpc
+        self.logging_callback_resource_type = None
+        self.logging_callback = None
         if not rpc:
             raise Exception(
                 "Unable to load Logging driver as Agent RCP client is missing.")
         super(NSXv3LogDriver, self).__init__(**driver_base_args)
         # self._register(SUPPORTED_LOGGING_TYPES[0], event, trigger, payload=None)
 
-    def __call__(self, logging_callback_resource_type, logging_callback):
+    def register_callback_handler(self, logging_callback_resource_type, logging_callback):
         self.logging_callback_resource_type = logging_callback_resource_type
         self.logging_callback = logging_callback
         LOG.debug(f"Logging callback handler: {logging_callback_resource_type} / {logging_callback}")

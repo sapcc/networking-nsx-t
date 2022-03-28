@@ -816,7 +816,7 @@ class Provider(abs.Provider):
         meta_sec = self._realize(*sec_args)
 
         # CRUD rules
-        self._sg_rules_realize(os_sg, meta_sec, logged)
+        self._sg_rules_realize(os_sg, meta_sec, logged=logged)
 
         # Update section tags(revision) when all rules applied successfully
         provider_sg["tags_update"] = True
