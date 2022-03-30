@@ -2,9 +2,9 @@ import itertools
 import time
 from typing import Callable, List, Set, Tuple
 from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import Resource, ResourceMeta
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import ResourceMeta
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import\
-    provider_nsx_mgmt, provider_nsx_policy, mp_to_policy_migration
+    provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.mp_to_policy_migration import\
     PayloadBuilder, Payload as MigrationPayload
 from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
@@ -20,9 +20,9 @@ class AgentRealizer(object):
         rpc: NSXv3ServerRpcApi,
         callback: Callable[[list or str, Callable[[str], None]], None],
         kpi: Callable[[], dict],
-        mngr_provider: provider_nsx_mgmt.Provider,
-        plcy_provider: provider_nsx_policy.Provider,
-        migr_provider: mp_to_policy_migration.Provider = None
+        mngr_provider: m_prvdr.Provider,
+        plcy_provider: p_prvdr.Provider,
+        migr_provider: mi_prvdr.Provider = None
     ):
         self.rpc = rpc
         self.callback = callback
@@ -41,12 +41,18 @@ class AgentRealizer(object):
 
         if self.force_mp_to_policy:
             try:
-                self.migr_provider = mp_to_policy_migration.Provider()
-                self._promote_switching_profiles()
+                self.force_mp_to_policy = False
+                self.migr_provider = mi_prvdr.Provider()
+                self.force_mp_to_policy = True
             except Exception as e:
-                LOG.warning(str(e))
+                LOG.error(str(e))
                 self.force_mp_to_policy = False
                 LOG.critical("MP-to-Policy Migration Functionality disabled.")
+            else:
+                try:
+                    self._promote_switching_profiles()
+                except Exception as e:
+                    LOG.warning(str(e))
 
         self.age = int(time.time())
         # Initializing metadata
@@ -108,10 +114,13 @@ class AgentRealizer(object):
             port_outdated, port_current = mp.outdated(mp.PORT, port_meta)
             sgr_outdated, sgr_current = pp.outdated(pp.SG_RULES, sg_meta)
             qos_outdated, qos_current = mp.outdated(mp.QOS, qos_meta)
+            seg_qos_outdated, seg_qos_current = pp.outdated(pp.SEGM_QOS, qos_meta)
 
-            # Remove duplicated policy/manager ports
+            # Remove duplicated policy/manager objects
             seg_port_outdated = seg_port_outdated.difference(port_outdated)
             seg_port_current = seg_port_current.difference(port_current)
+            seg_qos_outdated = seg_qos_outdated.difference(qos_outdated)
+            seg_qos_current = seg_qos_current.difference(qos_current)
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, sgm_maybe_orphans = pp.outdated(pp.SG_MEMBERS, {sg: 0 for sg in sg_meta})
@@ -159,9 +168,16 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
-            return self._age_cycle(_slice, seg_port_current, port_current, sgr_current, qos_current, sgm_maybe_orphans)
+            outdated = list(itertools.islice(seg_qos_outdated, _slice))
+            _slice -= len(outdated)
+            LOG.info("Realizing %s/%s resources of Type:QoS", len(outdated), len(seg_qos_outdated))
+            self.callback(outdated, self.qos)
+            if _slice <= 0:
+                return
 
-    def _age_cycle(self, _slice, seg_port_current, port_current, sgr_current, qos_current, sgm_maybe_orphans):
+            return self._age_cycle(_slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans)
+
+    def _age_cycle(self, _slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans):
         mp = self.mngr_provider
         pp = self.plcy_provider
 
@@ -170,6 +186,7 @@ class AgentRealizer(object):
         current += pp.age(pp.SG_RULES, sgr_current)
         current += pp.age(pp.SG_MEMBERS, sgm_maybe_orphans)
         current += mp.age(mp.QOS, qos_current)
+        current += pp.age(pp.SEGM_QOS, seg_qos_current)
 
         # Sanitize when there are no elements or the eldest age > current age
         aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.age]
@@ -200,15 +217,20 @@ class AgentRealizer(object):
         :reference: -- if True will create the group if unknown by the provider
         """
         with LockManager.get_lock("member-{}".format(os_id)):
-            meta = self.plcy_provider.metadata(self.plcy_provider.SG_MEMBERS, os_id)
+            pp = self.plcy_provider
+            meta = pp.metadata(pp.SG_MEMBERS, os_id)
             if not (reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
                     cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
+                    port_ids = set(self.rpc.get_security_group_port_ids(os_id))
+
+                    segment_ports = pp.get_port_meta_by_ids(port_ids)
+                    paths = [p.path for p in segment_ports]
+
                     # SG Members are not revisionable, use default "0"
-                    # TODO: add port IDs to groups
-                    self.plcy_provider.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": "0"})
+                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": "0", "member_paths": paths})
                 else:
-                    self.plcy_provider.sg_members_realize({"id": os_id}, delete=True)
+                    pp.sg_members_realize({"id": os_id}, delete=True)
 
     def security_group_rules(self, os_id: str):
         """
@@ -276,15 +298,15 @@ class AgentRealizer(object):
         :reference: -- If True will create policy if unknown by the provider
         """
         with LockManager.get_lock("qos-{}".format(os_id)):
-            mp = self.mngr_provider
-            meta = mp.metadata(mp.QOS, os_id)
-            if not (reference and meta):
+            plcy_meta = self.plcy_provider.metadata(self.plcy_provider.SEGM_QOS, os_id)
+            mgr_meta = self.mngr_provider.metadata(self.mngr_provider.QOS, os_id)
+            if not (reference and mgr_meta):
                 qos = self.rpc.get_qos(os_id)
                 if qos:
-                    mp.qos_realize(qos)
+                    self._qos_realize(os_qos=qos, is_plcy=not not plcy_meta, is_mngr=not not mgr_meta)
                 else:
-                    # TODO: QOS delete will be impossible after migration
-                    mp.qos_realize({"id": os_id}, delete=True)
+                    self._qos_realize(os_qos={"id": os_id}, is_plcy=not not plcy_meta,
+                                      is_mngr=not not mgr_meta, delete=True)
 
     def network(self, os_seg_id: str):
         """
@@ -295,6 +317,19 @@ class AgentRealizer(object):
         with LockManager.get_lock("network-{}".format(os_seg_id)):
             meta = self._network_realize(os_seg_id)
             return {"nsx-logical-switch-id": meta.id, "external-id": meta.id, "segmentation_id": os_seg_id}
+
+    def _qos_realize(self, os_qos: dict, is_plcy: bool, is_mngr: bool, delete=False):
+
+        pp = self.plcy_provider
+        mp = self.mngr_provider
+
+        if delete and not is_plcy and not is_mngr:
+            # Try to delete with both Policy and Manager providers
+            pp.qos_realize(os_qos, delete=True)
+            mp.qos_realize(os_qos, delete=True)
+            return
+
+        return pp.qos_realize(os_qos, delete) if is_plcy else mp.qos_realize(os_qos, delete)
 
     def _port_realize(self, os_port: dict, delete: bool = False):
         pp = self.plcy_provider
@@ -332,8 +367,14 @@ class AgentRealizer(object):
 
     @staticmethod
     def _check_port_migration_criteria(port: dict):
-        if len(port.get("tags")) < 5:
-            raise RuntimeError("Not meet migration criteria.")
+        tag_trigger = cfg.CONF.AGENT.migration_tag_count_trigger
+        tag_max = cfg.CONF.AGENT.migration_tag_count_max
+        tag_count = len(port.get("tags"))
+        if tag_trigger <= tag_count <= tag_max:
+            LOG.info(f"Migration criteria met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
+        else:
+            raise RuntimeError(
+                f"Migration criteria not met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
 
     def _network_realize(self, segmentation_id: int):
         segment_meta = self.plcy_provider.network_realize(segmentation_id)
@@ -345,7 +386,7 @@ class AgentRealizer(object):
 
         return switch_meta
 
-    def _get_unmigrated_switching_profiles(self) -> Tuple[list, list]:
+    def _get_notmigrated_switching_profiles(self) -> Tuple[list, list]:
         mgmt_sw_profiles: List[dict] = self.mngr_provider.get_all_switching_profiles()
         policy_sw_profiles: List[dict] = self.plcy_provider.get_non_default_switching_profiles()
 
@@ -372,7 +413,7 @@ class AgentRealizer(object):
 
     def _promote_switching_profiles(self):
         self._raise_for_migration_disabled()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_unmigrated_switching_profiles()
+        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
         LOG.info(f"Not migrated to policy switching profiles: {not_migrated_sys_owned, not_migrated_not_sys_owned}")
         if len(not_migrated_sys_owned) > 0:
             self.migr_provider.migrate_sw_profiles(not_migrated_sys_owned)
@@ -382,7 +423,7 @@ class AgentRealizer(object):
     def _promote_switch(self, switch_meta: ResourceMeta) -> ResourceMeta:
         self._raise_for_migration_disabled()
         p_builder = PayloadBuilder()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_unmigrated_switching_profiles()
+        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
 
         p_builder\
             .sw_profiles(not_migrated_not_sys_owned)\
@@ -396,7 +437,7 @@ class AgentRealizer(object):
         self._raise_for_migration_disabled()
         port_id = port.get("id")
         p_builder = PayloadBuilder()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_unmigrated_switching_profiles()
+        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
 
         p_builder\
             .sw_profiles(not_migrated_not_sys_owned)\

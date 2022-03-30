@@ -1,9 +1,8 @@
 import re
-import time
 from urllib.error import HTTPError
 import uuid
 import functools
-from typing import Callable, List, Tuple
+from typing import Callable, Dict, List, Set
 
 import eventlet
 from oslo_config import cfg
@@ -52,19 +51,9 @@ class API(provider_nsx_mgmt.API):
 
     INFRA = POLICY_BASE + "/infra"
 
-    IP_DISCOVERY_PROFILES = INFRA + "/ip-discovery-profiles"
-    MAC_DISCOVERY_PROFILES = INFRA + "/mac-discovery-profiles"
-    PORT_MIRRORING_PROFILES = INFRA + "/port-mirroring-profiles"
-    SEGMENT_SEC_PROFILES = INFRA + "/segment-security-profiles"
-    SPOOFGUARD_PROFILES = INFRA + "/spoofguard-profiles"
+    QOS_PROFILE_PATH = "/infra/qos-profiles/{}"
     QOS_PROFILES = INFRA + "/qos-profiles"
-
-    IP_DISCOVERY_PROFILE = IP_DISCOVERY_PROFILES + "/{}"
-    MAC_DISCOVERY_PROFILE = MAC_DISCOVERY_PROFILES + "/{}"
-    PORT_MIRRORING_PROFILE = PORT_MIRRORING_PROFILES + "/{}"
-    SEGMENT_SEC_PROFILE = SEGMENT_SEC_PROFILES + "/{}"
-    SPOOFGUARD_PROFILE = SPOOFGUARD_PROFILES + "/{}"
-    QOS_PROFILE = QOS_PROFILES + "/{}"
+    QOS_PROFILE = POLICY_BASE + QOS_PROFILE_PATH
 
     POLICIES = INFRA + "/domains/default/security-policies"
     POLICY_PATH = "/infra/domains/default/security-policies/{}"
@@ -74,7 +63,18 @@ class API(provider_nsx_mgmt.API):
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
-    SEARCH_Q_SEG_PORTS = "resource_type:SegmentPort AND marked_for_delete:false"
+    SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
+    SEARCH_Q_QOS_PROFILES = {
+        "query": "resource_type:QoSProfile AND NOT display_name:*default* AND marked_for_delete:false"}
+    SEARCH_Q_ALL_SEG_PROFILES = {
+        "query":
+        "resource_type:QoSProfile" +
+        " OR resource_type:SpoofGuardProfile" +
+        " OR resource_type:SegmentSecurityProfile" +
+        " OR resource_type:PortMirroringProfile" +
+        " OR resource_type:MacDiscoveryProfile" +
+        " OR resource_type:IPDiscoveryProfile"
+    }
 
     SEGMENTS = INFRA + "/segments"
     SEGMENT_PATH = "/infra/segments/{}"
@@ -99,6 +99,8 @@ class API(provider_nsx_mgmt.API):
 class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
     def __init__(self, id, unique_id, rev, age, revision, last_modified_time,
                  rules,
+                 sg_members,
+                 sg_cidrs,
                  path,
                  parent_path,
                  resource_type,
@@ -106,6 +108,8 @@ class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
                  ):
         super(PolicyResourceMeta, self).__init__(id, rev, age, revision, last_modified_time)
         self.rules: list = rules
+        self.sg_members: List[str] = sg_members
+        self.sg_cidrs: List[str] = sg_cidrs
         self.path: str = path
         self.unique_id: str = unique_id
         self.parent_path: str = parent_path
@@ -145,7 +149,13 @@ class Resource(provider_nsx_mgmt.Resource):
     @property
     def meta(self):
         rulez = self.resource.get("rules", [])
-        _rules = {Resource(r).os_id: r for r in rulez}
+        sg_rules = {Resource(r).os_id: r for r in rulez}
+
+        sg_expr: List[dict] = self.resource.get("expression", [])
+        sg_has_expression = (not not sg_expr and isinstance(sg_expr, list))
+        sg_members = sg_expr[4].get("paths", []) if (sg_has_expression and len(sg_expr) > 3) else []
+        sg_cidrs = sg_expr[2].get("paths", []) if (sg_has_expression and len(sg_expr) > 1) else []
+
         tags = self.tags
 
         return PolicyResourceMeta(
@@ -160,16 +170,15 @@ class Resource(provider_nsx_mgmt.Resource):
             resource_type=self.resource.get("resource_type"),
             marked_for_delete=self.resource.get("marked_for_delete"),
             # Only Firewall Security Policies have the next prop (Provider.SG_RULES)
-            rules=_rules
+            rules=sg_rules,
+            # Only Groups have the next props (Provider.SG_MEMBERS)
+            sg_members=sg_members,
+            sg_cidrs=sg_cidrs
         )
 
     @property
     def path(self):
         return self.resource.get("path")
-
-    # @property
-    # def is_mgmt_resource(self) -> bool:
-    #     return self.type in ["LogicalPort", "LogicalSwitch"]
 
 
 class Payload(provider_nsx_mgmt.Payload):
@@ -218,10 +227,45 @@ class Payload(provider_nsx_mgmt.Payload):
             "_revision": provider_net.get("_revision")
         }
 
+    def qos(self, os_qos, provider_qos) -> dict:
+        qos_id = provider_qos.get("id")
+
+        payload = {
+            "resource_type": "QoSProfile",
+            "display_name": os_qos.get("id"),
+            "id": qos_id,
+            "tags": self.tags(os_qos),
+            "path": API.QOS_PROFILE_PATH.format(qos_id),
+            "parent_path": "/infra",
+            "_revision": provider_qos.get("_revision"),
+            "shaper_configurations": [],
+            "dscp": {"mode": "TRUSTED", "priority": 0},
+        }
+
+        _type = {"ingress": "IngressRateLimiter", "egress": "EgressRateLimiter"}
+
+        for rule in os_qos.get("rules"):
+            if "dscp_mark" in rule:
+                payload["dscp"] = {"mode": "UNTRUSTED", "priority": int(rule["dscp_mark"])}
+                continue
+            payload["shaper_configurations"].append(
+                {
+                    "resource_type": _type.get(rule.get("direction")),
+                    "enabled": True,
+                    "average_bandwidth": int(round(float(rule["max_kbps"]) / 1024)),
+                    "peak_bandwidth": int(round(float(rule["max_kbps"]) / 1024) * 2),
+                    "burst_size": int(rule["max_burst_kbps"]) * 128,
+                }
+            )
+        return payload
+
     def segment_port(self, os_port, provider_port) -> dict:
         p_ppid = provider_port.get("parent_id")
         segment_id = os_port.get("vif_details").get("external-id")
         port_id = provider_port.get("id") or os_port.get("id")
+        p_qid = provider_port.get("qos_policy_id")
+        sec_groups = os_port.get("security_groups")
+        sgs = {NSXV3_SECURITY_GROUP_SCOPE: sec_groups} if sec_groups else dict()
 
         segment_port = {
             "id": port_id,
@@ -234,7 +278,7 @@ class Payload(provider_nsx_mgmt.Payload):
                 "traffic_tag": os_port.get("vif_details").get("segmentation_id")
             },
             "address_bindings": os_port.get("address_bindings"),
-            "tags": self.tags(os_port, more={NSXV3_SECURITY_GROUP_SCOPE: os_port.get("security_groups")}),
+            "tags": self.tags(os_port, more=sgs),
             "parent_path": API.SEGMENT_PATH.format(segment_id),
             "path": API.SEGMENT_PORT_PATH.format(segment_id, port_id),
             "_revision": provider_port.get("_revision")
@@ -246,6 +290,10 @@ class Payload(provider_nsx_mgmt.Payload):
             segment_port["attachment"]["context_id"] = os_port.get("parent_id")
             if os_port.get("traffic_tag"):
                 segment_port["attachment"]["traffic_tag"] = os_port["traffic_tag"]
+
+        if p_qid:
+            # Handled in Manager Provider
+            pass
 
         return segment_port
 
@@ -269,10 +317,15 @@ class Payload(provider_nsx_mgmt.Payload):
             "_revision": provider_sg.get("_revision")
         }
 
-        cidrs = self.get_compacted_cidrs(os_sg.get("cidrs"))
+        cidrs = self.get_compacted_cidrs(os_sg.get("cidrs")) if os_sg.get("cidrs") else None
         if cidrs:
             sg["expression"].append({"resource_type": "ConjunctionOperator", "conjunction_operator": "OR"})
             sg["expression"].append({"resource_type": "IPAddressExpression", "ip_addresses": cidrs})
+
+        paths = provider_sg.get("paths")
+        if paths:
+            sg["expression"].append({"resource_type": "ConjunctionOperator", "conjunction_operator": "OR"})
+            sg["expression"].append({"resource_type": "PathExpression", "paths": paths})
         return sg
 
     def sg_rule_remote(self, cidr) -> dict:
@@ -301,7 +354,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "_revision": provider_sg.get("_revision")
         }
 
-    def sg_rule(self, os_rule: dict, provider_rule: dict, **kwargs) -> dict:
+    def sg_rule(self, os_rule: dict, provider_rule: dict, **kwargs) -> dict or None:
         sp_id = kwargs["sp_id"]
         os_id = os_rule["id"]
         ethertype = os_rule["ethertype"]
@@ -320,14 +373,14 @@ class Payload(provider_nsx_mgmt.Payload):
             # Workaround for NSX-T glitch when IPv4-mapped IPv6 with prefix used in rules target
             self._filter_out_ipv4_mapped_ipv6_nets(target)
             if not len(target):
-                return
+                return None
         else:
             target = ["ANY"]
 
         service, err = self._sg_rule_service(os_rule, provider_rule, subtype="ServiceEntry")
         if err:
             LOG.error("Not supported service for Rule:%s. Error:%s", os_id, err)
-            return
+            return None
 
         service_entries = [service] if service else []
 
@@ -364,6 +417,7 @@ class Provider(base.Provider):
     SEGM_QOS = "Segment QoS"
     SEGMENT = "Segment"
     SEGM_PORT = "SegmentPort"
+    RESCHEDULE_WARN_MSG = "Resource:%s with ID:%s deletion is rescheduled due to dependency."
 
     def __init__(self, payload: Payload = Payload(), zone_id: str = ""):
         super(Provider, self).__init__(client=Client(), zone_id=zone_id)
@@ -403,7 +457,7 @@ class Provider(base.Provider):
         return {
             Provider.SEGMENT: mp(API.SEGMENTS),
             Provider.SEGM_PORT: mp(API.SEGMENT_PORTS),
-            # Provider.QOS: mp(API.PROFILES),
+            Provider.SEGM_QOS: mp(API.QOS_PROFILES),
             Provider.SG_MEMBERS: mp(API.GROUPS),
             Provider.SG_RULES: mp(API.POLICIES),
             Provider.SG_RULES_REMOTE_PREFIX: mp(API.GROUPS)
@@ -493,9 +547,16 @@ class Provider(base.Provider):
         meta = self.metadata(resource_type, os_id)
         if meta:
             if delete:
-                LOG.info(report, "deleted")
-                self.client.delete(path="{}{}".format(API.POLICY_BASE, meta.path))
-                return self.metadata_delete(resource_type, os_id)
+                try:
+                    LOG.info(report, "deleted")
+                    self.client.delete(path="{}{}".format(API.POLICY_BASE, meta.path))
+                    return self.metadata_delete(resource_type, os_id)
+                except RuntimeError as e:
+                    if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
+                        LOG.warning(self.RESCHEDULE_WARN_MSG, resource_type, os_id)
+                        return
+                    else:
+                        raise e
             else:
                 LOG.info(report, "updated")
                 provider_o["_revision"] = meta.revision
@@ -532,18 +593,22 @@ class Provider(base.Provider):
         child_o = vars(port_meta)
         child_o["marked_for_delete"] = True
         payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
-        self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
-        return self.metadata_delete(Provider.SEGM_PORT, os_id)
+        try:
+            self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
+            return self.metadata_delete(Provider.SEGM_PORT, os_id)
+        except RuntimeError as e:
+            if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
+                LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
 
     # overrides
     def port_realize(self, os_port: dict, delete=False):
         port_id = os_port.get("id")
-        meta = self.metadata(Provider.SEGM_PORT, port_id)
-        if not meta:
+        sg_meta = self.metadata(Provider.SEGM_PORT, port_id)
+        if not sg_meta:
             raise RuntimeError("Segment ports must be created with Manager API first.")
 
         if delete:
-            return self._delete_segment_port(os_port, meta)
+            return self._delete_segment_port(os_port, sg_meta)
 
         # Realize the port via the Policy API
         provider_port = dict()
@@ -558,13 +623,40 @@ class Provider(base.Provider):
                 LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s", parent_port_id, port_id)
                 return
         else:
-            if meta:
-                provider_port["id"] = meta.id
-                provider_port["_revision"] = meta.revision
+            if sg_meta:
+                provider_port["id"] = sg_meta.id
+                provider_port["_revision"] = sg_meta.revision
             else:
                 LOG.warning("Not found. Segment Port: %s", port_id)
 
+        os_qos_id = os_port.get("qos_policy_id")
+
+        if os_qos_id:
+            # QoS policy attached on creation by the Manager API
+            pass
+
+        port_sgs = os_port.get("security_groups")
+        if len(port_sgs) >= cfg.CONF.AGENT.max_sg_segment_port_tags:
+            os_port["security_groups"] = None
+            port_meta = self._realize(Provider.SEGM_PORT, False, self.payload.segment_port, os_port, provider_port)
+            return self.realize_sg_members_after_port_realization(port_sgs, port_meta)
+
         return self._realize(Provider.SEGM_PORT, False, self.payload.segment_port, os_port, provider_port)
+
+    def realize_sg_members_after_port_realization(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
+        for sg_id in port_sgs:
+            with LockManager.get_lock("member-{}".format(sg_id)):
+                sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
+                if not sg_meta:
+                    raise RuntimeError(f"Not found SG Metadata for security_group: {sg_id}")
+                if not port_meta.path:
+                    raise RuntimeError(f"Not found path in Metadata for port: {port_meta.id}")
+                if port_meta.path not in sg_meta.sg_members:
+                    sg_meta.sg_members.append(port_meta.path)
+                    self.sg_members_realize({"id": sg_id,
+                                             "cidrs": sg_meta.sg_cidrs,
+                                             "member_paths": sg_meta.sg_members,
+                                             "revision_number": "0"})
 
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
@@ -572,22 +664,22 @@ class Provider(base.Provider):
             return self.metadata_update(Provider.SEGM_PORT, port), port
         return None
 
+    def get_port_meta_by_ids(self, port_ids: Set[str]) -> Set[PolicyResourceMeta]:
+        segment_ports = set()
+        with LockManager.get_lock(self.SEGM_PORT):
+            keys = set(self._metadata[self.SEGM_PORT].meta.keys())
+            segment_ports.update([self._metadata[self.SEGM_PORT].meta.meta.get(id)
+                                 for id in keys.intersection(port_ids)])
+        return segment_ports
+
     # overrides
     def network_realize(self, segmentation_id: int) -> PolicyResourceMeta:
         return self.metadata(Provider.SEGMENT, segmentation_id)
 
     def get_non_default_switching_profiles(self) -> list:
-        prfls = [
-            API.IP_DISCOVERY_PROFILES,
-            API.MAC_DISCOVERY_PROFILES,
-            API.PORT_MIRRORING_PROFILES,
-            API.SEGMENT_SEC_PROFILES,
-            API.SPOOFGUARD_PROFILES,
-            API.QOS_PROFILES
-        ]
-        prfls = [self.client.get_all(path=p) for p in prfls]
-        # filter/flattern the list
-        return [p for sublist in prfls for p in sublist if p and p.get("id").find("default") == -1]
+        prfls = self.client.get_all(path=API.SEARCH_QUERY, params=API.SEARCH_Q_ALL_SEG_PROFILES)
+        # filter the list
+        return [p for p in prfls if p and p.get("id").find("default") == -1]
 
     # overrides
     def sg_rules_realize(self, os_sg, delete=False):
@@ -600,16 +692,24 @@ class Provider(base.Provider):
         provider_sg = self._create_provider_sg(os_sg, os_id)
         self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
 
-    def qos_realize(self, os_qos: dict, delete=False):
-        raise RuntimeError("QOS must be realized via Manager API")
+    def qos_realize(self, qos: dict, delete=False):
+        qos_id = qos.get("id")
+        meta = self.metadata(Provider.SEGM_QOS, qos_id)
+        if not meta:
+            return None
+        provider_o = {"id": meta.id, "_revision": meta.revision}
+        return self._realize(Provider.SEGM_QOS, delete, self.payload.qos, qos, provider_o)
 
     def sg_members_realize(self, os_sg: dict, delete=False):
         os_id = os_sg.get("id")
         if delete and self.metadata(Provider.SG_RULES, os_id):
-            LOG.warning("Resource:%s with ID:%s deletion is rescheduled due to dependency.", Provider.SG_MEMBERS, os_id)
+            provider_group = {"paths": [], "_revision": None}
+            self._realize(Provider.SG_MEMBERS, False, self.payload.sg_members_container, os_sg, provider_group)
+            LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SG_MEMBERS, os_id)
             return
-        # TODO: add port IDs to the group
-        return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, os_sg, dict())
+
+        provider_group = {"paths": os_sg.get("member_paths"), "_revision": None}
+        return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, os_sg, provider_group)
 
     # overrides
     def metadata(self, resource_type: str, os_id: str) -> PolicyResourceMeta:
@@ -640,7 +740,10 @@ class Provider(base.Provider):
             endpoint = provider.endpoint
             if resource_type == Provider.SEGM_PORT:
                 endpoint = API.SEARCH_QUERY
-                params = {"query": API.SEARCH_Q_SEG_PORTS}
+                params = API.SEARCH_Q_SEG_PORTS
+            if resource_type == Provider.SEGM_QOS:
+                endpoint = API.SEARCH_QUERY
+                params = API.SEARCH_Q_QOS_PROFILES
             resources = self.client.get_all(path=endpoint, params=params)
             with LockManager.get_lock(resource_type):
                 provider.meta.reset()

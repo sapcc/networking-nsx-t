@@ -99,7 +99,7 @@ class RetryPolicy(object):
                 LOG.debug(msg)
                 eventlet.sleep(pause)
 
-            raise Exception(msg, last_err)
+            raise RuntimeError(msg, last_err)
 
         return decorator
 
@@ -133,9 +133,8 @@ class Client(metaclass=Singleton):
     def __init__(self):
         rate = cfg.CONF.NSXV3.nsxv3_requests_per_second
         timeout = cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
-        limit = 1
 
-        self._api_scheduler = Scheduler(rate, limit, timeout)
+        self._api_scheduler = Scheduler(rate=rate, timeout=timeout)
 
         self._timeout = cfg.CONF.NSXV3.nsxv3_request_timeout
 

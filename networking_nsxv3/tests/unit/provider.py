@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 import time
-from requests import Request
+from requests.models import PreparedRequest as Request
 from urllib.parse import parse_qs, urlparse
 
 from oslo_log import log as logging
@@ -173,10 +173,26 @@ class Inventory(object):
                     return self.resp(200, {"results": [o], "result_count": 1, "cursor": "1"})
             return self.resp(404)
 
+    def _migration(self, request: Request):
+        params: dict = request.params
+        if "/api/v1/migration" in request.url:
+            if "/mp-to-policy" in request.url:
+                if request.method == "POST":
+                    if json.loads(request.body) == {}:
+                        return self.resp(200)
+            if "/plan" in request.url:
+                if request.method == "POST":
+                    if params.get("action") == "abort":
+                        return self.resp(200)
+            if "/migration-unit-groups/MP-TO-POLICY-MIGRATION":
+                if request.method == "GET" and params.get("summary") == "true":
+                    return self.resp(200, {"enabled": True})
+
     def api(self, request: Request):
         policy_status = self._policy_status(request)
         version = self._version(request)
         search = self._search_query(request)
+        migration = self._migration(request)
 
         if search:
             return search
@@ -184,6 +200,8 @@ class Inventory(object):
             return policy_status
         if version:
             return version
+        if migration:
+            return migration
 
         url = urlparse(request.url)
         if url.scheme != self.url.scheme or url.netloc != self.url.netloc:

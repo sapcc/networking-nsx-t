@@ -12,7 +12,6 @@ LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class ResourceMeta(abc.ABC):
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, id: str, rev: List[str], age: int, revision: int, last_modified_time: int):
         self.id: str = id
@@ -31,7 +30,6 @@ class ResourceMeta(abc.ABC):
 
 
 class Resource(abc.ABC):
-    __metaclass__ = abc.ABCMeta
 
     @property
     @abc.abstractclassmethod
@@ -117,7 +115,7 @@ class Meta(object):
 
     def __init__(self):
         self.meta = dict()
-        self.meta_transaction = None  # TODO: That field seems never populated with data?
+        self.meta_transaction = None
 
     def __enter__(self):
         self.meta_transaction = dict()

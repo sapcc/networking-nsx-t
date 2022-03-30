@@ -13,9 +13,12 @@ class API(object):
     MIGR_BASE = "/api/v1/migration"
     MIGR_PLAN = f"{MIGR_BASE}/plan"
 
+    MIGR_UNIT = "MP_TO_POLICY_MIGRATION"
+    SERVICE_STATUS = f"{MIGR_BASE}/migration-unit-groups/{MIGR_UNIT}?summary=true"
+
     MIGR_STATUS_SUM = f"{MIGR_BASE}/status-summary"
     MIGR_STATUS_PRE = f"{MIGR_STATUS_SUM}?component_type=MP_TO_POLICY_PRECHECK"
-    MIGR_STATUS_POS = f"{MIGR_STATUS_SUM}?component_type=MP_TO_POLICY_MIGRATION"
+    MIGR_STATUS_POS = f"{MIGR_STATUS_SUM}?component_type={MIGR_UNIT}"
 
     MP_TO_POLICY = f"{MIGR_BASE}/mp-to-policy"
     MP_TO_POLICY_WORKFLOW = f"{MP_TO_POLICY}/workflow"
@@ -27,6 +30,8 @@ class API(object):
     MIGRATION_ABORT = f"{MIGR_PLAN}?action=abort"
 
     MIGRATION_ROLLBACK = f"{MP_TO_POLICY}/rollback"
+    MIGRATED_RESOURCES = f"{MIGR_BASE}/migrated-resources"
+    MIGRATED_QOS_PROFILES = f"{MIGRATED_RESOURCES}?resource_type=QOS_PROFILES"
 
 
 class Payload(object):
@@ -113,11 +118,24 @@ class Provider(object):
     def __init__(self, payload: Payload = Payload()):
         self.payload: Payload = payload
         self.client: Client = Client()
+        self.check_service_availability()
         LOG.info("Activating MP-TO-POLICY API Provider.")
+
+    def check_service_availability(self):
+        with LockManager.get_lock(API.MIGR_UNIT):
+            try:
+                self.client.post(path=API.MP_TO_POLICY, data={}).raise_for_status()
+                self.client.post(path=API.MIGRATION_ABORT, data=None).raise_for_status()
+                stat = self.client.get(path=API.SERVICE_STATUS)
+                srvc_stat = stat.json()
+                if not srvc_stat or not srvc_stat.get("enabled"):
+                    raise RuntimeError(f"{stat.content}")
+            except Exception as e:
+                raise RuntimeError(f"MP-TO-POLICY API not enabled or service down. ({e})")
 
     def migration(build_migr_data_func):
         def wrapper(self, *args, **kwargs):
-            with LockManager.get_lock("MP-TO-POLICY-MIGRATION"):
+            with LockManager.get_lock(API.MIGR_UNIT):
                 try:
                     self._initiate_migration()
                     m_data: Payload.MigrationData = build_migr_data_func(self, *args, **kwargs)
@@ -171,6 +189,9 @@ class Provider(object):
                 raise RuntimeError(f"Migration status check FAILED! Result: {res}")
             return wrapper
         return decorator
+
+    def get_migrated_qos(self) -> List[dict]:
+        return self.client.get_all(path=API.MIGRATED_QOS_PROFILES)
 
     @migration
     def migrate_sw_profiles(self, not_migrated: List[tuple], data: Payload.MigrationData = None) -> Payload.MigrationData:

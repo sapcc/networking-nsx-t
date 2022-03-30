@@ -55,7 +55,7 @@ class Resource(base.Resource):
 
     @property
     def is_managed(self):
-        if self.type == "LogicalSwitch":
+        if self.type == "LogicalSwitch" or self.type == "QosSwitchingProfile":
             return True
         if "policyPath" in self.tags:
             return False
@@ -706,7 +706,7 @@ class Provider(base.Provider):
             if meta_qos:
                 provider_port["qos_policy_id"] = meta_qos.id
             else:
-                LOG.error("Not found. QoS:%s for Port:%s", os_port.get("qos_policy_id"), os_port.get("id"))
+                LOG.warning("Not found. QoS:%s for Port:%s", os_port.get("qos_policy_id"), os_port.get("id"))
 
         provider_port["switching_profile_ids"] = copy.deepcopy(self.switch_profiles)
 

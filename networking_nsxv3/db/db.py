@@ -13,6 +13,7 @@ from neutron.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
+# from sqlalchemy.orm.session import Session
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
@@ -394,6 +395,24 @@ def get_security_group_members_ips(context, security_group_id):
     ).filter(
         security_group_id == group_id
     ).all()
+
+
+def get_security_group_port_ids(context, host, security_group_id):
+    # ses: Session = context.session
+    ses = context.session
+    res = ses.query(
+        sg_db.SecurityGroupPortBinding.port_id
+    ).distinct(
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
+    ).filter(
+        sg_db.SecurityGroupPortBinding.security_group_id == security_group_id,
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).all()
+
+    return [port_id for (port_id,) in res]
 
 
 def get_security_group_members_address_bindings_ips(context,

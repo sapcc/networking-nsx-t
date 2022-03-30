@@ -56,6 +56,21 @@ agent_opts = [
         'force_mp_to_policy',
         default=False,
         help="Force NSX-T Manager API objects to be promoted to Policy API objects."
+    ),
+    cfg.IntOpt(
+        'migration_tag_count_trigger',
+        default=26,
+        help="The count of the tags per LogicalPort, above which an MP-to-Policy Promotion will be trigered for the port."
+    ),
+    cfg.IntOpt(
+        'migration_tag_count_max',
+        default=29,
+        help="The maximum count of the tags per LogicalPort, above which MP-to-Policy Promotion is impossible."
+    ),
+    cfg.IntOpt(
+        'max_sg_segment_port_tags',
+        default=27,
+        help="The maximum count of the tags per SegmentPort serving as a SecurityGroup Membership Criteria. Above that count standard NSX-T Group Membership will be used instead."
     )
 ]
 
@@ -110,7 +125,7 @@ nsxv3_opts = [
     ),
     cfg.IntOpt(
         'nsxv3_requests_per_second_timeout',
-        default=5,
+        default=7,
         help='''Number of seconds trying to send the request to NSXv3 Manager.'''
     ),
     cfg.IntOpt(
