@@ -282,6 +282,61 @@ class TestProviderPolicy(base.BaseTestCase):
         self.assertEquals(len(policy3.get("rules")), 0)
 
     @responses.activate
+    def test_security_group_logging(self):
+
+        sg = {
+            "id": "7FBE1798-65F6-43E9-A7BB-3DFA63450818",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [],
+        }
+
+        rule1 = {
+            "id": "1",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "192.168.10.0/24",
+            "security_group_id": "",
+            "port_range_min": "5",
+            "port_range_max": "1",
+            "protocol": "icmp",
+        }
+
+        rule2 = {
+            "id": "2",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "0.0.0.0/16",
+            "security_group_id": "",
+            "port_range_min": "",
+            "port_range_max": "",
+            "protocol": "hopopt",
+        }
+
+        # Add two new rules
+        sg1 = copy.deepcopy(sg)
+        sg1["rules"].append(copy.deepcopy(rule1))
+        sg1["rules"].append(copy.deepcopy(rule2))
+
+        inv = self.inventory.inventory
+        provider = provider_nsx_policy.Provider()
+
+        provider.sg_rules_realize(sg1, logged=True)
+        rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
+        self.assertEquals(all(rules_logged), True)
+
+        provider.sg_rules_realize(sg1, logged=False)
+        rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
+        self.assertEquals(any(rules_logged), False)
+
+        provider.sg_rules_realize(sg1, logged=True)
+        rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
+        self.assertEquals(all(rules_logged), True)
+
+
+    @responses.activate
     def test_security_group_rules_remote_group(self):
 
         sg_remote = {"id": "36BC1A8F-C62C-4327-9FD5-AEC49E941467", "cidrs": [], "revision_number": 0}
