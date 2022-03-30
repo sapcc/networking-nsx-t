@@ -335,6 +335,39 @@ class TestProviderPolicy(base.BaseTestCase):
         rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
         self.assertEquals(all(rules_logged), True)
 
+        log_obj = {
+            "resource_type": "security_group",
+            "resource_id": sg["id"]
+        }
+
+        provider.disable_policy_logging(log_obj)
+        rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
+        self.assertEquals(any(rules_logged), False)
+
+        provider.enable_policy_logging(log_obj)
+        rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
+        self.assertEquals(all(rules_logged), True)
+
+        provider.disable_policy_logging(log_obj)
+        rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
+        self.assertEquals(any(rules_logged), False)
+
+        log_obj["enabled"] = True
+        provider.update_policy_logging(log_obj)
+        rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
+        self.assertEquals(all(rules_logged), True)
+
+        log_obj["enabled"] = False
+        provider.update_policy_logging(log_obj)
+        rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
+        self.assertEquals(any(rules_logged), False)
+
+        log_obj["enabled"] = True
+        provider.update_policy_logging(log_obj)
+        rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
+        self.assertEquals(all(rules_logged), True)
+        
+        LOG.info("FINISHED: test_security_group_logging")
 
     @responses.activate
     def test_security_group_rules_remote_group(self):
