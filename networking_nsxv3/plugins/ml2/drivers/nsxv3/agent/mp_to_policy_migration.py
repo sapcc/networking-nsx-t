@@ -136,13 +136,15 @@ class Provider(object):
     def migration(build_migr_data_func):
         def wrapper(self, *args, **kwargs):
             with LockManager.get_lock(API.MIGR_UNIT):
+                initiated = False
                 try:
-                    self._initiate_migration()
                     m_data: Payload.MigrationData = build_migr_data_func(self, *args, **kwargs)
                     json_migdata = m_data.json() if m_data else None
                     if not json_migdata:
                         LOG.warn("No migration data provided. Migration skiped.")
                         return
+                    self._initiate_migration()
+                    initiated = True
                     self._set_migration(migr_data=json_migdata)
                     self._start_migration(migr_data=json_migdata)
                     LOG.debug("Pre-checking migration ...")
@@ -152,7 +154,9 @@ class Provider(object):
                     self._await_migration(migr_data=json_migdata)
                     LOG.info("Migration completed.")
                 finally:
-                    self._end_migration()
+                    if initiated:
+                        self._end_migration()
+                return m_data
         return wrapper
 
     def rollback(migration_func):

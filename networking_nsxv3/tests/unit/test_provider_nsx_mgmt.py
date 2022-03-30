@@ -14,7 +14,7 @@ from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 # INFO - Can introduce responses to directly run the tests against live NSX-T
