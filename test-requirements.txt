@@ -29,3 +29,4 @@ requests>=2.23.0
 pudb>=2020.1
 pytest-pudb>=0.7.0
 pytest>=5.4.1
+redis

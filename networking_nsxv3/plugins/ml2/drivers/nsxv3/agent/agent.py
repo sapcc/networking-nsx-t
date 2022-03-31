@@ -110,6 +110,27 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def validate_policy(self, context, policy):
         pass
 
+    def create_log(self, context, log_obj):
+        self.callback(log_obj, self.realizer.enable_policy_logging)
+
+    def create_log_precommit(self, context, log_obj):
+        pass
+
+    def update_log(self, context, log_obj):
+        self.callback(log_obj, self.realizer.update_policy_logging)
+
+    def update_log_precommit(self, context, log_obj):
+        pass
+
+    def delete_log(self, context, log_obj):
+        self.callback(log_obj, self.realizer.disable_policy_logging)
+
+    def delete_log_precommit(self, context, log_obj):
+        pass
+
+    def resource_update(self, context, log_obj):
+        pass
+
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
     def __init__(self, rpc: nsxv3_rpc.NSXv3ServerRpcApi, synchronization=True, monitoring=True):

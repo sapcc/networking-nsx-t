@@ -364,7 +364,7 @@ class Provider(abc.ABC):
         """
 
     @abc.abstractmethod
-    def sg_rules_realize(self, os_sg: dict, delete=False):
+    def sg_rules_realize(self, os_sg: dict, delete=False, logged=False):
         """
         Realize OpenStack Security Group Rules in provider
 

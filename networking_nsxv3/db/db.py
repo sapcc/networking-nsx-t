@@ -5,6 +5,7 @@ from networking_nsxv3.common import constants as nsxv3_constants
 from neutron.db.models import allowed_address_pair
 from neutron.db.models import securitygroup as sg_db
 from neutron.db.models import tag as tag_model
+from neutron.db.models.loggingapi import Log
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
 from neutron.db.models_v2 import IPAllocation, Port
 from neutron.db.qos.models import (QosBandwidthLimitRule, QosDscpMarkingRule,
@@ -427,3 +428,24 @@ def get_security_group_members_address_bindings_ips(context,
     ).filter(
         security_group_id == group_id
     ).all()
+
+
+def get_port_logging(context, port_id):
+    return context.session.query(
+        Log.project_id,
+        Log.resource_id,
+        Log.enabled
+    ).filter(
+        Log.target_id == port_id
+    ).one_or_none()
+
+
+def has_security_group_logging(context, security_group_id):
+    result = context.session.query(
+        Log.resource_id,
+        Log.enabled
+    ).filter(
+        Log.resource_id == security_group_id,
+        Log.enabled
+    ).one_or_none()
+    return True if result else False

@@ -71,6 +71,16 @@ agent_opts = [
         'max_sg_segment_port_tags',
         default=27,
         help="The maximum count of the tags per SegmentPort serving as a SecurityGroup Membership Criteria. Above that count standard NSX-T Group Membership will be used instead."
+    ),
+    cfg.StrOpt(
+        'logging_url',
+        default='unix:///var/run/redis/socket/redis.sock',
+        help="Redis URL"
+    ),
+    cfg.IntOpt(
+        'logging_expire',
+        default=1,
+        help="Redis key expiration time in days"
     )
 ]
 

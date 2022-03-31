@@ -69,6 +69,41 @@ class NSXv3AgentRpcClient(object):
             return self._get_call_context().cast(
                 self.context, 'validate_policy', policy=policy)
 
+    def create_log(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (create_log): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'create_log', log_obj=log_obj)
+
+    def create_log_precommit(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (create_log_precommit): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'create_log_precommit', log_obj=log_obj)
+
+    def update_log(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (update_log): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'update_log', log_obj=log_obj)
+
+    def update_log_precommit(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (update_log_precommit): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'update_log_precommit', log_obj=log_obj)
+
+    def delete_log(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (delete_log): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'delete_log', log_obj=log_obj)
+
+    def delete_log_precommit(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (delete_log_precommit): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'delete_log_precommit', log_obj=log_obj)
+
+    def resource_update(self, context, log_objs):
+        LOG.debug("NSXv3AgentRpcClient: (resource_update): " + str(log_objs))
+        self._get_call_context()\
+            .cast(self.context, 'resource_update', log_objs=log_objs)
+
 
 class NSXv3ServerRpcApi(object):
     """Agent-side RPC (stub) for agent-to-plugin interaction.
@@ -156,6 +191,17 @@ class NSXv3ServerRpcApi(object):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'has_security_group_used_by_host',
                           host=self.host, security_group_id=security_group_id)
+
+    @log_helpers.log_method_call
+    def get_port_logging(self, port_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_port_logging', port_id=port_id)
+
+    @log_helpers.log_method_call
+    def has_security_group_logging(self, security_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'has_security_group_logging',
+                          security_group_id=security_group_id)
 
 
 class NSXv3ServerRpcCallback(object):
@@ -263,3 +309,11 @@ class NSXv3ServerRpcCallback(object):
         for dir, bps, burst in db.get_qos_bwl_rules(context, qos_id):
             qos["rules"].append({"direction": dir, "max_kbps": bps, "max_burst_kbps": burst})
         return qos
+
+    @log_helpers.log_method_call
+    def get_port_logging(self, context, port_id):
+        return db.get_port_logging(context, port_id)
+
+    @log_helpers.log_method_call
+    def has_security_group_logging(self, context, security_group_id):
+        return db.has_security_group_logging(context, security_group_id)

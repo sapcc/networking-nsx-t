@@ -363,3 +363,6 @@ class TestNSXv3ServerRpcApi(object):
         id_o = self.inventory.get_all(NeutronMock.PORT)
         if [o for _, o in id_o if o.get("qos_policy_id") == os_id]:
             return self.inventory.get_by_id(NeutronMock.QOS, os_id)
+
+    def has_security_group_logging(self, security_group_id):
+        return security_group_id is not None

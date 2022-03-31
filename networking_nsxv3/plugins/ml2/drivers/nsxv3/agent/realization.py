@@ -10,6 +10,7 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.mp_to_policy_migration imp
 from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from oslo_config import cfg
 from oslo_log import log as logging
+from networking_nsxv3.redis.logging import LoggingMetadata
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class AgentRealizer(object):
                     LOG.warning(str(e))
 
         self.age = int(time.time())
+        self.logging_metadata = LoggingMetadata()
         # Initializing metadata
         self.all(dryrun=True)
 
@@ -252,7 +254,9 @@ class AgentRealizer(object):
                     if remote_id:
                         self.security_group_members(remote_id, reference=True)
 
-                self.plcy_provider.sg_rules_realize(os_sg)
+                logged = self.rpc.has_security_group_logging(os_id)
+                LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")
+                self.plcy_provider.sg_rules_realize(os_sg, logged=logged)
 
             else:
                 self.plcy_provider.sg_rules_realize({"id": os_id}, delete=True)
@@ -317,6 +321,36 @@ class AgentRealizer(object):
         with LockManager.get_lock("network-{}".format(os_seg_id)):
             meta = self._network_realize(os_seg_id)
             return {"nsx-logical-switch-id": meta.id, "external-id": meta.id, "segmentation_id": os_seg_id}
+
+    def enable_policy_logging(self, log_obj: dict):
+        """
+        Realize security policy logging state enablement.
+        :os_seg_id: -- OpenStack Security Group ID
+        :return: -- None
+        """
+        with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
+            self.plcy_provider.enable_policy_logging(log_obj)
+            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id'])
+
+    def disable_policy_logging(self, log_obj: dict):
+        """
+        Realize security policy logging state disablement.
+        :os_seg_id: -- OpenStack Security Group ID
+        :return: -- None
+        """
+        with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
+            self.plcy_provider.disable_policy_logging(log_obj)
+            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id'])
+
+    def update_policy_logging(self, log_obj: dict):
+        """
+        Realize security policy logging state update.
+        :os_seg_id: -- OpenStack Security Group ID
+        :return: -- None
+        """
+        with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
+            self.plcy_provider.update_policy_logging(log_obj)
+            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id'])
 
     def _qos_realize(self, os_qos: dict, is_plcy: bool, is_mngr: bool, delete=False):
 
