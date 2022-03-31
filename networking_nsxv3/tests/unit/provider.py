@@ -276,6 +276,8 @@ class Inventory(object):
                     if params.get("action") == "DONE":
                         self.prepared_migration = None
                         return self.resp(200)
+                if "/rollback" in request.url:
+                    return self.resp(200, data=json.loads(request.body))
                 else:
                     if not data:
                         return self.resp(200)
@@ -299,10 +301,9 @@ class Inventory(object):
                 if request.method == "GET" and params.get("summary") == "true":
                     return self.resp(200, {"enabled": True})
 
-            if "/status-summary" in request.url:
+            if "/status-summary" in request.url and request.method == "GET":
                 if "?component_type=MP_TO_POLICY_PRECHECK" in request.url:
-                    if request.method == "GET":
-                        return self.resp(200, self._migration_status_response())
+                    return self.resp(200, self._migration_status_response())
                 if "?component_type=MP_TO_POLICY_MIGRATION" in request.url:
                     return self.resp(200, self._migration_status_response())
 
@@ -373,17 +374,20 @@ class Inventory(object):
 
     def _mp_to_policy_promote(self):
         for os_id, plcy_res_type, plcy_inv_path, mngr_inv_path in self.prepared_migration:
-            # TODO: extend this function to support more than just ID and resource_type promotion to all kind of Policy objects
             resource = self.prepared_migration.get((os_id, plcy_res_type, plcy_inv_path, mngr_inv_path))
             plcy_inv = self.inventory.get(plcy_inv_path)
             mngr_inv = self.inventory.get(mngr_inv_path)
 
             now = int(time.time() * 1000)
             tags: list = mngr_inv[os_id].get("tags", [])
+            attachment: dict = mngr_inv[os_id].get("attachment")
+            vlan = mngr_inv[os_id].get("vlan")
             path, parent_path = self._get_paths_for_promoted(mngr_inv[os_id])
             tags.append({"scope": "policyPath", "tag": path})
 
-            plcy_inv[os_id] = {
+            p_os_id = os_id if not attachment else attachment.get("id")
+
+            plcy_inv[p_os_id] = {
                 "id": resource.get("id"),
                 "display_name": mngr_inv[os_id]["display_name"],
                 "resource_type": plcy_res_type,
@@ -394,9 +398,21 @@ class Inventory(object):
                 "_last_modified_time": now,
                 "_revision": 0
             }
+            if attachment:
+                plcy_inv[p_os_id]["attachment"] = {
+                    "id": attachment.get("id"),
+                    "type": attachment.get("context").get("vif_type"),
+                    "hyperbus_mode": "DISABLE"
+                }
+            if vlan:
+                plcy_inv[p_os_id]["vlan_ids"] = [
+                    str(vlan)
+                ]
+
             mngr_inv[os_id]["_create_user"] = "nsx_policy"
             mngr_inv[os_id]["_last_modified_time"] = now
             mngr_inv[os_id]["_revision"] = mngr_inv.get(os_id).get("_revision", 0) + 1
+
         return self.resp(200)
 
     def _get_paths_for_promoted(self, mngr_resource: dict) -> Tuple[str, str]:

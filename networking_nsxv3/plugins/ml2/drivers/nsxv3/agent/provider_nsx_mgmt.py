@@ -227,6 +227,7 @@ class Payload(object):
         p_qid = pp.get("qos_policy_id")
 
         port = {
+            "resource_type": "LogicalPort",
             "display_name": os_port.get("id"),
             "logical_switch_id": p.get("vif_details").get("nsx-logical-switch-id"),
             "admin_state": "UP",

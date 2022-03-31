@@ -9,6 +9,7 @@ from networking_nsxv3.tests.unit.provider import Inventory
 from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
+from mock import patch
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -45,8 +46,10 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
         self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.1.3.6")
-        r = responses
+        self._register_api_responses()
 
+    def _register_api_responses(self):
+        r = responses
         for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
@@ -167,6 +170,17 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         return provider_port, os_sg, os_sg_second, os_qos, os_port_parent, os_port_child
 
     @responses.activate
+    def test_migration_service_not_enabled(self):
+        responses.reset()
+        responses.add(url=re.compile(r".*"), status=500)
+        try:
+            mp_to_policy_migration.Provider()
+        except RuntimeError as e:
+            self.assertEqual(True, "MP-TO-POLICY API not enabled" in str(e))
+            return
+        assert False
+
+    @responses.activate
     def test_migrate_sw_profiles_not_supported_type(self):
         migr_provider = mp_to_policy_migration.Provider()
 
@@ -183,19 +197,171 @@ class TestProviderMpToPolicy(base.BaseTestCase):
 
         mngr_provider.qos_realize(os_qos)
         inv = self.inventory.inventory[Inventory.PROFILES]
-        qos: dict = self.get_by_name(inv, os_qos.get("id"))
+        mngr_qos: dict = self.get_by_name(inv, os_qos.get("id"))
 
         migr_provider.migrate_sw_profiles(
-            not_migrated=[(qos.get("id"), "QosSwitchingProfile")])
+            not_migrated=[(mngr_qos.get("id"), "QosSwitchingProfile")])
         prfls = plcy_provider.get_non_default_switching_profiles()
 
         policy_qos_profile = prfls[0]
         self.assertEqual(os_qos.get("id"), policy_qos_profile.get("display_name"))
-        self.assertEqual(os_qos.get("resource_type"), policy_qos_profile.get("QoSProfile"))
-        self.assertEqual(qos.get("id"), policy_qos_profile.get("id"))
+        self.assertEqual("QoSProfile", policy_qos_profile.get("resource_type"))
+        self.assertEqual(mngr_qos.get("id"), policy_qos_profile.get("id"))
+        self.assertEqual("nsx_policy", mngr_qos.get("_create_user"))
+        self.assertEqual(mngr_qos.get("tags"), policy_qos_profile.get("tags"))
 
     @responses.activate
     def test_port_migration(self):
-        # TODO
-        # mp_to_policy_migration.Provider().migrate_ports(["1"])
-        pass
+        _, _, _, _, os_port_parent, _ = self.port_fixture()
+        migr_provider = mp_to_policy_migration.Provider()
+        mngr_provider = provider_nsx_mgmt.Provider()
+        plcy_provider = provider_nsx_policy.Provider()
+
+        mngr_provider.port_realize(os_port_parent)
+        inv = self.inventory.inventory[Inventory.PORTS]
+        mngr_port: dict = self.get_by_name(inv, os_port_parent.get("id"))
+
+        migr_provider.migrate_ports([mngr_port.get("id")])
+        plcy_port = plcy_provider.get_port(os_port_parent.get("id"))[1]
+
+        self.assertEqual(os_port_parent.get("id"), plcy_port.get("display_name"))
+        self.assertEqual("SegmentPort", plcy_port.get("resource_type"))
+        self.assertEqual(mngr_port.get("id"), plcy_port.get("id"))
+        self.assertEqual("nsx_policy", mngr_port.get("_create_user"))
+        self.assertEqual(mngr_port.get("tags"), plcy_port.get("tags"))
+
+    @responses.activate
+    def test_switch_migration(self):
+        migr_provider = mp_to_policy_migration.Provider()
+        mngr_provider = provider_nsx_mgmt.Provider()
+        plcy_provider = provider_nsx_policy.Provider()
+
+        mngr_meta = mngr_provider.network_realize(10)
+        migr_provider.migrate_switch(mngr_meta.id)
+        plcy_provider.metadata_refresh(plcy_provider.SEGMENT)
+        plcy_meta = plcy_provider.network_realize(10)
+
+        mngr_inv = self.inventory.inventory[Inventory.SWITCHES]
+        plcy_inv = self.inventory.inventory[Inventory.SEGMENTS]
+        mngr_net: dict = mngr_inv.get(mngr_meta.id)
+        plcy_net: dict = plcy_inv.get(plcy_meta.id)
+
+        self.assertEqual(mngr_meta.id, plcy_meta.id)
+        self.assertEqual(mngr_net.get("id"), plcy_net.get("id"))
+        self.assertEqual(mngr_net.get("display_name"), plcy_net.get("display_name"))
+        self.assertEqual(True, str(mngr_net.get("vlan")) in plcy_net.get("vlan_ids"))
+        self.assertEqual("Segment", plcy_net.get("resource_type"))
+        self.assertEqual("LogicalSwitch", mngr_net.get("resource_type"))
+        self.assertEqual("nsx_policy", mngr_net.get("_create_user"))
+
+    @responses.activate
+    def test_bulk_migration(self):
+        _, _, _, os_qos, os_port_parent, _ = self.port_fixture()
+
+        migr_provider = mp_to_policy_migration.Provider()
+        mngr_provider = provider_nsx_mgmt.Provider()
+        plcy_provider = provider_nsx_policy.Provider()
+
+        mngr_provider.qos_realize(os_qos)
+        mngr_net_meta = mngr_provider.network_realize(3200)
+        os_port_parent["vif_details"]["nsx-logical-switch-id"] = mngr_net_meta.id
+        mngr_port_meta = mngr_provider.port_realize(os_port_parent)
+
+        mngr_port_inv = self.inventory.inventory[Inventory.PROFILES]
+        mngr_qos: dict = self.get_by_name(mngr_port_inv, os_qos.get("id"))
+
+        pb = mp_to_policy_migration.PayloadBuilder()
+        payload = pb\
+            .sw_profiles([(mngr_qos.get("id"), "QosSwitchingProfile")])\
+            .switch(mngr_net_meta.id)\
+            .ports([mngr_port_meta.id])\
+            .build()
+        migr_provider.migrate_bulk(payload)
+
+        plcy_provider.metadata_refresh(plcy_provider.SEGMENT)
+        plcy_net_meta = plcy_provider.network_realize(3200)
+        mngr_net_inv = self.inventory.inventory[Inventory.SWITCHES]
+        plcy_net_inv = self.inventory.inventory[Inventory.SEGMENTS]
+        mngr_port_inv = self.inventory.inventory[Inventory.PORTS]
+        mngr_net: dict = mngr_net_inv.get(mngr_net_meta.id)
+        plcy_net: dict = plcy_net_inv.get(plcy_net_meta.id)
+        prfls = plcy_provider.get_non_default_switching_profiles()
+        mngr_port: dict = self.get_by_name(mngr_port_inv, os_port_parent.get("id"))
+        plcy_port = plcy_provider.get_port(os_port_parent.get("id"))[1]
+
+        policy_qos_profile = prfls[0]
+        self.assertEqual(os_qos.get("id"), policy_qos_profile.get("display_name"))
+        self.assertEqual("QoSProfile", policy_qos_profile.get("resource_type"))
+        self.assertEqual(mngr_qos.get("id"), policy_qos_profile.get("id"))
+        self.assertEqual("nsx_policy", mngr_qos.get("_create_user"))
+        self.assertEqual(mngr_qos.get("tags"), policy_qos_profile.get("tags"))
+
+        self.assertEqual(os_port_parent.get("id"), plcy_port.get("display_name"))
+        self.assertEqual("SegmentPort", plcy_port.get("resource_type"))
+        self.assertEqual(mngr_port.get("id"), plcy_port.get("id"))
+        self.assertEqual("nsx_policy", mngr_port.get("_create_user"))
+        self.assertEqual(mngr_port.get("tags"), plcy_port.get("tags"))
+
+        self.assertEqual(mngr_net_meta.id, plcy_net_meta.id)
+        self.assertEqual(mngr_net.get("id"), plcy_net.get("id"))
+        self.assertEqual(mngr_net.get("display_name"), plcy_net.get("display_name"))
+        self.assertEqual(True, str(mngr_net.get("vlan")) in plcy_net.get("vlan_ids"))
+        self.assertEqual("Segment", plcy_net.get("resource_type"))
+        self.assertEqual("LogicalSwitch", mngr_net.get("resource_type"))
+        self.assertEqual("nsx_policy", mngr_net.get("_create_user"))
+
+    @responses.activate
+    def test_port_already_migrated(self):
+        _, _, _, _, os_port_parent, _ = self.port_fixture()
+        migr_provider = mp_to_policy_migration.Provider()
+        mngr_provider = provider_nsx_mgmt.Provider()
+        plcy_provider = provider_nsx_policy.Provider()
+
+        mngr_provider.port_realize(os_port_parent)
+        inv = self.inventory.inventory[Inventory.PORTS]
+        mngr_port: dict = self.get_by_name(inv, os_port_parent.get("id"))
+
+        migr_provider.migrate_ports([mngr_port.get("id")])
+        plcy_port = plcy_provider.get_port(os_port_parent.get("id"))[1]
+
+        self.assertEqual(os_port_parent.get("id"), plcy_port.get("display_name"))
+
+        try:
+            migr_provider.migrate_ports([mngr_port.get("id")])
+        except RuntimeError as e:
+            self.assertEqual(True, "Policy Resource already exists" in str(e))
+            return
+        assert False
+
+    @responses.activate
+    def test_migration_rollback(self):
+        responses.reset()
+        responses.add(method=responses.GET, match_querystring=True,
+                      url=re.compile(r"(.*)/status-summary\?component_type=MP_TO_POLICY_MIGRATION"),
+                      status=200, json={"overall_migration_status": "FAIL"})
+        self._register_api_responses()
+
+        _, _, _, _, os_port_parent, _ = self.port_fixture()
+        migr_provider = mp_to_policy_migration.Provider()
+        mngr_provider = provider_nsx_mgmt.Provider()
+
+        mngr_meta = mngr_provider.port_realize(os_port_parent)
+        inv = self.inventory.inventory[Inventory.PORTS]
+        mngr_port: dict = self.get_by_name(inv, os_port_parent.get("id"))
+
+        try:
+            with patch.object(mp_to_policy_migration.Provider, '_try_rollback') as _try_rollback_mock:
+                migr_provider.migrate_ports([mngr_port.get("id")])
+        except RuntimeError as e:
+            self.assertEqual(True, "Migration status check FAILED" in str(e))
+            _try_rollback_mock.assert_called_once_with(migr_data={
+                'migration_data': [{
+                    'type': 'LOGICAL_PORT',
+                    'resource_ids': [
+                        {
+                            'manager_id': mngr_meta.id,
+                            'policy_id': mngr_meta.id
+                        }
+                    ]}]})
+            return
+        assert False

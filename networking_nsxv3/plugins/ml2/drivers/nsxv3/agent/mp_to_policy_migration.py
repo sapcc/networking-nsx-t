@@ -299,7 +299,7 @@ class Provider(object):
         self.client.post(path=API.MP_TO_POLICY_DONE, data=None)
 
     def _try_rollback(self, migr_data: dict):
-        LOG.debug("Rolling back the migration ...")
+        LOG.info("Rolling back the migration ...")
         try:
             self.client.post(path=API.MIGRATION_ABORT, data=None)
             if migr_data is not None:
