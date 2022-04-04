@@ -196,7 +196,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         plcy_provider = provider_nsx_policy.Provider()
 
         mngr_provider.qos_realize(os_qos)
-        inv = self.inventory.inventory[Inventory.PROFILES]
+        inv = self.inventory.inv[Inventory.PROFILES]
         mngr_qos: dict = self.get_by_name(inv, os_qos.get("id"))
 
         migr_provider.migrate_sw_profiles(
@@ -218,7 +218,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         plcy_provider = provider_nsx_policy.Provider()
 
         mngr_provider.port_realize(os_port_parent)
-        inv = self.inventory.inventory[Inventory.PORTS]
+        inv = self.inventory.inv[Inventory.PORTS]
         mngr_port: dict = self.get_by_name(inv, os_port_parent.get("id"))
 
         migr_provider.migrate_ports([mngr_port.get("id")])
@@ -241,8 +241,8 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         plcy_provider.metadata_refresh(plcy_provider.SEGMENT)
         plcy_meta = plcy_provider.network_realize(10)
 
-        mngr_inv = self.inventory.inventory[Inventory.SWITCHES]
-        plcy_inv = self.inventory.inventory[Inventory.SEGMENTS]
+        mngr_inv = self.inventory.inv[Inventory.SWITCHES]
+        plcy_inv = self.inventory.inv[Inventory.SEGMENTS]
         mngr_net: dict = mngr_inv.get(mngr_meta.id)
         plcy_net: dict = plcy_inv.get(plcy_meta.id)
 
@@ -267,7 +267,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         os_port_parent["vif_details"]["nsx-logical-switch-id"] = mngr_net_meta.id
         mngr_port_meta = mngr_provider.port_realize(os_port_parent)
 
-        mngr_port_inv = self.inventory.inventory[Inventory.PROFILES]
+        mngr_port_inv = self.inventory.inv[Inventory.PROFILES]
         mngr_qos: dict = self.get_by_name(mngr_port_inv, os_qos.get("id"))
 
         pb = mp_to_policy_migration.PayloadBuilder()
@@ -280,9 +280,9 @@ class TestProviderMpToPolicy(base.BaseTestCase):
 
         plcy_provider.metadata_refresh(plcy_provider.SEGMENT)
         plcy_net_meta = plcy_provider.network_realize(3200)
-        mngr_net_inv = self.inventory.inventory[Inventory.SWITCHES]
-        plcy_net_inv = self.inventory.inventory[Inventory.SEGMENTS]
-        mngr_port_inv = self.inventory.inventory[Inventory.PORTS]
+        mngr_net_inv = self.inventory.inv[Inventory.SWITCHES]
+        plcy_net_inv = self.inventory.inv[Inventory.SEGMENTS]
+        mngr_port_inv = self.inventory.inv[Inventory.PORTS]
         mngr_net: dict = mngr_net_inv.get(mngr_net_meta.id)
         plcy_net: dict = plcy_net_inv.get(plcy_net_meta.id)
         prfls = plcy_provider.get_non_default_switching_profiles()
@@ -318,7 +318,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         plcy_provider = provider_nsx_policy.Provider()
 
         mngr_provider.port_realize(os_port_parent)
-        inv = self.inventory.inventory[Inventory.PORTS]
+        inv = self.inventory.inv[Inventory.PORTS]
         mngr_port: dict = self.get_by_name(inv, os_port_parent.get("id"))
 
         migr_provider.migrate_ports([mngr_port.get("id")])
@@ -346,7 +346,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         mngr_provider = provider_nsx_mgmt.Provider()
 
         mngr_meta = mngr_provider.port_realize(os_port_parent)
-        inv = self.inventory.inventory[Inventory.PORTS]
+        inv = self.inventory.inv[Inventory.PORTS]
         mngr_port: dict = self.get_by_name(inv, os_port_parent.get("id"))
 
         try:

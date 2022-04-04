@@ -4,6 +4,7 @@ import re
 
 import eventlet
 import responses
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.tests.unit import provider
@@ -38,6 +39,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.url = "https://{}:{}".format(hostname, port)
 
     def _mock(self, r):
+        Client._instances = {}
         self.inventory = provider.Inventory(base_url=self.url, version="3.0.0")
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
@@ -237,6 +239,7 @@ class TestMigrationRealization(base.BaseTestCase):
         self.url = "https://{}:{}".format(hostname, port)
 
     def _mock(self, r):
+        Client._instances = {}
         self.inventory = provider.Inventory(base_url=self.url, version="3.1.3")
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)

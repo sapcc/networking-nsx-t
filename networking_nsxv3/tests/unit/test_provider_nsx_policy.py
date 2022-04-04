@@ -61,7 +61,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
         ip_addresses = []
@@ -81,7 +81,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
         ip_addresses = []
@@ -101,7 +101,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_members_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
         ip_addresses = []
@@ -126,7 +126,7 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_members_realize(sg)
         provider.sg_members_realize(sgu)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_group = self.get_by_name(inv[Inventory.GROUPS], sg["id"])
 
         ip_addresses = []
@@ -144,7 +144,7 @@ class TestProviderPolicy(base.BaseTestCase):
             "revision_number": 0,
         }
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         provider = provider_nsx_policy.Provider()
 
         provider.sg_members_realize(sg)
@@ -167,7 +167,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         LOG.info(json.dumps(policy, indent=4))
@@ -250,7 +250,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         sg3 = copy.deepcopy(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         provider = provider_nsx_policy.Provider()
 
         provider.sg_rules_realize(sg1)
@@ -320,7 +320,7 @@ class TestProviderPolicy(base.BaseTestCase):
         sg1["rules"].append(copy.deepcopy(rule1))
         sg1["rules"].append(copy.deepcopy(rule2))
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         provider = provider_nsx_policy.Provider()
 
         provider.sg_rules_realize(sg1, logged=True)
@@ -399,7 +399,7 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_members_realize(sg_remote)
         provider.sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         LOG.info(json.dumps(inv, indent=4))
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
@@ -436,7 +436,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"): r for r in policy.get("rules")}
@@ -497,7 +497,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"): r for r in policy.get("rules")}
@@ -556,7 +556,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"): r for r in policy.get("rules")}
@@ -592,7 +592,7 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_rules_realize(sg[2])
         provider.sg_rules_realize(sg[3])
 
-        LOG.info(json.dumps(self.inventory.inventory, indent=4))
+        LOG.info(json.dumps(self.inventory.inv, indent=4))
 
         outdated, current = provider.outdated(provider.SG_RULES, meta)
 
@@ -606,7 +606,7 @@ class TestProviderPolicy(base.BaseTestCase):
         provider = provider_nsx_policy.Provider()
         provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg2)
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         self.assertTrue(self.get_by_name(inv[Inventory.POLICIES], sg1["id"]).get("stateful"))
         self.assertFalse(self.get_by_name(inv[Inventory.POLICIES], sg2["id"]).get("stateful"))
 
@@ -688,7 +688,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
         provider_nsx_policy.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         policy = self.get_by_name(inv[Inventory.POLICIES], sg["id"])
         rules = {r.get("id"): r for r in policy.get("rules")}

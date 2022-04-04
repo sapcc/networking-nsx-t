@@ -48,7 +48,7 @@ class TestProviderMgmt(base.BaseTestCase):
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
-        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443")
+        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.0.0")
         r = responses
 
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
@@ -58,7 +58,7 @@ class TestProviderMgmt(base.BaseTestCase):
     def test_provider_initialization(self):
         provider_nsx_mgmt.Provider()
 
-        profiles = self.inventory.inventory.get(Inventory.PROFILES)
+        profiles = self.inventory.inv.get(Inventory.PROFILES)
 
         sgp = cfg.CONF.NSXV3.nsxv3_spoof_guard_switching_profile
         ipp = cfg.CONF.NSXV3.nsxv3_ip_discovery_switching_profile
@@ -81,7 +81,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
         for k, v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
@@ -98,7 +98,7 @@ class TestProviderMgmt(base.BaseTestCase):
         })
 
         provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
         for k, v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
@@ -115,7 +115,7 @@ class TestProviderMgmt(base.BaseTestCase):
         })
 
         provider_nsx_mgmt.Provider().sg_members_realize(sg[0])
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg[0]["id"])
         for k, v in sg[1].items():
             self.assertEquals(sg_ipset.get(k), sg[1].get(k))
@@ -138,7 +138,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider.sg_members_realize(sg)
         provider.sg_members_realize(sgu)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         sg_ipset = self.get_by_name(inv[Inventory.IPSETS], sg["id"])
         self.assertEquals(sg_ipset.get("ip_addresses"), ["172.16.1.2/16"])
 
@@ -150,7 +150,7 @@ class TestProviderMgmt(base.BaseTestCase):
             "revision_number": 2
         }
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         provider = provider_nsx_mgmt.Provider()
 
@@ -204,7 +204,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider_nsx_mgmt.Provider().sg_rules_realize(sg[0])
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg[0]["id"])
         for k, v in sg[1].items():
@@ -297,7 +297,7 @@ class TestProviderMgmt(base.BaseTestCase):
         sg3 = copy.deepcopy(sg)
         sg3["id"] = str(uuid.uuid4())
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         provider = provider_nsx_mgmt.Provider()
 
         provider.sg_rules_realize(sg1)
@@ -390,7 +390,7 @@ class TestProviderMgmt(base.BaseTestCase):
         sg["rules"].append(copy.deepcopy(rule2))
         sg["rules"].append(copy.deepcopy(rule3))
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         provider = provider_nsx_mgmt.Provider()
 
         provider.sg_rules_realize(sg)
@@ -445,7 +445,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider.sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg.get("id"))
 
@@ -484,7 +484,7 @@ class TestProviderMgmt(base.BaseTestCase):
         p = provider_nsx_mgmt.Provider()
         p.sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
@@ -520,7 +520,7 @@ class TestProviderMgmt(base.BaseTestCase):
         p = provider_nsx_mgmt.Provider()
         p.sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
@@ -564,7 +564,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider.sg_members_realize(sg_remote)
         provider.sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
@@ -598,7 +598,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
@@ -659,7 +659,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule_hopopt = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule_hopopt["id"])
@@ -717,7 +717,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule_valid = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule_valid["id"])
@@ -758,7 +758,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         provider_nsx_mgmt.Provider().sg_rules_realize(sg)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         sg_section = self.get_by_name(inv[Inventory.SECTIONS], sg["id"])
         sg_rule = self.get_by_name(sg_section.get("_", {}).get("rules", {}), rule["id"])
@@ -968,14 +968,14 @@ class TestProviderMgmt(base.BaseTestCase):
         meta_parent_port = provider.metadata(provider.PORT, os_port_parent.get("id")).id
         meta_child_port = provider.metadata(provider.PORT, os_port_child.get("id")).id
 
-        self.assertEquals(len(self.inventory.inventory[Inventory.PORTS].keys()), 2)
+        self.assertEquals(len(self.inventory.inv[Inventory.PORTS].keys()), 2)
         self.assertNotEqual(meta_parent_port, None)
         self.assertNotEqual(meta_child_port, None)
 
         provider.port_realize(os_port_child, delete=True)
         provider.port_realize(os_port_parent, delete=True)
 
-        self.assertEquals(list(self.inventory.inventory[Inventory.PORTS].keys()), [meta_parent_port])
+        self.assertEquals(list(self.inventory.inv[Inventory.PORTS].keys()), [meta_parent_port])
 
     @responses.activate
     def test_qos_create(self):
@@ -1103,7 +1103,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider = provider_nsx_mgmt.Provider()
         meta = provider.network_realize(segmentation_id)
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         net = inv[Inventory.SWITCHES].get(meta.id)
         self.assertEquals(net.get("vlan"), segmentation_id)
         self.assertEquals(net.get("transport_zone_id"), provider.zone_id)
@@ -1115,7 +1115,7 @@ class TestProviderMgmt(base.BaseTestCase):
         segmentation_id2 = "3201"
         provider = provider_nsx_mgmt.Provider()
 
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         meta = provider.network_realize(segmentation_id)
         self.assertEquals(len(inv[Inventory.SWITCHES]), 1)
@@ -1152,7 +1152,7 @@ class TestProviderMgmt(base.BaseTestCase):
 
         outdated, current = provider.outdated(provider.SG_RULES, meta)
 
-        LOG.info(json.dumps(self.inventory.inventory, indent=4))
+        LOG.info(json.dumps(self.inventory.inv, indent=4))
 
         self.assertItemsEqual(outdated, [sg[1]['id'], sg[2]['id'], sg[3]['id']])
         self.assertItemsEqual(current, [sg[0]['id']])
@@ -1181,7 +1181,7 @@ class TestProviderMgmt(base.BaseTestCase):
         sg["rules"].append(rule)
 
         p = provider_nsx_mgmt.Provider()
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
 
         for i in range(1, 10):
             data = {
@@ -1224,7 +1224,7 @@ class TestProviderMgmt(base.BaseTestCase):
         provider = provider_nsx_mgmt.Provider()
         provider.sg_rules_realize(sg1)
         provider.sg_rules_realize(sg2)
-        inv = self.inventory.inventory
+        inv = self.inventory.inv
         self.assertTrue(self.get_by_name(inv[Inventory.SECTIONS], sg1["id"]).get("stateful"))
         self.assertFalse(self.get_by_name(inv[Inventory.SECTIONS], sg2["id"]).get("stateful"))
 

@@ -56,12 +56,12 @@ class Inventory(object):
          "LOGICAL_PORT": ("LogicalPort", POLICY_RESOURCE_TYPES.SEGMENT_PORT, PORTS, SEGMENT_PORTS)
     }
 
-    def __init__(self, base_url, version="2.4.2.0.0.14269501"):
+    def __init__(self, base_url, version):
         self.url = urlparse(base_url)
         self.version = version
         self.prepared_migration: Dict[Tuple[str, str], dict] = None
         qos_inv = dict()
-        self.inventory: Dict[str, Dict[str, dict]] = {
+        self.inv: Dict[str, Dict[str, dict]] = {
             Inventory.ZONES: {
                 "97C47802-2781-4CBF-825B-08689269B077": {
                     "id": "97C47802-2781-4CBF-825B-08689269B077",
@@ -178,7 +178,7 @@ class Inventory(object):
         if request.method == "DELETE":
             if o:
                 del inventory[id]
-                inventory_dump = json.dumps(self.inventory, indent=2)
+                inventory_dump = json.dumps(self.inv, indent=2)
                 if id in inventory_dump:
                     inventory[id] = o
                     return self.resp(417, "Object with ID:{} still in use Inventory".format(id))
@@ -211,10 +211,10 @@ class Inventory(object):
 
         path = "/".join([api, version, obj_type])  # policy/api/v1/{type}
         LOG.info(f"Using Test Inventory Path: {path}")
-        if path not in self.inventory:
+        if path not in self.inv:
             return self.resp(404)
 
-        inventory = self.inventory[path]
+        inventory = self.inv[path]
         resource = json.loads(request.body) if request.body else dict()
 
         if child_id or child_type:
@@ -254,7 +254,7 @@ class Inventory(object):
             resources = list()
             for resource_type in matches:
                 LOG.info(f"Searching for resource resource_type: \"{resource_type}\"")
-                inventory: dict = self.inventory.get("policy/api/v1/search/query/{}".format(resource_type))
+                inventory: dict = self.inv.get("policy/api/v1/search/query/{}".format(resource_type))
                 if not inventory:
                     continue
 
@@ -357,8 +357,8 @@ class Inventory(object):
             r_type: str = d.get("type")
 
             mngr_res_type, plcy_res_type, mngr_inv_path, plcy_inv_path = self.SUPPORTED_MIGRATION_TYPES.get(r_type)
-            mngr_inv = self.inventory.get(mngr_inv_path)
-            plcy_inv = self.inventory.get(plcy_inv_path)
+            mngr_inv = self.inv.get(mngr_inv_path)
+            plcy_inv = self.inv.get(plcy_inv_path)
 
             resource_ids: List[dict] = d.get("resource_ids")
             for rid in resource_ids:
@@ -387,8 +387,8 @@ class Inventory(object):
     def _mp_to_policy_promote(self):
         for os_id, plcy_res_type, plcy_inv_path, mngr_inv_path in self.prepared_migration:
             resource = self.prepared_migration.get((os_id, plcy_res_type, plcy_inv_path, mngr_inv_path))
-            plcy_inv = self.inventory.get(plcy_inv_path)
-            mngr_inv = self.inventory.get(mngr_inv_path)
+            plcy_inv = self.inv.get(plcy_inv_path)
+            mngr_inv = self.inv.get(mngr_inv_path)
 
             now = int(time.time() * 1000)
             tags: list = mngr_inv[os_id].get("tags", [])
@@ -433,7 +433,7 @@ class Inventory(object):
         path, parent_path = "TODO", "TODO"
         if mngr_resource.get("resource_type") == "LogicalPort":
             vlan = mngr_resource.get("attachment", {}).get("context", {}).get("traffic_tag")
-            switch = list(filter(lambda v: v.get("vlan") == vlan, self.inventory[self.SWITCHES].values()))
+            switch = list(filter(lambda v: v.get("vlan") == vlan, self.inv[self.SWITCHES].values()))
             if switch:
                 parent_path = f"/infra/segments/{switch[0].get('id')}"
                 path = f"{parent_path}/ports/{mngr_resource.get('id')}"
@@ -499,6 +499,6 @@ class Inventory(object):
         self.resp(500, "Previous migration not cleared! Please abort or finish current migration")
 
     def lookup(self, resource_type, name):
-        for _, o in self.inventory[resource_type].items():
+        for _, o in self.inv[resource_type].items():
             if o.get("display_name") == name:
                 return copy.deepcopy(o)
