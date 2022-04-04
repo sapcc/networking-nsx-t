@@ -68,7 +68,7 @@ agent_opts = [
         help="The maximum count of the tags per LogicalPort, above which MP-to-Policy Promotion is impossible."
     ),
     cfg.IntOpt(
-        'max_sg_segment_port_tags',
+        'max_sg_tags_per_segment_port',
         default=27,
         help="The maximum count of the tags per SegmentPort serving as a SecurityGroup Membership Criteria. Above that count standard NSX-T Group Membership will be used instead."
     ),

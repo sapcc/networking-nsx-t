@@ -265,7 +265,6 @@ class Payload(provider_nsx_mgmt.Payload):
 
     def segment_port(self, os_port, provider_port) -> dict:
         p_ppid = provider_port.get("parent_id")
-        segment_id = os_port.get("vif_details").get("external-id")
         port_id = provider_port.get("id") or os_port.get("id")
         p_qid = provider_port.get("qos_policy_id")
         sec_groups = os_port.get("security_groups")
@@ -283,8 +282,8 @@ class Payload(provider_nsx_mgmt.Payload):
             },
             "address_bindings": os_port.get("address_bindings"),
             "tags": self.tags(os_port, more=sgs),
-            "parent_path": API.SEGMENT_PATH.format(segment_id),
-            "path": API.SEGMENT_PORT_PATH.format(segment_id, port_id),
+            "parent_path": API.SEGMENT_PATH.format(provider_port["nsx_segment_id"]),
+            "path": API.SEGMENT_PORT_PATH.format(provider_port["nsx_segment_id"], port_id),
             "_revision": provider_port.get("_revision")
         }
 
@@ -640,8 +639,18 @@ class Provider(base.Provider):
             # QoS policy attached on creation by the Manager API
             pass
 
+        nsx_segment_id = os_port.get("vif_details").get("external-id")
+
+        if not nsx_segment_id:
+            segment_meta = self.metadata(Provider.SEGMENT, os_port.get("vif_details").get("segmentation_id"))
+            if not segment_meta:
+                raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
+            nsx_segment_id = segment_meta.id
+
+        provider_port["nsx_segment_id"] = nsx_segment_id
+
         port_sgs = os_port.get("security_groups")
-        if len(port_sgs) >= cfg.CONF.AGENT.max_sg_segment_port_tags:
+        if len(port_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port:
             os_port["security_groups"] = None
             port_meta = self._realize(Provider.SEGM_PORT, False, self.payload.segment_port, os_port, provider_port)
             return self.realize_sg_members_after_port_realization(port_sgs, port_meta)
@@ -855,13 +864,21 @@ class Provider(base.Provider):
                 sanitize.append((service.get("id"), remove_orphan_service))
         return sanitize
 
-    def await_network_after_promotion(self, metadata: PolicyResourceMeta) -> PolicyResourceMeta:
-        o = self.client.get_unique_with_retry(path=API.SEGMENT.format(metadata.id))
-        return self.metadata_update(Provider.SEGMENT, o)
+    def await_network_after_promotion(self, metadata: base.ResourceMeta) -> PolicyResourceMeta or None:
+        try:
+            o = self.client.get_unique_with_retry(path=API.SEGMENT.format(metadata.id))
+            return self.metadata_update(Provider.SEGMENT, o)
+        except Exception as e:
+            LOG.error(e)
+            return None
 
-    def await_port_after_promotion(self, net_id: str, port_id: str) -> PolicyResourceMeta:
-        o = self.client.get_unique_with_retry(path=API.SEGMENT_PORT_PATH.format(net_id, port_id), retries=10)
-        return self.metadata_update(Provider.SEGM_PORT, o)
+    def await_port_after_promotion(self, net_id: str, port_id: str) -> PolicyResourceMeta or None:
+        try:
+            o = self.client.get_unique_with_retry(path=API.SEGMENT_PORT_PATH.format(net_id, port_id), retries=10)
+            return self.metadata_update(Provider.SEGM_PORT, o)
+        except Exception as e:
+            LOG.error(e)
+            return None
 
     def set_policy_logging(self, log_obj, enable_logging):
         LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")

@@ -209,3 +209,69 @@ class TestAgentRealizer(base.BaseTestCase):
         # Validate Security Group Remote Prefix IPSets
         for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
+
+
+class TestMigrationRealization(base.BaseTestCase):
+    def setUp(self):
+        super(TestMigrationRealization, self).setUp()
+
+        hostname = "nsxm-l-01a.corp.local"
+        port = "443"
+
+        o = cfg.CONF.set_override
+        g = os.environ.get
+
+        # o('debug', True)
+        logging.setup(cfg.CONF, "demo")
+
+        o("nsxv3_login_hostname", hostname, "NSXV3")
+        o("nsxv3_login_port", port, "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
+
+        o("force_mp_to_policy", True, "AGENT")
+        o("migration_tag_count_trigger", 4, "AGENT")
+        o("migration_tag_count_max", 6, "AGENT")
+        o("max_sg_tags_per_segment_port", 5, "AGENT")
+
+        self.url = "https://{}:{}".format(hostname, port)
+
+    def _mock(self, r):
+        self.inventory = provider.Inventory(base_url=self.url, version="3.1.3")
+        for m in [r.GET, r.POST, r.PUT, r.DELETE]:
+            r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
+
+    def test_migration(self):
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
+            self._mock(resp)
+            c = coverage
+
+            env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+            with env:
+                i = env.openstack_inventory
+                i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
+                i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
+                i.port_bind(c.PORT_BACKEND["name"], "3200")
+                i.port_bind(c.PORT_DB["name"], "3200")
+                eventlet.sleep(10)
+
+                # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
+
+        plcy = env.manager.realizer.plcy_provider
+        mngr = env.manager.realizer.mngr_provider
+
+        mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
+
+        self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
+        self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
+        self.assertEquals("1000" in plcy_meta[plcy.SEGMENT]["meta"], True)
+        self.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], True)
+
+        self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], True)
+        self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], True)
+        self.assertEquals(c.PORT_BACKEND["id"] in mngr_meta[mngr.PORT]["meta"], True)
+        self.assertEquals(c.PORT_DB["id"] in mngr_meta[mngr.PORT]["meta"], True)
+        self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], False)
+        self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+        self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+        self.assertEquals(c.PORT_DB["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)

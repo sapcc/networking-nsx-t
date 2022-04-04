@@ -22,6 +22,7 @@ class Inventory(object):
         IP_PROFILE = "IPDiscoveryProfile"
         SPOOF_PROFILE = "SpoofGuardProfile"
         SEC_PROFILE = "SegmentSecurityProfile"
+        MIRRONRING_PROFILE = "PortMirroringProfile"
 
     ZONES = "api/v1/transport-zones"
     PROFILES = "api/v1/switching-profiles"
@@ -29,11 +30,13 @@ class Inventory(object):
     SWITCHES = "api/v1/logical-switches"
     SEGMENTS = "policy/api/v1/infra/segments"
     SEGMENT_PORTS = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.SEGMENT_PORT}"
+    SEGMENT_QOS = "policy/api/v1/infra/qos-profiles"
     SEGMENT_PROFILES_QOS = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.QOS_PROFILE}"
     SEGMENT_PROFILES_MAC = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.MAC_PROFILE}"
     SEGMENT_PROFILES_IP = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.IP_PROFILE}"
     SEGMENT_PROFILES_SPOOF = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.SPOOF_PROFILE}"
     SEGMENT_PROFILES_SEC = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.SEC_PROFILE}"
+    SEGMENT_PROFILES_MIRR = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.MIRRONRING_PROFILE}"
     IPSETS = "api/v1/ip-sets"
     NSGROUPS = "api/v1/ns-groups"
     SECTIONS = "api/v1/firewall/sections"
@@ -57,7 +60,8 @@ class Inventory(object):
         self.url = urlparse(base_url)
         self.version = version
         self.prepared_migration: Dict[Tuple[str, str], dict] = None
-        self.inventory = {
+        qos_inv = dict()
+        self.inventory: Dict[str, Dict[str, dict]] = {
             Inventory.ZONES: {
                 "97C47802-2781-4CBF-825B-08689269B077": {
                     "id": "97C47802-2781-4CBF-825B-08689269B077",
@@ -71,7 +75,13 @@ class Inventory(object):
             Inventory.SWITCHES: dict(),
             Inventory.SEGMENTS: dict(),
             Inventory.SEGMENT_PORTS: dict(),
-            Inventory.SEGMENT_PROFILES_QOS: dict(),
+            Inventory.SEGMENT_PROFILES_QOS: qos_inv,
+            Inventory.SEGMENT_QOS: qos_inv,
+            Inventory.SEGMENT_PROFILES_MAC: dict(),
+            Inventory.SEGMENT_PROFILES_IP: dict(),
+            Inventory.SEGMENT_PROFILES_SPOOF: dict(),
+            Inventory.SEGMENT_PROFILES_SEC: dict(),
+            Inventory.SEGMENT_PROFILES_MIRR: dict(),
             Inventory.IPSETS: dict(),
             Inventory.NSGROUPS: dict(),
             Inventory.SECTIONS: dict(),
@@ -137,7 +147,8 @@ class Inventory(object):
         if request.method == "PUT":
             if "policy" in request.url:
                 if o and o.get("_revision") != resource.get("_revision"):
-                    return self.resp(422, {"message": "Object _revision mismatch! (current: {}, requested: {})"
+                    return self.resp(412, {"message":
+                        "Object _revision mismatch! (current: {}, requested: {}). Fetch the latest copy of the object and retry!"
                                            .format(o.get("_revision"), resource.get("_revision"))})
                 resource["_revision"] = int(resource["_revision"]) + 1 if resource.get("_revision") else 1
                 resource["id"] = id
@@ -212,10 +223,10 @@ class Inventory(object):
                 return child
 
         if obj_id:
-            LOG.info(f"Using Test obj_id: {obj_id}")
+            LOG.info(f"Using Test obj_id: {obj_id}, {request.method}")
             return self.id(request, inventory, obj_id, resource)
         if obj_type:
-            LOG.info(f"Using Test obj_type: {obj_type}")
+            LOG.info(f"Using Test obj_type: {obj_type}, {request.method}")
             return self.type(request, inventory, resource)
 
     def _version(self, request: Request):
@@ -250,9 +261,10 @@ class Inventory(object):
                 if resource_type == self.POLICY_RESOURCE_TYPES.SEGMENT_PORT:
                     re_port = re.search(r'attachment.id:([\w-]+)', q)
                     if re_port:
-                        o = inventory.get(re_port.group(1))
+                        o = list(filter(lambda v, r=re_port:
+                            v.get("attachment", {}).get("id") == r.group(1), inventory.values()))
                         if o:
-                            resources.append(o)
+                            resources.append(o[0])
                         continue
 
                 for o in inventory.values():
@@ -385,9 +397,7 @@ class Inventory(object):
             path, parent_path = self._get_paths_for_promoted(mngr_inv[os_id])
             tags.append({"scope": "policyPath", "tag": path})
 
-            p_os_id = os_id if not attachment else attachment.get("id")
-
-            plcy_inv[p_os_id] = {
+            plcy_inv[os_id] = {
                 "id": resource.get("id"),
                 "display_name": mngr_inv[os_id]["display_name"],
                 "resource_type": plcy_res_type,
@@ -399,13 +409,13 @@ class Inventory(object):
                 "_revision": 0
             }
             if attachment:
-                plcy_inv[p_os_id]["attachment"] = {
+                plcy_inv[os_id]["attachment"] = {
                     "id": attachment.get("id"),
                     "type": attachment.get("context").get("vif_type"),
                     "hyperbus_mode": "DISABLE"
                 }
             if vlan:
-                plcy_inv[p_os_id]["vlan_ids"] = [
+                plcy_inv[os_id]["vlan_ids"] = [
                     str(vlan)
                 ]
 
@@ -416,10 +426,22 @@ class Inventory(object):
         return self.resp(200)
 
     def _get_paths_for_promoted(self, mngr_resource: dict) -> Tuple[str, str]:
-        # TODO: extract and build the Policy paths from the manager_resource object
-        return "TODO", "TODO"
+        """
+        Returns:
+            Tuple[str, str]: (path, parent_path)
+        """
+        path, parent_path = "TODO", "TODO"
+        if mngr_resource.get("resource_type") == "LogicalPort":
+            vlan = mngr_resource.get("attachment", {}).get("context", {}).get("traffic_tag")
+            switch = list(filter(lambda v: v.get("vlan") == vlan, self.inventory[self.SWITCHES].values()))
+            if switch:
+                parent_path = f"/infra/segments/{switch[0].get('id')}"
+                path = f"{parent_path}/ports/{mngr_resource.get('id')}"
+        # TODO: handle more resource types
+        return path, parent_path
 
     def _get_child_resource(self, inventory, obj_id, child_id, child_type, request, resource):
+        LOG.info(f"Getting child resource: {child_type}, {child_id}")
         if not inventory.get(obj_id):
             return self.resp(404)
         if not inventory.get(obj_id).get("_"):

@@ -1,5 +1,6 @@
 import itertools
 import time
+import traceback
 from typing import Callable, List, Set, Tuple
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import ResourceMeta
@@ -390,7 +391,10 @@ class AgentRealizer(object):
             self._check_port_migration_criteria(port=mngr_port_meta[1])
             vlan_id = os_port.get("vif_details").get("segmentation_id")
             segment = pp.metadata(pp.SEGMENT, vlan_id)
-            net_id = mp.metadata(mp.NETWORK, vlan_id).id if not segment else None
+            switch = mp.metadata(mp.NETWORK, vlan_id)
+            if not switch and not segment:
+                raise RuntimeError(f"Neither switch nor segment found in metadata for VLAN {vlan_id}.")
+            net_id = switch.id if not segment else None
             self._promote_port(net_id=net_id, port=mngr_port_meta[1])
             # Delete Manager Meta
             mp.metadata_delete(mp.PORT, os_id)
@@ -398,6 +402,7 @@ class AgentRealizer(object):
             pp.get_port(os_id=os_id)
         except Exception as e:
             LOG.info(f"Port with ID: {os_id} was not promoted to Policy API. ({e})")
+            LOG.debug(traceback.format_exc())
 
     @staticmethod
     def _check_port_migration_criteria(port: dict):
@@ -423,6 +428,7 @@ class AgentRealizer(object):
     def _get_notmigrated_switching_profiles(self) -> Tuple[list, list]:
         mgmt_sw_profiles: List[dict] = self.mngr_provider.get_all_switching_profiles()
         policy_sw_profiles: List[dict] = self.plcy_provider.get_non_default_switching_profiles()
+        not_migrated_sys_owned, not_migrated_not_sys_owned = [], []
 
         if self.force_mp_to_policy and self.migr_provider:
             mgmt_profile_ids = [p.get("id") for p in mgmt_sw_profiles if p]
@@ -443,7 +449,7 @@ class AgentRealizer(object):
                                             for p_id, p_type, sys_owned in not_migrated
                                               if not sys_owned and p_type in MigrationPayload.SUPPORTED_RESOURCE_TYPES]
 
-                return not_migrated_sys_owned, not_migrated_not_sys_owned
+        return not_migrated_sys_owned, not_migrated_not_sys_owned
 
     def _promote_switching_profiles(self):
         self._raise_for_migration_disabled()
@@ -454,7 +460,7 @@ class AgentRealizer(object):
         if len(not_migrated_not_sys_owned) > 0:
             self.migr_provider.migrate_sw_profiles(not_migrated_not_sys_owned)
 
-    def _promote_switch(self, switch_meta: ResourceMeta) -> ResourceMeta:
+    def _promote_switch(self, switch_meta: ResourceMeta) -> p_prvdr.PolicyResourceMeta:
         self._raise_for_migration_disabled()
         p_builder = PayloadBuilder()
         not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
