@@ -1,6 +1,6 @@
 import json
 
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent, client_nsx
 from networking_nsxv3.tests.unit import openstack
 from oslo_log import log as logging
 
@@ -17,6 +17,7 @@ class Environment(object):
             self.openstack_inventory.reload_inventory(inventory)
 
     def __enter__(self):
+        client_nsx.Client._instances.clear()
         self.rpc = openstack.TestNSXv3ServerRpcApi(self.openstack_inventory)
         self.manager = agent.NSXv3Manager(rpc=self.rpc, synchronization=self.synchronization, monitoring=False)
         rpc = self.manager.get_rpc_callbacks(None, None, None)
