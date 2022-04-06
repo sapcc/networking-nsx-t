@@ -366,7 +366,7 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.update_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(all(rules_logged), True)
-        
+
         LOG.info("FINISHED: test_security_group_logging")
 
     @responses.activate
@@ -612,10 +612,13 @@ class TestProviderPolicy(base.BaseTestCase):
 
     @responses.activate
     def test_security_group_revision_retry(self):
-        sg1 = {"id": "1", "revision_number": 2, "rules": [], "_revision": None}
+        sg1 = {"id": "1904e541-7fa0-475a-99dc-00ff03c7489f", "revision_number": 2, "rules": []}
         provider = provider_nsx_policy.Provider()
         provider.sg_rules_realize(sg1)
+        inv = self.inventory.inv
+        inv[Inventory.POLICIES]["1904e541-7fa0-475a-99dc-00ff03c7489f"]["_revision"] = 100
         provider.sg_rules_realize(sg1)
+        self.assertEqual(101, inv[Inventory.POLICIES].get("1904e541-7fa0-475a-99dc-00ff03c7489f").get("_revision"))
 
     @responses.activate
     def test_double_creation_of_default_group(self):

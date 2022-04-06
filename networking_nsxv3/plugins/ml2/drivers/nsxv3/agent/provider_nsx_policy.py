@@ -1,7 +1,7 @@
 import functools
 import json
 import re
-from urllib.error import HTTPError
+from requests.exceptions import HTTPError
 import uuid
 import functools
 from typing import Callable, Dict, List, Set
@@ -868,14 +868,6 @@ class Provider(base.Provider):
         try:
             o = self.client.get_unique_with_retry(path=API.SEGMENT.format(metadata.id))
             return self.metadata_update(Provider.SEGMENT, o)
-        except Exception as e:
-            LOG.error(e)
-            return None
-
-    def await_port_after_promotion(self, net_id: str, port_id: str) -> PolicyResourceMeta or None:
-        try:
-            o = self.client.get_unique_with_retry(path=API.SEGMENT_PORT_PATH.format(net_id, port_id), retries=10)
-            return self.metadata_update(Provider.SEGM_PORT, o)
         except Exception as e:
             LOG.error(e)
             return None

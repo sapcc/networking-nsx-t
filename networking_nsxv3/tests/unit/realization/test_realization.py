@@ -17,6 +17,30 @@ LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 # TODO - replace static wait/sleep with active polling
 # TODO - split into more granual functional tests
 
+def set_logging_levels():
+    cfg.CONF.set_override("default_log_levels", [
+        # Test Provider
+        'networking_nsxv3.tests.unit.provider=WARNING',
+
+        # Agent
+        'networking_nsxv3.common.synchronization=WARNING',
+        'networking_nsxv3.common.synchronization=WARNING',
+        'networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.realization=WARNING',
+        'networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy=WARNING',
+        'networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_mgmt=WARNING',
+
+        # Other packages
+        'sqlalchemy=WARNING',
+        'oslo.messaging=WARNING',
+        'oslo_messaging=WARNING',
+        'requests.packages.urllib3.connectionpool=WARNING',
+        'urllib3.connectionpool=WARNING',
+        'requests.packages.urllib3.util.retry=WARNING',
+        'urllib3.util.retry=WARNING',
+        'oslo.cache=WARNING',
+        'oslo_policy=WARNING',
+    ])
+
 
 class TestAgentRealizer(base.BaseTestCase):
     def setUp(self):
@@ -29,6 +53,7 @@ class TestAgentRealizer(base.BaseTestCase):
         g = os.environ.get
 
         # o('debug', True)
+        set_logging_levels()
         logging.setup(cfg.CONF, "demo")
 
         o("nsxv3_login_hostname", hostname, "NSXV3")
@@ -39,7 +64,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
     def _mock(self, r):
         self.inventory = provider.Inventory(base_url=self.url, version="3.0.0")
-        for m in [r.GET, r.POST, r.PUT, r.DELETE]:
+        for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
     def test_creation(self):
@@ -222,6 +247,7 @@ class TestMigrationRealization(base.BaseTestCase):
         g = os.environ.get
 
         # o('debug', True)
+        set_logging_levels()
         logging.setup(cfg.CONF, "demo")
 
         o("nsxv3_login_hostname", hostname, "NSXV3")
@@ -238,7 +264,7 @@ class TestMigrationRealization(base.BaseTestCase):
 
     def _mock(self, r):
         self.inventory = provider.Inventory(base_url=self.url, version="3.1.3")
-        for m in [r.GET, r.POST, r.PUT, r.DELETE]:
+        for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
     def test_migration(self):
@@ -262,11 +288,13 @@ class TestMigrationRealization(base.BaseTestCase):
 
         mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
+        # Validate Networks
         self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
         self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
         self.assertEquals("1000" in plcy_meta[plcy.SEGMENT]["meta"], True)
         self.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], True)
 
+        # Validate Ports
         self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], True)
         self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], True)
         self.assertEquals(c.PORT_BACKEND["id"] in mngr_meta[mngr.PORT]["meta"], True)
@@ -275,3 +303,84 @@ class TestMigrationRealization(base.BaseTestCase):
         self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
         self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
         self.assertEquals(c.PORT_DB["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+
+        # Validate Security Groups Members
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], False)
+
+        # Validate Security Group Rules Sections
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
+
+        # Validate Security Group Remote Prefix IPSets
+        for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
+
+    def test_cleanup(self):
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
+            self._mock(resp)
+
+            c = coverage
+
+            env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+            with env:
+                i = env.openstack_inventory
+                i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
+                i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
+                i.port_bind(c.PORT_BACKEND["name"], "3200")
+                i.port_bind(c.PORT_DB["name"], "3200")
+                eventlet.sleep(10)
+
+                i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
+                eventlet.sleep(1)
+                i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
+                eventlet.sleep(10)
+
+        pp = env.manager.realizer.plcy_provider
+        mp = env.manager.realizer.mngr_provider
+        mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
+
+        # Validate network creation
+        self.assertEquals("1000" in mngr_meta[mp.NETWORK]["meta"], True)
+        self.assertEquals("3200" in mngr_meta[mp.NETWORK]["meta"], True)
+        self.assertEquals("1000" in plcy_meta[pp.SEGMENT]["meta"], True)
+        self.assertEquals("3200" in plcy_meta[pp.SEGMENT]["meta"], True)
+
+        # Validate Ports
+        self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
+        self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
+        self.assertEquals(c.PORT_BACKEND["id"] in mngr_meta[mp.PORT]["meta"], True)
+        self.assertEquals(c.PORT_DB["id"] in mngr_meta[mp.PORT]["meta"], True)
+        self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[pp.SEGM_PORT]["meta"], False)
+        self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[pp.SEGM_PORT]["meta"], False)
+        self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[pp.SEGM_PORT]["meta"], True)
+        self.assertEquals(c.PORT_DB["id"] in plcy_meta[pp.SEGM_PORT]["meta"], True)
+
+        # Validate Security Groups Members
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], False)
+
+        # Validate Security Group Rules Sections
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[pp.SG_RULES]["meta"], False)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[pp.SG_RULES]["meta"], False)
+
+        # Validate Security Group Remote Prefix IPSets
+        for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertEquals("0.0.0.0/" in id or "::/" in id, True)

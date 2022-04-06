@@ -360,7 +360,10 @@ class AgentRealizer(object):
 
         if delete and not is_plcy and not is_mngr:
             # Try to delete with both Policy and Manager providers
-            pp.qos_realize(os_qos, delete=True)
+            try:
+                pp.qos_realize(os_qos, delete=True)
+            except:
+                pass
             mp.qos_realize(os_qos, delete=True)
             return
 

@@ -171,7 +171,7 @@ class Inventory(object):
             else:
                 if "policy" in request.url:
                     inventory[id] = resource
-                    resource["path"] = request.path_url
+                    resource["path"] = request.path_url.split("?")[0]
                     return self.resp(200, resource)
                 else:
                     return self.resp(404)
@@ -189,6 +189,7 @@ class Inventory(object):
         version = self._version(request)
         search = self._search_query(request)
         migration = self._migration(request)
+        infra = self._infra(request)
 
         if search:
             return search
@@ -198,6 +199,8 @@ class Inventory(object):
             return version
         if migration:
             return migration
+        if infra:
+            return infra
 
         url = urlparse(request.url)
         if url.scheme != self.url.scheme or url.netloc != self.url.netloc:
@@ -275,6 +278,40 @@ class Inventory(object):
                     200, {"results": resources, "result_count": len(resources), "cursor": f"{len(resources)}"})
 
             return self.resp(404)
+
+    def _infra(self, request: Request):
+        path_url = request.path_url.split("?")[0]
+        if "/policy/api/v1/infra" == path_url and request.method == "PATCH":
+            payload: dict = json.loads(request.body)
+            if not payload:
+                return self.resp(500, "Provide payload!")
+
+            resource_type = payload.get("resource_type")
+            if resource_type != "Infra":
+                return self.resp(500, "Only 'Infra' resource types supported!")
+
+            children: List[dict] = payload.get("children")
+            if not children:
+                return self.resp(500, "Provide 'children' in the payload!")
+
+            for child in children:
+                _children: List[dict] = child.get("children")
+                if _children:
+                    self._traverse_infra_children(_children)
+
+            return self.resp(200)
+
+    def _traverse_infra_children(self, _children):
+        for _child in _children:
+            child_key = _child.get("resource_type")[5:]
+            resource = _child.get(child_key)
+            resource_id = resource.get("id")
+            if child_key == self.POLICY_RESOURCE_TYPES.SEGMENT_PORT:
+                if _child.get("marked_for_delete"):
+                    if self.inv[Inventory.SEGMENT_PORTS].get(resource_id):
+                        del self.inv[Inventory.SEGMENT_PORTS][resource_id]
+                    if self.inv[Inventory.PORTS].get(resource_id):
+                        del self.inv[Inventory.PORTS][resource_id]
 
     def _migration(self, request: Request):
         if "/api/v1/migration" in request.url:
