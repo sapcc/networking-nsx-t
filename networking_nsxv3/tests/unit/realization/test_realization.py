@@ -313,6 +313,10 @@ class TestMigrationRealization(base.BaseTestCase):
         self.assertEquals(
             c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], False)
 
+        # Assert the old tagging based group membership is preserved
+        self.assertEquals(0, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"]))
+        self.assertEquals(0, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"]))
+
         # Validate Security Group Rules Sections
         self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
         self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
@@ -384,3 +388,77 @@ class TestMigrationRealization(base.BaseTestCase):
         # Validate Security Group Remote Prefix IPSets
         for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
+
+
+class TestGroupsRealization(base.BaseTestCase):
+    def setUp(self):
+        super(TestGroupsRealization, self).setUp()
+
+        hostname = "nsxm-l-01a.corp.local"
+        port = "443"
+
+        o = cfg.CONF.set_override
+        g = os.environ.get
+
+        # o('debug', True)
+        set_logging_levels()
+        logging.setup(cfg.CONF, "demo")
+
+        o("nsxv3_login_hostname", hostname, "NSXV3")
+        o("nsxv3_login_port", port, "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
+
+        o("force_mp_to_policy", True, "AGENT")
+        o("migration_tag_count_trigger", 4, "AGENT")
+        o("migration_tag_count_max", 6, "AGENT")
+        o("max_sg_tags_per_segment_port", 3, "AGENT")
+
+        self.url = "https://{}:{}".format(hostname, port)
+
+    def _mock(self, r):
+        self.inventory = provider.Inventory(base_url=self.url, version="3.1.3")
+        for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
+            r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
+
+    def test_transition_to_static_group_membership(self):
+        with responses.RequestsMock(assert_all_requests_are_fired=False) as resp:
+            self._mock(resp)
+            c = coverage
+
+            env = Environment(inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY))
+            with env:
+                i = env.openstack_inventory
+                i.port_bind(c.PORT_WITH_3_SG["name"], "1000")
+                eventlet.sleep(10)
+
+                # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
+
+        plcy = env.manager.realizer.plcy_provider
+        mngr = env.manager.realizer.mngr_provider
+
+        mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
+
+        # Validate Networks
+        self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
+
+        # Validate Ports
+        self.assertEquals(c.PORT_WITH_3_SG["id"] in mngr_meta[mngr.PORT]["meta"], True)
+        self.assertEquals(c.PORT_WITH_3_SG["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+
+        # Validate Security Groups Members
+        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+
+        # Assert the new static membership is used
+        self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                          in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"], True)
+        self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                          in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"], True)
+        self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                          in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_members"], True)
+
+        self.assertEquals(3, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_cidrs"]))
+        self.assertEquals(4, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
+        self.assertEquals(2, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))

@@ -53,13 +53,7 @@ class Environment(object):
 
         def meta_dict(meta):
             return {
-                k: {
-                    "id": v.id,
-                    "rev": v.rev,
-                    "age": v.age,
-                    "_revision": v.revision,
-                    "path": v.path if hasattr(v, 'path') else ""
-                } for k, v in meta.items()
+                k: v.__dict__ for k, v in meta.items()
             }
 
         mngr_metadata = self.manager.realizer.mngr_provider._metadata

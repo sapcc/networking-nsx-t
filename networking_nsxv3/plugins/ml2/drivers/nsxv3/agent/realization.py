@@ -173,7 +173,7 @@ class AgentRealizer(object):
 
             outdated = list(itertools.islice(seg_qos_outdated, _slice))
             _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:QoS", len(outdated), len(seg_qos_outdated))
+            LOG.info("Realizing %s/%s resources of Type:SegmentQoS", len(outdated), len(seg_qos_outdated))
             self.callback(outdated, self.qos)
             if _slice <= 0:
                 return
@@ -308,10 +308,10 @@ class AgentRealizer(object):
             if not (reference and mgr_meta):
                 qos = self.rpc.get_qos(os_id)
                 if qos:
-                    self._qos_realize(os_qos=qos, is_plcy=not not plcy_meta, is_mngr=not not mgr_meta)
+                    self._qos_realize(os_qos=qos, is_plcy=bool(plcy_meta), is_mngr=bool(mgr_meta))
                 else:
-                    self._qos_realize(os_qos={"id": os_id}, is_plcy=not not plcy_meta,
-                                      is_mngr=not not mgr_meta, delete=True)
+                    self._qos_realize(os_qos={"id": os_id}, is_plcy=bool(plcy_meta),
+                                      is_mngr=bool(mgr_meta), delete=True)
 
     def network(self, os_seg_id: str):
         """

@@ -156,9 +156,15 @@ class Resource(provider_nsx_mgmt.Resource):
         sg_rules = {Resource(r).os_id: r for r in rulez}
 
         sg_expr: List[dict] = self.resource.get("expression", [])
-        sg_has_expression = (not not sg_expr and isinstance(sg_expr, list))
-        sg_members = sg_expr[4].get("paths", []) if (sg_has_expression and len(sg_expr) > 3) else []
-        sg_cidrs = sg_expr[2].get("paths", []) if (sg_has_expression and len(sg_expr) > 1) else []
+        sg_has_expression = (bool(sg_expr) and isinstance(sg_expr, list))
+
+        path_expr = list(filter(lambda expr: expr.get("resource_type", "") == "PathExpression", sg_expr))\
+            if sg_has_expression else []
+        cidr_expr = list(filter(lambda expr: expr.get("resource_type", "") == "IPAddressExpression", sg_expr))\
+            if sg_has_expression else []
+
+        sg_members = list(path_expr)[0].get("paths", []) if len(path_expr) else []
+        sg_cidrs = list(cidr_expr)[0].get("ip_addresses", []) if len(cidr_expr) else []
 
         tags = self.tags
 
@@ -319,8 +325,8 @@ class Payload(provider_nsx_mgmt.Payload):
             "tags": self.tags(os_sg),
             "_revision": provider_sg.get("_revision")
         }
-
-        cidrs = self.get_compacted_cidrs(os_sg.get("cidrs")) if os_sg.get("cidrs") else None
+        _cidrs = os_sg.get("cidrs")
+        cidrs = self.get_compacted_cidrs(_cidrs) if (_cidrs and len(_cidrs) > 0) else None
         if cidrs:
             sg["expression"].append({"resource_type": "ConjunctionOperator", "conjunction_operator": "OR"})
             sg["expression"].append({"resource_type": "IPAddressExpression", "ip_addresses": cidrs})

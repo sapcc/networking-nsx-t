@@ -178,10 +178,15 @@ class Inventory(object):
         if request.method == "DELETE":
             if o:
                 del inventory[id]
-                inventory_dump = json.dumps(self.inv, indent=2)
-                if id in inventory_dump:
-                    inventory[id] = o
-                    return self.resp(417, "Object with ID:{} still in use Inventory".format(id))
+                if "SegmentPort" in str(inventory):
+                    del self.inv[Inventory.PORTS][id]
+                if o.get("category") == "Application" or o.get("resource_type") == "Group":
+                    inventory_dump = json.dumps(self.inv[Inventory.GROUPS], indent=2)
+                    inventory_dump1 = json.dumps(self.inv[Inventory.POLICIES], indent=2)
+                    inventory_dump2 = json.dumps(self.inv[Inventory.PORTS], indent=2)
+                    if (id in inventory_dump) or (id in inventory_dump1) or (id in inventory_dump2):
+                        inventory[id] = o
+                        return self.resp(417, "SG with ID:{} cannot be deleted as either it has children or it is being referenced.".format(id))
             return self.resp(200) if o else self.resp(404)
 
     def api(self, request: Request):
