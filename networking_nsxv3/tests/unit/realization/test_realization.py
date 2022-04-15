@@ -59,6 +59,7 @@ class TestAgentRealizer(base.BaseTestCase):
         o("nsxv3_login_hostname", hostname, "NSXV3")
         o("nsxv3_login_port", port, "NSXV3")
         o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
+        o("nsxv3_default_policy_infrastructure_rules", True, "NSXV3")
 
         self.url = "https://{}:{}".format(hostname, port)
 

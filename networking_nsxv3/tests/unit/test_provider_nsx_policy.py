@@ -698,3 +698,53 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEquals(len(rules), 1)
         self.assertEquals(rules[rule_valid["id"]].get("source_groups"), ['192.168.10.0/24'])
+
+    @responses.activate
+    def test_remote_prefix_orphan_cleanup(self):
+        sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": []
+        }
+
+        rule = {
+            "id": "1",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_group_id": "",
+            "remote_ip_prefix": "0.0.0.0/16",
+            "security_group_id": sg.get("id"),
+            "port_range_min": "443",
+            "port_range_max": "443",
+            "protocol": "tcp",
+        }
+
+        sg["rules"].append(rule)
+
+        p = provider_nsx_policy.Provider()
+        inv = self.inventory.inv
+
+        for i in range(1, 10):
+            cidr = f"192.168.{i}.0/24"
+            id = re.sub(r"\.|:|\/", "-", cidr)
+            data = {
+                "display_name": cidr,
+                "expression": [{
+                    "resource_type": "IPAddressExpression",
+                    "ip_addresses": [cidr]
+                }],
+                "tags": []
+            }
+            p.client.put(path=provider_nsx_policy.API.GROUP.format(id), data=data)
+
+        p.sg_rules_realize(sg)
+
+        self.assertEquals(len(inv[self.inventory.GROUPS]), 10)
+        self.assertEquals(inv[self.inventory.GROUPS].get("192-168-1-0-24", {}).get("display_name"), "192.168.1.0/24")
+
+        for id, cleanup in p.sanitize(100):
+            cleanup(id)
+
+        self.assertEquals(len(inv[self.inventory.GROUPS]), 1)
+        self.assertEquals(inv[self.inventory.GROUPS].get("0-0-0-0-16", {}).get("display_name"), "0.0.0.0/16")

@@ -1,5 +1,4 @@
 import json
-from datetime import datetime
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from neutron.db.models import allowed_address_pair
@@ -229,66 +228,6 @@ def get_port_addresses(context, port_id):
         IPAllocation.ip_address
     ).filter(
         IPAllocation.port_id == port_id
-    ).all()
-
-
-def _query_securitygrouprules(context, ids):
-    return context.session.query(
-        sg_db.SecurityGroupRule.project_id,
-        sg_db.SecurityGroupRule.id,
-        sg_db.SecurityGroupRule.security_group_id,
-        sg_db.SecurityGroupRule.remote_group_id,
-        sg_db.SecurityGroupRule.direction,
-        sg_db.SecurityGroupRule.ethertype,
-        sg_db.SecurityGroupRule.protocol,
-        sg_db.SecurityGroupRule.port_range_min,
-        sg_db.SecurityGroupRule.port_range_max,
-        sg_db.SecurityGroupRule.remote_ip_prefix,
-        sg_db.SecurityGroupRule.id
-    ).filter(
-        sg_db.SecurityGroupRule.id in ids
-    ).all()
-
-
-def _query_standardattributes(context, created_at):
-    return context.session.query(
-        StandardAttribute.id,
-        StandardAttribute.resource_type,
-        StandardAttribute.created_at,
-        StandardAttribute.updated_at,
-        StandardAttribute.description,
-        StandardAttribute.revision_number
-    ).filter(
-        StandardAttribute.created_at >= created_at
-    ).all()
-
-
-def _get_latest_changes(context, resource_type, updated_at):
-    return context.session.query(
-        sg_db.SecurityGroupRule.project_id,
-        sg_db.SecurityGroupRule.id,
-        sg_db.SecurityGroupRule.security_group_id,
-        sg_db.SecurityGroupRule.remote_group_id,
-        sg_db.SecurityGroupRule.direction,
-        sg_db.SecurityGroupRule.ethertype,
-        sg_db.SecurityGroupRule.protocol,
-        sg_db.SecurityGroupRule.port_range_min,
-        sg_db.SecurityGroupRule.port_range_max,
-        sg_db.SecurityGroupRule.remote_ip_prefix,
-        sg_db.SecurityGroupRule.id,
-        StandardAttribute.id,
-        StandardAttribute.resource_type,
-        StandardAttribute.created_at,
-        StandardAttribute.updated_at,
-        StandardAttribute.description,
-        StandardAttribute.revision_number
-    ).join(
-        StandardAttribute,
-        sg_db.SecurityGroupRule.id == StandardAttribute.id
-    ).filter(
-        StandardAttribute.updated_at >= updated_at
-    ).filter(
-        StandardAttribute.resource_type == resource_type
     ).all()
 
 
