@@ -11,7 +11,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.mp_to_policy_migration imp
 from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from oslo_config import cfg
 from oslo_log import log as logging
-from networking_nsxv3.redis.logging import LoggingMetadata
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -57,7 +56,6 @@ class AgentRealizer(object):
                     LOG.warning(str(e))
 
         self.age = int(time.time())
-        self.logging_metadata = LoggingMetadata()
         # Initializing metadata
         self.all(dryrun=True)
 
@@ -331,7 +329,6 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.plcy_provider.enable_policy_logging(log_obj)
-            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id'])
 
     def disable_policy_logging(self, log_obj: dict):
         """
@@ -341,7 +338,6 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.plcy_provider.disable_policy_logging(log_obj)
-            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id'])
 
     def update_policy_logging(self, log_obj: dict):
         """
@@ -351,7 +347,6 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.plcy_provider.update_policy_logging(log_obj)
-            self.logging_metadata.set_security_group_project(f"SG_{log_obj['resource_id']}", log_obj['project_id'])
 
     def _qos_realize(self, os_qos: dict, is_plcy: bool, is_mngr: bool, delete=False):
 

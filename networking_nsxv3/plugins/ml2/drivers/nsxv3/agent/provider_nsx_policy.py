@@ -404,7 +404,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "service_entries": service_entries,
             "action": "ALLOW",
             "logged": logged,
-            "tag": os_id.replace("-", ""),
+            "tag": sp_id,
             "scope": ["ANY"],  # Will be overwritten by Policy Scope
             "services": ["ANY"],  # Required by NSX-T Policy validation
             "path": API.RULE_PATH.format(sp_id, os_id),

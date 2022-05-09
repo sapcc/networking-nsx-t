@@ -386,5 +386,5 @@ def has_security_group_logging(context, security_group_id):
     ).filter(
         Log.resource_id == security_group_id,
         Log.enabled
-    ).one_or_none()
+    ).count()
     return True if result else False
