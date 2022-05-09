@@ -84,6 +84,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         # Ensure security groups attached to the port are synced first
         for sg in kwargs["port"].get("security_groups", []):
             self.callback(sg, self.realizer.security_group_rules)
+            # Also ensure allowed_address_pairs are re-processed
+            self.callback(sg, self.realizer.security_group_members)
         self.callback(kwargs["port"]["id"], self.realizer.port)
 
     def port_delete(self, context, **kwargs):
