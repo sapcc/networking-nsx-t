@@ -67,6 +67,7 @@ class Identifier(object):
             return True
         return False
 
+
 class Runnable(object):
 
     def __init__(self, idn, fn, priority=Priority.LOWEST):
@@ -147,7 +148,7 @@ class Runner(object):
         """
         if self._state != "started":
             report = MESSAGE.format("Skipping", ids, priority.name, fn.__name__)
-            LOG.warn("Runner is in State:%s .%s", self._state, report )
+            LOG.warn("Runner is in State:%s .%s", self._state, report)
             return
 
         for jid in ids:
@@ -216,7 +217,7 @@ class Runner(object):
         self._workers.waitall()
         self._state = "stopped"
         LOG.info("Job Queue workers terminated successfully.")
-    
+
     def wait_active_jobs_completion(self):
         self._active.join()
 
@@ -233,7 +234,7 @@ class Scheduler(object):
         limit -- the limit of execution
     """
 
-    def __init__(self, rate=1, limit=1.0, timeout=5):
+    def __init__(self, rate=1, limit: int = 1, timeout=5):
 
         if limit <= 0:
             raise ValueError('Schedule limit "{}" not positive'.format(limit))
@@ -248,8 +249,7 @@ class Scheduler(object):
 
         # Callback reporting the limit was hit
         def callback(seconds):
-            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'
-                        .format(limit, seconds))
+            LOG.warning('NSXv3 API Limit {:d}/s was hit. Sleeping for {:f}s.'.format(limit, seconds))
 
         self.callback = callback
         self._semaphore = eventlet.semaphore.Semaphore(value=self.rate)
@@ -264,7 +264,7 @@ class Scheduler(object):
     def __enter__(self):
         if self._semaphore.acquire(blocking=True, timeout=self.timeout):
             run_time = time.time()
-            offset = len(self.schedule) - self.rate
+            offset = len(self.schedule) - 1 - self.rate
 
             if offset >= 0 and run_time - self.limit < self.schedule[offset]:
                 sleeptime = run_time - self.schedule[offset] + self.limit
@@ -274,7 +274,7 @@ class Scheduler(object):
                 run_time = self.schedule[offset] + self.limit
             self.schedule.append(run_time)
             return self
-        raise Exception("{} Queue Size={}, Rate={}, Limit={}, Timeout={}"\
+        raise Exception("{} Queue Size={}, Rate={}, Limit={}, Timeout={}"
             .format("Timeout reached of trying to schedule operation.",
                     len(self.schedule), self.rate, self.limit, self.timeout))
 

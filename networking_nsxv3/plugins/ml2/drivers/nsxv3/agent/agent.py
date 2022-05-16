@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Callable
 
 import oslo_messaging
 from neutron.common import config as common_config
@@ -31,7 +32,7 @@ if not os.environ.get("DISABLE_EVENTLET_PATCHING"):
 
     eventlet.monkey_patch()
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
@@ -42,7 +43,14 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     Base class for managers RPC callbacks.
     """
 
-    def __init__(self, context, agent, sg_agent, callback, realizer):
+    def __init__(
+        self,
+        context,
+        agent,
+        sg_agent,
+        callback: Callable[[dict, Callable[[dict], None]], None],
+        realizer: realization.AgentRealizer
+    ):
         super(NSXv3AgentManagerRpcCallBackBase, self).__init__(context, agent, sg_agent)
         self.callback = callback
         self.realizer = realizer
@@ -104,33 +112,41 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def validate_policy(self, context, policy):
         pass
 
+    def create_log(self, context, log_obj):
+        self.callback(log_obj, self.realizer.enable_policy_logging)
+
+    def create_log_precommit(self, context, log_obj):
+        pass
+
+    def update_log(self, context, log_obj):
+        self.callback(log_obj, self.realizer.update_policy_logging)
+
+    def update_log_precommit(self, context, log_obj):
+        pass
+
+    def delete_log(self, context, log_obj):
+        self.callback(log_obj, self.realizer.disable_policy_logging)
+
+    def delete_log_precommit(self, context, log_obj):
+        pass
+
+    def resource_update(self, context, log_obj):
+        pass
+
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
-    def __init__(self, rpc, synchronization=True, monitoring=True, force_api=None):
+    def __init__(self, rpc: nsxv3_rpc.NSXv3ServerRpcApi, synchronization=True, monitoring=True):
         super(NSXv3Manager, self).__init__()
 
-        legacy_provider = provider_nsx_mgmt.Provider()
-        provider = provider_nsx_policy.Provider()
-
-        provider_version = provider.client.version
-        LOG.info("Detected NSX-T %s version.", provider_version)
-
-        info = "Activating %s API in primary mode and %s API in legacy mode."
-
-        if force_api == "Management" if force_api else provider_version < (3, 0):
-            LOG.info(info, "Management", "Policy")
-            tmp_provider = legacy_provider
-            legacy_provider = provider
-            provider = tmp_provider
-        else:
-            LOG.info(info, "Policy", "Management")
+        self.mngr_provider = provider_nsx_mgmt.Provider()
+        self.plcy_provider = provider_nsx_policy.Provider(zone_id=self.mngr_provider.zone_id)
 
         self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
 
         self.realizer = realization.AgentRealizer(
-            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi, provider=provider, legacy_provider=legacy_provider
-        )
+            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi,
+            mngr_provider=self.mngr_provider, plcy_provider=self.plcy_provider)
 
         self.synchronization = synchronization
         self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
@@ -309,7 +325,7 @@ def main():
         cfg.CONF.AGENT.polling_interval,
         cfg.CONF.AGENT.quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,
-        nsxv3_constants.NSXV3_BIN,
+        nsxv3_constants.NSXV3_BIN
     )
 
     LOG.info("VMware NSXv3 Agent initialized successfully.")

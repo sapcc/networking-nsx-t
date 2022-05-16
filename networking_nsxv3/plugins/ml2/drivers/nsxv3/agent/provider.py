@@ -1,28 +1,270 @@
 import abc
+import time
+import netaddr
+from oslo_config import cfg
+from oslo_log import log as logging
+from typing import Callable, Dict, List, Tuple
+
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
+
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
-class Provider:
+class ResourceMeta(abc.ABC):
+
+    def __init__(self, id: str, rev: List[str], age: int, revision: int, last_modified_time: int):
+        self.id: str = id
+        self.unique_id: str = id
+        self.rev: List[str] = rev
+        self.age: int = age
+        self.revision: int = revision
+        self.last_modified_time: int = last_modified_time
+        self._duplicates = []
+
+    def add_ambiguous(self, resource):
+        self._duplicates.append(resource)
+
+    def get_all_ambiguous(self):
+        return self._duplicates
+
+
+class Resource(abc.ABC):
+
+    @property
+    @abc.abstractclassmethod
+    def is_managed(self) -> bool:
+        """Indicates if the resource is managed by the NSX-T Agent
+
+        Returns:
+            bool: True if managed
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def type(self) -> str:
+        """NSX-T Resource Type
+
+        Returns:
+            str: Object's property - 'resource_type'
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def id(self) -> str:
+        """NSX-T Resource ID
+
+        Returns:
+            str: Object's property - 'id'
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def unique_id(self) -> str:
+        """NSX-T Resource ID
+
+        Returns:
+            str: Object's property - 'unique_id'
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def has_valid_os_uuid(self) -> bool:
+        """Indicates if the resource has valid UUID according to ISO/IEC 11578:1996
+
+        Returns:
+            bool: True if valid
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def os_id(self) -> str:
+        """OpenStack Resource ID
+
+        Returns:
+            str: Object's property - 'id'
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def tags(self) -> dict:
+        """NSX-T Resource Tags
+
+        Returns:
+            dict: {
+                "<TAG_SCOPE>": [<TAG>, <TAG> , ...]
+            }
+        """
+
+    @property
+    @abc.abstractclassmethod
+    def meta(self) -> ResourceMeta:
+        """Custom Resource Metadata
+
+        Returns:
+            ResourceMeta: Resource Metadata
+        """
+
+
+class Meta(object):
     """
-    Provider interface used for realization of OpenStack objects 
+    Resource mapping between OpenStack and Provider objects
+
+    Meta is refreshed by __enter__, reset, add, __exit__
     """
 
-    __metaclass__ = abc.ABCMeta
+    def __init__(self):
+        self.meta = dict()
+        self.meta_transaction = None
 
-    PORT = "Port"
-    QOS = "QoS"
+    def __enter__(self):
+        self.meta_transaction = dict()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.meta.update(self.meta_transaction)
+        self.meta_transaction = None
+
+    def reset(self):
+        self.meta = dict()
+
+    def keys(self) -> dict:
+        keys = self.meta.keys()
+        if self.meta_transaction:
+            keys += self.meta_transaction.keys()
+        return keys
+
+    def add(self, resource: Resource) -> ResourceMeta:
+        old_meta = self.meta.get(resource.os_id)
+        if old_meta:
+            old_meta.add_ambiguous(resource.meta)
+            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
+        elif not resource.os_id:
+            LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
+        else:
+            if resource.is_managed:
+                self.meta[resource.os_id] = resource.meta
+        return old_meta
+
+    def update(self, resource: Resource) -> ResourceMeta:
+        meta: ResourceMeta = resource.meta
+        old_meta: ResourceMeta = self.meta.get(resource.os_id)
+        if old_meta:
+            for m in old_meta.get_all_ambiguous():
+                meta.add_ambiguous(m)
+            self.meta[resource.os_id] = meta
+        else:
+            if resource.is_managed:
+                self.add(resource)
+        return old_meta
+
+    def get(self, os_id) -> ResourceMeta:
+        os_id = str(os_id)
+        meta = self.meta.get(os_id)
+        if not meta and self.meta_transaction:
+            meta = self.meta_transaction.get(os_id)
+        return meta
+
+    def rm(self, os_id) -> ResourceMeta:
+        os_id = str(os_id)
+        meta = self.meta.get(os_id)
+        if meta:
+            del self.meta[os_id]
+        if self.meta_transaction:
+            meta = self.meta_transaction.rm(os_id)
+        return meta
+
+
+class MetaProvider(object):
+    def __init__(self, endpoint):
+        self.endpoint = endpoint
+        self.meta = Meta()
+
+
+class Provider(abc.ABC):
+    """Provider interface used for realization of OpenStack objects
+    """
+
     SG_MEMBERS = "Security Group (Members)"
     SG_RULES = "Security Group (Rules)"
     SG_RULE = "Rule"
-    NETWORK = "Network"
+    SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
+
+    def __init__(self, client: Client, zone_id: str):
+        super(Provider, self).__init__()
+
+        self.provider: str = ""
+        self.client: Client = client
+        self._metadata: Dict[str, MetaProvider] = self._metadata_loader()
+        self.zone_name: str = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        self.zone_id: str = zone_id if zone_id else self._load_zone()
+        if not self.zone_id:
+            raise Exception("Not found Transport Zone {}".format(self.zone_name))
+
+    def _load_zone(self):
+        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
+        for zone in self.client.get_all(path="/api/v1/transport-zones"):
+            if zone.get("display_name") == self.zone_name:
+                return zone.get("id")
+
+    def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
+        provider_rule = dict()
+        if os_rule.get("remote_ip_prefix"):
+            net = netaddr.IPNetwork(os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
+            meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
+            if net.ip in meta_addr:
+                cidr = str(net)
+                with LockManager.get_lock(cidr):
+                    meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
+                    if not meta:
+                        o = self._create_sg_provider_rule_remote_prefix(cidr)
+                        meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
+                provider_rule["remote_ip_prefix_id"] = meta.id
+        elif os_rule.get("remote_group_id"):
+            meta = self.metadata(Provider.SG_MEMBERS, os_rule["remote_group_id"])
+            if meta:
+                provider_rule["remote_group_id"] = meta.id
+
+        provider_rule["_revision"] = revision
+        return provider_rule
+
+    def orphan_ports_tmout_passed(self, stamp: int) -> bool:
+        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
+        return (time.time() - int(stamp)) / 3600 > delay
+
+    @abc.abstractclassmethod
+    def get_port(self, os_id: str) -> Tuple[ResourceMeta, dict] or None:
+        """Get Port from NSX-T
+
+        Args:
+            os_id (str): Openstack Port ID
+
+        Returns:
+            Tuple[ResourceMeta, dict]: Resource meta, NSX-T json obj
+        """
 
     @abc.abstractmethod
-    def metadata_refresh(self, resource_type):
+    def _create_sg_provider_rule_remote_prefix(self, cidr: str) -> dict:
+        """"""
+
+    @abc.abstractmethod
+    def _metadata_loader(self) -> Dict[str, MetaProvider]:
+        """Metadata loader"""
+
+    @abc.abstractmethod
+    def metadata_refresh(self, resource_type: str) -> None:
         """
         Fetch fresh metadata out from the provider
         """
 
     @abc.abstractmethod
-    def metadata(self, resource_type, os_id):
+    def metadata_delete(self, resource_type: str, os_id: str) -> None:
+        """
+        Delete obsolated data
+        """
+
+    @abc.abstractmethod
+    def metadata(self, resource_type: str, os_id: str) -> ResourceMeta:
         """
         Get metadata for a resource from cached metadata
         :resource_type: str -- One of the RESOURCE types
@@ -31,25 +273,34 @@ class Provider:
         """
 
     @abc.abstractmethod
-    def outdated(self, resource_type, os_meta):
+    def metadata_update(self, resource_type: str, os_id: str) -> ResourceMeta:
+        """
+        Update and get metadata for a resource from cached metadata
+        :resource_type: str -- One of the RESOURCE types
+        :os_id: str -- OpenStack resource ID
+        :return: {"os_id": (self, provider_id, revision_number)}
+        """
+
+    @abc.abstractmethod
+    def outdated(self, resource_type: str, os_meta: dict) -> Tuple[set, set]:
         """
         Get outdated OpenStack IDs for a resource
         :resource_type: str -- One of the RESOURCE types
         :os_meta: {os_id:os_revision} -- OpenStack resource ID
         :return: (set(<outdated>), set(<current>)) -- Outdated OpenStack IDs
         """
-    
+
     @abc.abstractmethod
-    def age(self, resource_type, os_ids):
+    def age(self, resource_type: str, os_ids: List[str]) -> List[Tuple[str, str, int]]:
         """
         Get OpenStack resources IDs and their provider last updated age
         :resource_type: str -- One of the RESOURCE types
         :os_ids: list(<os_ids>) -- OpenStack resource IDs
-        :return: {os_id:provider_age} -- OpenStack resource ID and provider age
+        :return: [(resource_type, os_id, age)] -- OpenStack resource ID and provider age
         """
 
     @abc.abstractmethod
-    def port_realize(self, os_port, delete=False):
+    def port_realize(self, os_port: dict, delete=False):
         """
         Realize OpenStack Port in provider
 
@@ -73,7 +324,7 @@ class Provider:
         """
 
     @abc.abstractmethod
-    def qos_realize(self, os_qos, delete=False):
+    def qos_realize(self, os_qos: dict, delete=False):
         """
         Realize OpenStack QoS in provider
 
@@ -83,11 +334,11 @@ class Provider:
             "name": <str>,
             "rules": [
                 {
-                    "dscp_mark": "<Number>" 
+                    "dscp_mark": "<Number>"
                 } |
                 {
-                    "direction": "ingress|egress", 
-                    "max_kbps": "<Float>", 
+                    "direction": "ingress|egress",
+                    "max_kbps": "<Float>",
                     "max_burst_kbps": "<Float>"
                 }, ...
             ]
@@ -98,7 +349,7 @@ class Provider:
         """
 
     @abc.abstractmethod
-    def sg_members_realize(self, os_sg, delete=False):
+    def sg_members_realize(self, os_sg: dict, delete=False):
         """
         Realize OpenStack Security Group Members in provider
 
@@ -113,7 +364,7 @@ class Provider:
         """
 
     @abc.abstractmethod
-    def sg_rules_realize(self, os_sg, delete=False):
+    def sg_rules_realize(self, os_sg: dict, delete=False, logged=False):
         """
         Realize OpenStack Security Group Rules in provider
 
@@ -140,19 +391,18 @@ class Provider:
         :delete: bool -- If True will remove Security Group Rules
         """
 
-    def network_realize(self, segmentation_id):
+    def network_realize(self, segmentation_id: int):
         """
-        Realize OpenStack Network in provider 
+        Realize OpenStack Network in provider
 
         :segmentation_id: number - VLAN network segment ID
         """
 
     @abc.abstractmethod
-    def sanitize(self, slice):
+    def sanitize(self, slice: int) -> List[Tuple[str, Callable[[str], None]]]:
         """
         Get provider resources target of cleanup.
 
         :slice: number - the number of objects that can be cleaned up at this time
         :returns: list(id, callback) - where callback is a function accepting the ID
         """
-    

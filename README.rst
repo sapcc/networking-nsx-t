@@ -25,6 +25,37 @@ NSX-T L2 Agent implements OpenStack network related events into VMware NSX-T con
 - OpenStack Security Groups Members are mapped to NSX-T IP Sets
 - OpenStack Security Groups Membership is mapped to NSX-T NS Groups Membership Tags
 
+NSX-T ML2 Selective Logging
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Control over the debug log of NSX-T DWF Rules
+
+Use
+::
+
+    openstack network log create \
+        --target <port name/id> \
+        --resource <security group name / id> \
+        --resource-type security_group \
+        <name>
+    openstack network log set <name> [--enable | --disable]
+    openstack network log delete <name>
+
+Configuration:
+    - logging_url - Redis Cache url, defaults to unix:///var/run/redis/socket/redis.sock
+    - logging_expire - Redis key expiration time in days, defaults to 1 day
+
+Flow:
+    - On log create event or log enable event
+        - all rules for the resource security group will be updated to start logging
+        - every rule will use the OpenStack Rule ID as log label
+        - Redis cache will be updated (with default time out of 24h).
+            Redis entry format:
+              - key   (string) - "SG_<security group ID>" (string)
+              - value (string) - "<project ID>"           (string)
+
+    - On log delete event or log disable event
+        - all rules for the resource security group will be updated to stop logging
+        - Redis cache will be updated (with default time out of 24h)
 
 Installation
 ------------

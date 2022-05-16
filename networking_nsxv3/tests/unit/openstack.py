@@ -3,6 +3,7 @@ import json
 import uuid
 
 from oslo_log import log as logging
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
 
 LOG = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ class TestNSXv3AgentManagerRpcCallBackBase(Notifier):
     UPDATE = "update"
     DELETE = "delete"
 
-    def __init__(self, rpc):
-        self.rpc = rpc
+    def __init__(self, rpc: agent.NSXv3AgentManagerRpcCallBackBase):
+        self.rpc: agent.NSXv3AgentManagerRpcCallBackBase = rpc
 
     def notify(self, resource_type, resource, operation):
         o = copy.deepcopy(resource)
@@ -30,10 +31,8 @@ class TestNSXv3AgentManagerRpcCallBackBase(Notifier):
             )
 
         if resource_type == NeutronMock.PORT:
-            # Ports are NOT created by Nova -> vCenter
             if operation == self.ADD:
-                # TODO
-                pass
+                self.rpc.port_create(None, port=o)
             else:
                 self.rpc.port_update(None, port=o)
             self.rpc.security_groups_member_updated(None, security_groups=o.get("security_groups"))
@@ -58,7 +57,7 @@ class NeutronMock(object):
     SECURITY_GROUP_RULE = "security-group-rule"
 
     def __init__(self):
-        self.notifier = Notifier()
+        self.notifier: TestNSXv3AgentManagerRpcCallBackBase = None
         self.reload_inventory()
 
     def _get_by_name(self, resource_type, name):
@@ -231,6 +230,9 @@ class NeutronMock(object):
     def security_group_delete(self, name):
         self._delete(self.SECURITY_GROUP, name)
 
+    def network_create(self, segmentation_id):
+        self.notifier.rpc.realizer.network(segmentation_id)
+
     def port_bind(self, name, segmentation_id):
         port = self._get_by_name(NeutronMock.PORT, name)
 
@@ -239,7 +241,7 @@ class NeutronMock(object):
         if not vif.get("external-id"):
             raise Exception("Unable to bind Port:{} VIF:{}".format(name, vif))
 
-        client = self.notifier.rpc.realizer.provider.client
+        client = self.notifier.rpc.realizer.mngr_provider.client
         client.post("/api/v1/logical-ports", data={
             "logical_switch_id": vif.get("external-id"),
             "display_name": port.get("id"),
@@ -251,7 +253,7 @@ class NeutronMock(object):
         })
 
         port["vif_details"] = vif
-        
+
     def test_synchronous_port_create(self, name, segmentation_id):
         port = self._get_by_name(NeutronMock.PORT, name)
         network_segments = [
@@ -318,6 +320,14 @@ class TestNSXv3ServerRpcApi(object):
                 return True
         return False
 
+    def get_security_group_port_ids(self, os_id):
+        ports = set()
+        for port_id, port in self.inventory.get_all(NeutronMock.PORT):
+            port_sgs = port.get("security_groups")
+            if port_sgs and os_id in port_sgs:
+                ports.update(port_id)
+        return ports
+
     def get_security_group_members_effective_ips(self, os_id):
         sg = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, os_id)
         if not sg:
@@ -356,3 +366,6 @@ class TestNSXv3ServerRpcApi(object):
         id_o = self.inventory.get_all(NeutronMock.PORT)
         if [o for _, o in id_o if o.get("qos_policy_id") == os_id]:
             return self.inventory.get_by_id(NeutronMock.QOS, os_id)
+
+    def has_security_group_logging(self, security_group_id):
+        return security_group_id is not None

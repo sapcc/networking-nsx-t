@@ -1,5 +1,3 @@
-from datetime import datetime
-
 import oslo_messaging
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
@@ -58,7 +56,7 @@ class NSXv3AgentRpcClient(object):
         LOG.debug("All gents. Updating policy={}.".format(policy.name))
         if (hasattr(policy, "rules")):
             return self._get_call_context().cast(
-                self.context, 'update_policy',policy=policy)
+                self.context, 'update_policy', policy=policy)
 
     def delete_policy(self, context, policy):
         LOG.debug("All gents. Deleting policy={}.".format(policy.name))
@@ -71,6 +69,41 @@ class NSXv3AgentRpcClient(object):
             return self._get_call_context().cast(
                 self.context, 'validate_policy', policy=policy)
 
+    def create_log(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (create_log): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'create_log', log_obj=log_obj)
+
+    def create_log_precommit(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (create_log_precommit): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'create_log_precommit', log_obj=log_obj)
+
+    def update_log(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (update_log): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'update_log', log_obj=log_obj)
+
+    def update_log_precommit(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (update_log_precommit): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'update_log_precommit', log_obj=log_obj)
+
+    def delete_log(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (delete_log): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'delete_log', log_obj=log_obj)
+
+    def delete_log_precommit(self, context, log_obj):
+        LOG.debug("NSXv3AgentRpcClient: (delete_log_precommit): " + str(log_obj))
+        self._get_call_context()\
+            .cast(self.context, 'delete_log_precommit', log_obj=log_obj)
+
+    def resource_update(self, context, log_objs):
+        LOG.debug("NSXv3AgentRpcClient: (resource_update): " + str(log_objs))
+        self._get_call_context()\
+            .cast(self.context, 'resource_update', log_objs=log_objs)
+
 
 class NSXv3ServerRpcApi(object):
     """Agent-side RPC (stub) for agent-to-plugin interaction.
@@ -82,11 +115,11 @@ class NSXv3ServerRpcApi(object):
     rpc_version = nsxv3_constants.NSXV3_SERVER_RPC_VERSION
 
     def __init__(self):
-        target = oslo_messaging.Target(topic=nsxv3_constants.NSXV3_SERVER_RPC_TOPIC, 
+        target = oslo_messaging.Target(topic=nsxv3_constants.NSXV3_SERVER_RPC_TOPIC,
                                        version=self.rpc_version)
         self.context = neutron_context.get_admin_context()
         self.client = rpc.get_client(target)
-        self.host = cfg.CONF.host        
+        self.host = cfg.CONF.host
 
     @log_helpers.log_method_call
     def get_ports_with_revisions(self, limit, cursor):
@@ -131,9 +164,15 @@ class NSXv3ServerRpcApi(object):
     @log_helpers.log_method_call
     def get_security_group_members_effective_ips(self, security_group_id):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 
+        return cctxt.call(self.context,
                           'get_security_group_members_effective_ips',
                           security_group_id=security_group_id)
+
+    @log_helpers.log_method_call
+    def get_security_group_port_ids(self, security_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_security_group_port_ids',
+                          host=self.host, security_group_id=security_group_id)
 
     @log_helpers.log_method_call
     def get_security_groups_for_host(self, limit, cursor):
@@ -152,6 +191,17 @@ class NSXv3ServerRpcApi(object):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'has_security_group_used_by_host',
                           host=self.host, security_group_id=security_group_id)
+
+    @log_helpers.log_method_call
+    def get_port_logging(self, port_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_port_logging', port_id=port_id)
+
+    @log_helpers.log_method_call
+    def has_security_group_logging(self, security_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'has_security_group_logging',
+                          security_group_id=security_group_id)
 
 
 class NSXv3ServerRpcCallback(object):
@@ -177,7 +227,7 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def get_qos_policies_with_revisions(self, context, host, limit, cursor):
         return db.get_qos_policies_with_revisions(context, host, limit, cursor)
-    
+
     @log_helpers.log_method_call
     def get_security_groups_with_revisions(self, context, host, limit, cursor):
         return db.get_security_groups_with_revisions(context, host, limit, cursor)
@@ -191,7 +241,7 @@ class NSXv3ServerRpcCallback(object):
                 "revision_number": id_rev[1],
                 "stateful": id_rev[2],
                 "tags": db.get_security_group_tag(context, security_group_id),
-                "ports": db.get_port_id_by_sec_group_id(context, host, 
+                "ports": db.get_port_id_by_sec_group_id(context, host,
                                                         security_group_id)
             }
 
@@ -204,7 +254,10 @@ class NSXv3ServerRpcCallback(object):
         a = db.get_security_group_members_ips(context, security_group_id)
         b = db.get_security_group_members_address_bindings_ips(context, security_group_id)
         return [ips[0] for ips in a + b]
-            
+
+    @log_helpers.log_method_call
+    def get_security_group_port_ids(self, context, host, security_group_id):
+        return db.get_security_group_port_ids(context, host, security_group_id)
 
     @log_helpers.log_method_call
     def get_security_groups_for_host(self, context, host, limit, cursor):
@@ -213,7 +266,7 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def get_remote_security_groups_for_host(self, context, host, limit, cursor):
         return db.get_remote_security_groups_for_host(context, host, limit, cursor)
-    
+
     @log_helpers.log_method_call
     def has_security_group_used_by_host(self, context, host, security_group_id):
         return db.has_security_group_used_by_host(context, host, security_group_id)
@@ -229,7 +282,7 @@ class NSXv3ServerRpcCallback(object):
         for ip in db.get_port_addresses(context, port_id):
             if "/" in ip:
                 continue
-            port["address_bindings"].append({"ip_address": ip[0],  "mac_address": port["mac_address"]})
+            port["address_bindings"].append({"ip_address": ip[0], "mac_address": port["mac_address"]})
 
         for ip, mac in db.get_port_allowed_pairs(context, port_id):
             if "/" in ip:
@@ -238,7 +291,7 @@ class NSXv3ServerRpcCallback(object):
 
         for sg_id in db.get_port_security_groups(context, port_id):
             port["security_groups"].append(sg_id[0])
-        
+
         return port
 
     @log_helpers.log_method_call
@@ -254,5 +307,13 @@ class NSXv3ServerRpcCallback(object):
             qos["rules"].append({"dscp_mark": dscp_mark})
 
         for dir, bps, burst in db.get_qos_bwl_rules(context, qos_id):
-            qos["rules"].append({"direction": dir,"max_kbps": bps, "max_burst_kbps": burst})
+            qos["rules"].append({"direction": dir, "max_kbps": bps, "max_burst_kbps": burst})
         return qos
+
+    @log_helpers.log_method_call
+    def get_port_logging(self, context, port_id):
+        return db.get_port_logging(context, port_id)
+
+    @log_helpers.log_method_call
+    def has_security_group_logging(self, context, security_group_id):
+        return db.has_security_group_logging(context, security_group_id)

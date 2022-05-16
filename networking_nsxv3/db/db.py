@@ -1,10 +1,10 @@
 import json
-from datetime import datetime
 
 from networking_nsxv3.common import constants as nsxv3_constants
 from neutron.db.models import allowed_address_pair
 from neutron.db.models import securitygroup as sg_db
 from neutron.db.models import tag as tag_model
+from neutron.db.models.loggingapi import Log
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
 from neutron.db.models_v2 import IPAllocation, Port
 from neutron.db.qos.models import (QosBandwidthLimitRule, QosDscpMarkingRule,
@@ -13,6 +13,7 @@ from neutron.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
+# from sqlalchemy.orm.session import Session
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
@@ -230,66 +231,6 @@ def get_port_addresses(context, port_id):
     ).all()
 
 
-def _query_securitygrouprules(context, ids):
-    return context.session.query(
-        sg_db.SecurityGroupRule.project_id,
-        sg_db.SecurityGroupRule.id,
-        sg_db.SecurityGroupRule.security_group_id,
-        sg_db.SecurityGroupRule.remote_group_id,
-        sg_db.SecurityGroupRule.direction,
-        sg_db.SecurityGroupRule.ethertype,
-        sg_db.SecurityGroupRule.protocol,
-        sg_db.SecurityGroupRule.port_range_min,
-        sg_db.SecurityGroupRule.port_range_max,
-        sg_db.SecurityGroupRule.remote_ip_prefix,
-        sg_db.SecurityGroupRule.id
-    ).filter(
-        sg_db.SecurityGroupRule.id in ids
-    ).all()
-
-
-def _query_standardattributes(context, created_at):
-    return context.session.query(
-        StandardAttribute.id,
-        StandardAttribute.resource_type,
-        StandardAttribute.created_at,
-        StandardAttribute.updated_at,
-        StandardAttribute.description,
-        StandardAttribute.revision_number
-    ).filter(
-        StandardAttribute.created_at >= created_at
-    ).all()
-
-
-def _get_latest_changes(context, resource_type, updated_at):
-    return context.session.query(
-        sg_db.SecurityGroupRule.project_id,
-        sg_db.SecurityGroupRule.id,
-        sg_db.SecurityGroupRule.security_group_id,
-        sg_db.SecurityGroupRule.remote_group_id,
-        sg_db.SecurityGroupRule.direction,
-        sg_db.SecurityGroupRule.ethertype,
-        sg_db.SecurityGroupRule.protocol,
-        sg_db.SecurityGroupRule.port_range_min,
-        sg_db.SecurityGroupRule.port_range_max,
-        sg_db.SecurityGroupRule.remote_ip_prefix,
-        sg_db.SecurityGroupRule.id,
-        StandardAttribute.id,
-        StandardAttribute.resource_type,
-        StandardAttribute.created_at,
-        StandardAttribute.updated_at,
-        StandardAttribute.description,
-        StandardAttribute.revision_number
-    ).join(
-        StandardAttribute,
-        sg_db.SecurityGroupRule.id == StandardAttribute.id
-    ).filter(
-        StandardAttribute.updated_at >= updated_at
-    ).filter(
-        StandardAttribute.resource_type == resource_type
-    ).all()
-
-
 def get_rules_for_security_group_id(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroupRule
@@ -396,6 +337,24 @@ def get_security_group_members_ips(context, security_group_id):
     ).all()
 
 
+def get_security_group_port_ids(context, host, security_group_id):
+    # ses: Session = context.session
+    ses = context.session
+    res = ses.query(
+        sg_db.SecurityGroupPortBinding.port_id
+    ).distinct(
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
+    ).filter(
+        sg_db.SecurityGroupPortBinding.security_group_id == security_group_id,
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).all()
+
+    return [port_id for (port_id,) in res]
+
+
 def get_security_group_members_address_bindings_ips(context,
                                                     security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
@@ -408,3 +367,24 @@ def get_security_group_members_address_bindings_ips(context,
     ).filter(
         security_group_id == group_id
     ).all()
+
+
+def get_port_logging(context, port_id):
+    return context.session.query(
+        Log.project_id,
+        Log.resource_id,
+        Log.enabled
+    ).filter(
+        Log.target_id == port_id
+    ).one_or_none()
+
+
+def has_security_group_logging(context, security_group_id):
+    result = context.session.query(
+        Log.resource_id,
+        Log.enabled
+    ).filter(
+        Log.resource_id == security_group_id,
+        Log.enabled
+    ).count()
+    return True if result else False

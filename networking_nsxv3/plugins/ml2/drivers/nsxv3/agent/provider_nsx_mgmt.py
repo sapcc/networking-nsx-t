@@ -1,5 +1,6 @@
 import copy
 import time
+from typing import Dict, List, Tuple
 import uuid
 
 import netaddr
@@ -8,11 +9,11 @@ from oslo_log import log as logging
 
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as abs
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class API(object):
@@ -39,105 +40,25 @@ class API(object):
     SECTION = "/api/v1/firewall/sections/{}"
 
     PARAMS_GET_DEFAULT_PROFILES = {"switching_profile_type": "IpDiscoverySwitchingProfile,SpoofGuardSwitchingProfile"}
+    PARAMS_ALL_PROFILES = {"include_system_owned": True}
 
     PARAMS_GET_QOS_PROFILES = {"switching_profile_type": "QosSwitchingProfile"}
 
 
-class Meta(object):
-    """
-    Resource mapping between OpenStack and Provider objects
-
-    Meta is refreshed by __enter__, reset, add, __exit__
-    """
-
-    def __init__(self):
-        self.meta = dict()
-        self.meta_transaction = None  # TODO: That field seems never populated with data?
-
-    def __enter__(self):
-        self.meta_transaction = dict()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self.meta.update(self.meta_transaction)
-        self.meta_transaction = None
-
-    def reset(self):
-        self.meta = dict()
-
-    def keys(self):
-        keys = self.meta.keys()
-        if self.meta_transaction:
-            keys += self.meta_transaction.keys()
-        return keys
-
-    def add(self, resource):
-        old_meta = self.meta.get(resource.os_id)
-        if old_meta:
-            old_meta.add_ambiguous(resource.meta)
-            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
-        elif not resource.os_id:
-            LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
-        else:
-            self.meta[resource.os_id] = resource.meta
-        return old_meta
-
-    def update(self, resource):
-        meta = resource.meta
-        old_meta = self.meta.get(resource.os_id)
-        if old_meta:
-            for m in old_meta.get_all_ambiguous():
-                meta.add_ambiguous(m)
-            self.meta[resource.os_id] = meta
-        else:
-            self.add(resource)
-        return old_meta
-
-    def get(self, os_id):
-        os_id = str(os_id)
-        meta = self.meta.get(os_id)
-        if not meta and self.meta_transaction:
-            meta = self.meta_transaction.get(os_id)
-        return meta
-
-    def rm(self, os_id):
-        os_id = str(os_id)
-        meta = self.meta.get(os_id)
-        if meta:
-            del self.meta[os_id]
-        if self.meta_transaction:
-            meta = self.meta_transaction.rm(os_id)
-        return meta
+class ResourceMeta(base.ResourceMeta):
+    pass
 
 
-class MetaProvider(object):
-    def __init__(self, endpoint):
-        self.endpoint = endpoint
-        self.meta = Meta()
-
-
-class ResourceMeta(object):
-    def __init__(self, id, rev, age, _revision, _last_modified_time):
-        self.id = id
-        self.rev = rev
-        self.age = age
-        self._revision = _revision
-        self._last_modified_time = _last_modified_time
-        self._duplicates = []
-
-    def add_ambiguous(self, resource):
-        self._duplicates.append(resource)
-
-    def get_all_ambiguous(self):
-        return self._duplicates
-
-
-class Resource(object):
-    def __init__(self, resource):
+class Resource(base.Resource):
+    def __init__(self, resource: dict):
         self.resource = resource
 
     @property
     def is_managed(self):
+        if self.type == "LogicalSwitch" or self.type == "QosSwitchingProfile":
+            return True
+        if "policyPath" in self.tags:
+            return False
         if not self.resource.get("locked"):
             user = self.resource.get("_create_user")
             if user == "admin":
@@ -155,6 +76,10 @@ class Resource(object):
 
     @property
     def id(self):
+        return self.resource.get("id")
+
+    @property
+    def unique_id(self):
         return self.resource.get("id")
 
     @property
@@ -198,15 +123,15 @@ class Resource(object):
             id=self.id,
             rev=tags.get(NSXV3_REVISION_SCOPE),  # empty set for NSGroup
             age=int(time.time()) if self.type == "NSGroup" else tags.get(NSXV3_AGE_SCOPE),
-            _revision=self.resource.get("_revision"),
-            _last_modified_time=self.resource.get("_last_modified_time"),
+            revision=self.resource.get("_revision"),
+            last_modified_time=self.resource.get("_last_modified_time"),
         )
 
 
 class Payload(object):
-    def get_compacted_cidrs(self, os_cidrs):
-        """
-        Reduce number of CIDRs based on the netmask overlapping
+    @staticmethod
+    def get_compacted_cidrs(os_cidrs) -> dict:
+        """Reduce number of CIDRs based on the netmask overlapping
         """
         compacted_cidrs = []
         for cidr in netaddr.IPSet(os_cidrs).iter_cidrs():
@@ -218,7 +143,8 @@ class Payload(object):
                 compacted_cidrs.append(str(cidr))
         return compacted_cidrs
 
-    def tags(self, os_obj, more=dict()):
+    @staticmethod
+    def tags(os_obj, more=dict()) -> list:
         tags = {
             NSXV3_AGE_SCOPE: int(time.time())
         }
@@ -236,7 +162,8 @@ class Payload(object):
 
         return provider_tags
 
-    def ip_discovery(self):
+    @staticmethod
+    def ip_discovery() -> dict:
         os_id = cfg.CONF.NSXV3.nsxv3_ip_discovery_switching_profile
         return {
             "resource_type": "IpDiscoverySwitchingProfile",
@@ -247,11 +174,13 @@ class Payload(object):
             "display_name": os_id,
         }
 
-    def spoofguard(self):
+    @staticmethod
+    def spoofguard() -> dict:
         os_id = cfg.CONF.NSXV3.nsxv3_spoof_guard_switching_profile
         return {"resource_type": "SpoofGuardSwitchingProfile", "white_list_providers": [], "display_name": os_id}
 
-    def network(self, os_net, provider_net):
+    @staticmethod
+    def network(os_net, provider_net) -> dict:
         return {
             "resource_type": "LogicalSwitch",
             "vlan": os_net.get("segmentation_id"),
@@ -264,7 +193,7 @@ class Payload(object):
             "switching_profile_ids": [],
         }
 
-    def qos(self, os_qos, provider_qos):
+    def qos(self, os_qos, provider_qos) -> dict:
         payload = {
             "resource_type": "QosSwitchingProfile",
             "display_name": os_qos.get("id"),
@@ -273,7 +202,7 @@ class Payload(object):
             "dscp": {"mode": "TRUSTED", "priority": 0},
         }
 
-        type = {"ingress": "IngressRateShaper", "egress": "EgressRateShaper"}
+        _type = {"ingress": "IngressRateShaper", "egress": "EgressRateShaper"}
 
         for rule in os_qos.get("rules"):
             if "dscp_mark" in rule:
@@ -281,7 +210,7 @@ class Payload(object):
                 continue
             payload["shaper_configuration"].append(
                 {
-                    "resource_type": type.get(rule.get("direction")),
+                    "resource_type": _type.get(rule.get("direction")),
                     "enabled": True,
                     "average_bandwidth_mbps": int(round(float(rule["max_kbps"]) / 1024)),
                     "peak_bandwidth_mbps": int(round(float(rule["max_kbps"]) / 1024) * 2),
@@ -290,7 +219,7 @@ class Payload(object):
             )
         return payload
 
-    def port(self, os_port, provider_port):
+    def port(self, os_port, provider_port) -> dict:
         p = os_port
         pp = provider_port
 
@@ -298,6 +227,7 @@ class Payload(object):
         p_qid = pp.get("qos_policy_id")
 
         port = {
+            "resource_type": "LogicalPort",
             "display_name": os_port.get("id"),
             "logical_switch_id": p.get("vif_details").get("nsx-logical-switch-id"),
             "admin_state": "UP",
@@ -329,7 +259,7 @@ class Payload(object):
 
         return port
 
-    def sg_members_container(self, os_sg, provider_sg):
+    def sg_members_container(self, os_sg, provider_sg) -> dict:
         cidrs = self.get_compacted_cidrs(os_sg.get("cidrs"))
 
         return {
@@ -341,7 +271,7 @@ class Payload(object):
             ),
         }
 
-    def sg_rules_ext_container(self, os_sg, provider_sg):
+    def sg_rules_ext_container(self, os_sg, provider_sg) -> dict:
         return {
             "resource_type": "NSGroup",
             "display_name": os_sg.get("id"),
@@ -360,7 +290,7 @@ class Payload(object):
             ),
         }
 
-    def sg_rules_container(self, os_sg, provider_sg):
+    def sg_rules_container(self, os_sg, provider_sg) -> dict:
         section = {
             "resource_type": "FirewallSection",
             "display_name": os_sg.get("id"),
@@ -383,7 +313,7 @@ class Payload(object):
 
         return section
 
-    def sg_rule(self, os_rule, provider_rule):
+    def sg_rule(self, os_rule, provider_rule) -> dict:
         id = os_rule["id"]
         ethertype = os_rule["ethertype"]
         direction = os_rule["direction"]
@@ -412,11 +342,12 @@ class Payload(object):
             "_revision": provider_rule["_revision"],
         }
 
-    def sg_rule_remote(self, cidr):
+    def sg_rule_remote(self, cidr) -> dict:
         # NSX bug. Related IPSet to handle  0.0.0.0/x and ::0/x
         return {"resource_type": "IPSet", "display_name": cidr, "ip_addresses": [cidr], "tags": self.tags(None)}
 
-    def _sg_rule_target(self, os_rule, provider_rule):
+    @staticmethod
+    def _sg_rule_target(os_rule, provider_rule) -> list:
 
         if os_rule.get("remote_group_id"):
             id = provider_rule.get("remote_group_id")
@@ -437,23 +368,25 @@ class Payload(object):
 
         return [{"target_type": type, "target_id": id, "is_valid": True, "target_display_name": name}]
 
-    def _sg_rule_service(self, os_rule, provider_rule, subtype="NSService"):
-        min = os_rule.get("port_range_min")
-        max = os_rule.get("port_range_max")
+    @staticmethod
+    def _sg_rule_service(os_rule, provider_rule, subtype="NSService") -> Tuple[dict, str]:
+        _min = os_rule.get("port_range_min")
+        _max = os_rule.get("port_range_max")
         protocol = os_rule.get("protocol")
         ethertype = os_rule.get("ethertype")
 
         if protocol == "icmp":
-            min = int(min) if str(min).isdigit() else min
-            max = int(max) if str(max).isdigit() else max
+            _min = int(_min) if str(_min).isdigit() else _min
+            _max = int(_max) if str(_max).isdigit() else _max
 
-            if min and VALID_ICMP_RANGES[ethertype].get(min) is None:
-                return (None, "Not supported ICMP Range {}-{}".format(min, max))
-            if max and max not in VALID_ICMP_RANGES[ethertype].get(min, []):
-                return (None, "Not supported ICMP Range {}-{}".format(min, max))
+            if _min and VALID_ICMP_RANGES[ethertype].get(_min) is None:
+                return None, "Not supported ICMP Range {}-{}".format(_min, _max)
+            if _max and _max not in VALID_ICMP_RANGES[ethertype].get(_min, []):
+                return None, "Not supported ICMP Range {}-{}".format(_min, _max)
 
-            icmp_type = str(min) if min is not None else ""
-            icmp_code = str(max) if max is not None and min is not None and VALID_ICMP_RANGES[ethertype][min] else ""
+            icmp_type = str(_min) if _min is not None else ""
+            icmp_code = str(
+                _max) if _max is not None and _min is not None and VALID_ICMP_RANGES[ethertype][_min] else ""
             return (
                 {
                     "resource_type": "ICMPType{}".format(subtype),
@@ -465,14 +398,14 @@ class Payload(object):
             )
 
         if protocol in ["tcp", "udp"]:
-            if not min and not max:
-                min = "1"
-                max = "65535"
+            if not _min and not _max:
+                _min = "1"
+                _max = "65535"
             return (
                 {
                     "resource_type": "L4PortSet{}".format(subtype),
                     "l4_protocol": {"tcp": "TCP", "udp": "UDP"}.get(protocol),
-                    "destination_ports": ["{}-{}".format(min, max) if min != max and max else str(min)],
+                    "destination_ports": ["{}-{}".format(_min, _max) if _min != _max and _max else str(_min)],
                     "source_ports": ["1-65535"],
                 },
                 None,
@@ -491,37 +424,27 @@ class Payload(object):
             )
 
         if not protocol:  # ANY
-            return (None, None)
+            return None, None
 
-        return (None, "Unsupported protocol {}.".format(protocol))
+        return None, "Unsupported protocol {}.".format(protocol)
 
 
-class Provider(abs.Provider):
+class Provider(base.Provider):
 
+    PORT = "Port"
+    QOS = "QoS"
+    NETWORK = "Network"
     SG_RULES_EXT = "Security Group (Rules Enforcement)"
-    SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
 
-    def __init__(self, payload=Payload):
+    def __init__(self, payload: Payload = Payload()):
+        super(Provider, self).__init__(client=Client(), zone_id=None)
+        LOG.info("Activating Management API Provider.")
         self.provider = "Management"
-        self._metadata = self._metadata_loader()
 
-        self.client = Client()
-        self.payload = payload()
-
-        self.zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
-        self.zone_id = None
+        self.payload: Payload = payload
         self.switch_profiles = []
 
-        self._load_zone()
         self._setup_default_switching_profiles()
-
-    def _load_zone(self):
-        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
-        for zone in self.client.get_all(path=API.ZONES):
-            if zone.get("display_name") == self.zone_name:
-                self.zone_id = zone.get("id")
-        if not self.zone_id:
-            raise Exception("Not found Transport Zone {}".format(self.zone_name))
 
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
@@ -555,15 +478,19 @@ class Provider(abs.Provider):
         ]
 
     def _metadata_loader(self):
+        mp = base.MetaProvider
         return {
-            Provider.PORT: MetaProvider(API.PORTS),
-            Provider.QOS: MetaProvider(API.PROFILES),
-            Provider.SG_MEMBERS: MetaProvider(API.IPSETS),
-            Provider.SG_RULES: MetaProvider(API.SECTIONS),
-            Provider.SG_RULES_EXT: MetaProvider(API.NSGROUPS),
-            Provider.SG_RULES_REMOTE_PREFIX: MetaProvider(API.IPSETS),
-            Provider.NETWORK: MetaProvider(API.SWITCHES),
+            Provider.PORT: mp(API.PORTS),
+            Provider.QOS: mp(API.PROFILES),
+            Provider.SG_MEMBERS: mp(API.IPSETS),
+            Provider.SG_RULES: mp(API.SECTIONS),
+            Provider.SG_RULES_EXT: mp(API.NSGROUPS),
+            Provider.SG_RULES_REMOTE_PREFIX: mp(API.IPSETS),
+            Provider.NETWORK: mp(API.SWITCHES),
         }
+
+    def get_all_switching_profiles(self):
+        return self.client.get_all(path=API.PROFILES, params=API.PARAMS_ALL_PROFILES)
 
     def metadata_refresh(self, resource_type, params=dict()):
 
@@ -599,6 +526,7 @@ class Provider(abs.Provider):
                                     break
                             if not is_valid_vlan:
                                 continue
+
                         provider.meta.add(res)
 
     def metadata_delete(self, resource_type, os_id):
@@ -625,7 +553,7 @@ class Provider(abs.Provider):
         with LockManager.get_lock(resource_type):
             return self._metadata[resource_type].meta.get(os_id)
 
-    def meta_provider(self, resource_type) -> MetaProvider:
+    def meta_provider(self, resource_type) -> base.MetaProvider:
         return self._metadata.get(resource_type)
 
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
@@ -661,7 +589,7 @@ class Provider(abs.Provider):
                     if o.get("attachment", {}).get("context", {}).get("vif_type") != "CHILD":
                         stamp = int(o.get("_last_modified_time")) / 1000
 
-                        if not self._del_tmout_passed(stamp):
+                        if not self.orphan_ports_tmout_passed(stamp):
                             LOG.info(end_report, "rescheduled for deletion")
                             return metadata
 
@@ -677,9 +605,8 @@ class Provider(abs.Provider):
                         "Skipping update of NSGroup:%s",
                     )
                 data = convertor(os_o, provider_o)
-                revision = metadata._revision
-                if revision != None:
-                    data["_revision"] = revision
+                if metadata.revision != None:
+                    data["_revision"] = metadata.revision
                 o = self.client.put(path=path, data=data)
                 LOG.info(end_report, "updated")
                 return self.metadata_update(resource_type, o.json())
@@ -691,11 +618,7 @@ class Provider(abs.Provider):
                 return self.metadata_update(resource_type, o.json())
             LOG.info(end_report, "already deleted")
 
-    def _del_tmout_passed(self, stamp):
-        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
-        return (time.time() - stamp) / 3600 > delay
-
-    def outdated(self, resource_type, os_meta):
+    def outdated(self, resource_type: str, os_meta: dict):
         self.metadata_refresh(resource_type)
 
         if resource_type == Provider.SG_RULES:
@@ -719,7 +642,8 @@ class Provider(abs.Provider):
         # Remove Ports not yet exceeding delete timeout
         if resource_type == Provider.PORT:
             orphaned = [
-                orphan for orphan in orphaned if self._del_tmout_passed(meta.get(orphan)._last_modified_time / 1000)
+                orphan for orphan in orphaned
+                if self.orphan_ports_tmout_passed(meta.get(orphan).last_modified_time / 1000)
             ]
 
         outdated.update(orphaned)
@@ -743,37 +667,38 @@ class Provider(abs.Provider):
         current = k2.difference(outdated)
         if resource_type == Provider.PORT:
             # Ignore ports that are going to be deleted anyway (and therefor not existing in neutron)
-            current = [_id for _id in current if _id in os_meta]
+            current = set([_id for _id in current if _id in os_meta])
         return outdated, current
 
-    def age(self, resource_type, os_ids):
+    def age(self, resource_type: str, os_ids: List[str]):
         return [(resource_type, id, self.metadata(resource_type, id).age) for id in os_ids]
 
-    def port_realize(self, os_port, delete=False):
+    def get_port(self, os_id):
+        port = self.client.get_unique(path=API.PORTS, params={"attachment_id": os_id})
+        if port:
+            return self.metadata_update(Provider.PORT, port), port
+        return None
+
+    def port_realize(self, os_port: dict, delete=False):
         provider_port = dict()
 
         if delete:
             self._realize(Provider.PORT, delete, None, os_port, provider_port)
             return
 
-        def get(os_id):
-            port = self.client.get_unique(path=API.PORTS, params={"attachment_id": os_id})
-            if port:
-                return self.metadata_update(Provider.PORT, port)
-
         if os_port.get("parent_id"):
             # Child port always created internally
-            parent_port = get(os_port.get("parent_id"))
-            if parent_port:
-                provider_port["parent_id"] = parent_port.id
+            parent_port = self.get_port(os_port.get("parent_id"))
+            if parent_port and parent_port[0]:
+                provider_port["parent_id"] = parent_port[0].id
             else:
                 LOG.warning("Not found. Parent Port:%s for Child Port:%s", os_port.get("parent_id"), os_port.get("id"))
                 return
         else:
             # Parent port is NOT always created externally
-            port = get(os_port.get("id"))
-            if port:
-                provider_port["id"] = port.id
+            port = self.get_port(os_port.get("id"))
+            if port and port[0]:
+                provider_port["id"] = port[0].id
             else:
                 LOG.warning("Not found. Port: %s", os_port.get("id"))
 
@@ -782,7 +707,7 @@ class Provider(abs.Provider):
             if meta_qos:
                 provider_port["qos_policy_id"] = meta_qos.id
             else:
-                LOG.error("Not found. QoS:%s for Port:%s", os_port.get("qos_policy_id"), os_port.get("id"))
+                LOG.warning("Not found. QoS:%s for Port:%s", os_port.get("qos_policy_id"), os_port.get("id"))
 
         provider_port["switching_profile_ids"] = copy.deepcopy(self.switch_profiles)
 
@@ -799,7 +724,7 @@ class Provider(abs.Provider):
             return
         return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, sg, dict())
 
-    def sg_rules_realize(self, os_sg, delete=False):
+    def sg_rules_realize(self, os_sg, delete=False, logged=False):
         provider_sg = dict()
 
         nsg_args = [Provider.SG_RULES_EXT, delete, self.payload.sg_rules_ext_container, os_sg, dict()]
@@ -816,13 +741,13 @@ class Provider(abs.Provider):
         meta_sec = self._realize(*sec_args)
 
         # CRUD rules
-        self._sg_rules_realize(os_sg, meta_sec)
+        self._sg_rules_realize(os_sg, meta_sec, logged=logged)
 
         # Update section tags(revision) when all rules applied successfully
         provider_sg["tags_update"] = True
         self._realize(*sec_args)
 
-    def _sg_rules_realize(self, os_sg, meta_sg):
+    def _sg_rules_realize(self, os_sg, meta_sg: ResourceMeta, logged=False):
 
         sg_rules = {o.get("id"): o for o in os_sg.get("rules")}
 
@@ -831,7 +756,6 @@ class Provider(abs.Provider):
             return
 
         sec_id = meta_sg.id
-        sec_rev = meta_sg._revision
 
         sec_rules = self.metadata(Provider.SG_RULE, os_sg.get("id"))
 
@@ -874,27 +798,6 @@ class Provider(abs.Provider):
 
         resp = self.client.get(path=API.SECTION.format(sec_id))
         self.metadata_update(Provider.SG_RULES, resp.json())
-
-    def _get_sg_provider_rule(self, os_rule, revision):
-        provider_rule = dict()
-        if os_rule.get("remote_ip_prefix"):
-            net = netaddr.IPNetwork(os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
-            meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
-            if net.ip in meta_addr:
-                cidr = str(net)
-                with LockManager.get_lock(cidr):
-                    meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
-                    if not meta:
-                        o = self._create_sg_provider_rule_remote_prefix(cidr)
-                        meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
-                provider_rule["remote_ip_prefix_id"] = meta.id
-        elif os_rule.get("remote_group_id"):
-            meta = self.metadata(Provider.SG_MEMBERS, os_rule["remote_group_id"])
-            if meta:
-                provider_rule["remote_group_id"] = meta.id
-
-        provider_rule["_revision"] = revision
-        return provider_rule
 
     def _create_sg_provider_rule_remote_prefix(self, cidr):
         return self.client.post(path=API.IPSETS, data=self.payload.sg_rule_remote(cidr)).json()

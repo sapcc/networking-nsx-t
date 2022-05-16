@@ -1,5 +1,6 @@
 SECURITY_GROUP_AUTH = {
     "id": "22D4CB40-31A6-4C61-A527-76B7867E221B",
+    "name": "22D4CB40-31A6-4C61-A527-76B7867E221B",
     "tags": ["capability_tcp_strict"],
     "revision_number": 1,
     "rules": [
@@ -19,6 +20,7 @@ SECURITY_GROUP_AUTH = {
 
 SECURITY_GROUP_FRONTEND = {
     "id": "ED75FC68-69BB-4034-A6E9-A7586792B229",
+    "name": "ED75FC68-69BB-4034-A6E9-A7586792B229",
     "tags": ["capability_tcp_strict"],
     "revision_number": 1,
     "rules": [
@@ -179,6 +181,7 @@ SECURITY_GROUP_FRONTEND = {
 
 SECURITY_GROUP_BACKEND = {
     "id": "28778C62-C22F-47DD-801F-CF06DF3D07AD",
+    "name": "28778C62-C22F-47DD-801F-CF06DF3D07AD",
     "tags": [],
     "revision_number": 2,
     "rules": [
@@ -220,6 +223,7 @@ SECURITY_GROUP_BACKEND = {
 
 SECURITY_GROUP_DB = {
     "id": "EDE7338F-9AE3-445C-96D3-D8EDDEBC8277",
+    "name": "EDE7338F-9AE3-445C-96D3-D8EDDEBC8277",
     "tags": [],
     "revision_number": 3,
     "rules": [
@@ -251,6 +255,7 @@ SECURITY_GROUP_DB = {
 
 SECURITY_GROUP_OPERATIONS = {
     "id": "34B87931-F273-4C6D-96D0-B3979E30254A",
+    "name": "34B87931-F273-4C6D-96D0-B3979E30254A",
     "tags": [],
     "revision_number": 1,
     "rules": [
@@ -292,6 +297,7 @@ SECURITY_GROUP_OPERATIONS = {
 
 SECURITY_GROUP_OPERATIONS_NOT_REFERENCED = {
     "id": "FE6C80A3-D68F-4770-A2F3-D068AC9C0A40",
+    "name": "FE6C80A3-D68F-4770-A2F3-D068AC9C0A40",
     "tags": [],
     "revision_number": 1,
     "rules": [
@@ -319,13 +325,13 @@ QOS_EXTERNAL = {
             "dscp_mark": "5"
         },
         {
-            "direction": "ingress", 
-            "max_kbps": "4800", 
+            "direction": "ingress",
+            "max_kbps": "4800",
             "max_burst_kbps": "100000"
         },
         {
-            "direction": "egress", 
-            "max_kbps": "6400", 
+            "direction": "egress",
+            "max_kbps": "6400",
             "max_burst_kbps": "128000"
         }
     ]
@@ -341,8 +347,8 @@ QOS_INTERNAL = {
             "dscp_mark": "2"
         },
         {
-            "direction": "ingress", 
-            "max_kbps": "2400", 
+            "direction": "ingress",
+            "max_kbps": "2400",
             "max_burst_kbps": "64000"
         }
     ]
@@ -358,8 +364,8 @@ QOS_NOT_REFERENCED = {
             "dscp_mark": "2"
         },
         {
-            "direction": "ingress", 
-            "max_kbps": "2400", 
+            "direction": "ingress",
+            "max_kbps": "2400",
             "max_burst_kbps": "64000"
         }
     ]
@@ -408,6 +414,28 @@ PORT_FRONTEND_INTERNAL = {
     }
 }
 
+PORT_WITH_3_SG = {
+    "id": "2DD31A2C-A93A-4EE8-BD2E-2375E5CA1661",
+    "name": "2DD31A2C-A93A-4EE8-BD2E-2375E5CA1661",
+    "revision_number": "2",
+    "parent_id": "",
+    "mac_address": "fa:16:3e:e4:11:f5",
+    "admin_state_up": "UP",
+    "qos_policy_id": "",
+    "security_groups": [
+        SECURITY_GROUP_FRONTEND["id"],
+        SECURITY_GROUP_OPERATIONS["id"],
+        SECURITY_GROUP_DB["id"]
+    ],
+    "address_bindings": [{
+        "ip_address": "172.16.0.12",
+        "mac_address": "fa:16:3e:e4:11:f5"
+    }],
+    "vif_details": {
+        "segmentation_id": "1000"
+    }
+}
+
 PORT_BACKEND = {
     "id": "A29F3249-DE62-4357-8A6A-A49B9F48434E",
     "name": "backend",
@@ -450,20 +478,25 @@ PORT_DB = {
     }
 }
 
+
 def load_security_groups_rules(*groups):
     rules = dict()
     for group in groups:
-        rules.update({rule["id"]:rule for rule in group.get("rules")})
+        rules.update({rule["id"]: rule for rule in group.get("rules")})
     return rules
 
+
 def load_security_groups(*groups):
-    return {g["id"]:g for g in groups}
+    return {g["id"]: g for g in groups}
+
 
 def load_qos_profiles(*qos_profiles):
-    return {q["id"]:q for q in qos_profiles}
+    return {q["id"]: q for q in qos_profiles}
+
 
 def load_ports(*ports):
-    return {p["id"]:p for p in ports}
+    return {p["id"]: p for p in ports}
+
 
 OPENSTACK_INVENTORY = {
     "security-group-rule": load_security_groups_rules(
@@ -479,16 +512,16 @@ OPENSTACK_INVENTORY = {
         SECURITY_GROUP_DB,
         SECURITY_GROUP_OPERATIONS,
         SECURITY_GROUP_AUTH,
-        SECURITY_GROUP_OPERATIONS_NOT_REFERENCED), 
+        SECURITY_GROUP_OPERATIONS_NOT_REFERENCED),
     "port": load_ports(
         PORT_FRONTEND_EXTERNAL,
         PORT_FRONTEND_INTERNAL,
         PORT_BACKEND,
-        PORT_DB
-    ), 
+        PORT_DB,
+        PORT_WITH_3_SG
+    ),
     "qos": load_qos_profiles(
         QOS_EXTERNAL,
         QOS_INTERNAL,
         QOS_NOT_REFERENCED)
 }
-

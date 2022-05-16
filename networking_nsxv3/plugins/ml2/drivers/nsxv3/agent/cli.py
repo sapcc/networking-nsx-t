@@ -42,12 +42,7 @@ class NsxInventory(object):
         return os.path.join(base_path, "nsx", *relative_path.split(os.path.sep))
 
     def cleanup(self):
-        env = Environment(name="Cleanup", force_api="Management")
-        with env:
-            # TODO - define more correct criteria
-            eventlet.sleep(30)
-
-        env = Environment(name="Cleanup", force_api="Policy")
+        env = Environment(name="Cleanup")
         with env:
             # TODO - define more correct criteria
             eventlet.sleep(30)

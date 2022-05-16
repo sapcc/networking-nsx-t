@@ -7,10 +7,10 @@ DEFAULT_TUNNEL_RANGES = []
 DEFAULT_TUNNEL_TYPES = []
 
 nsxv3_dfw_connectivity_strategy = [
-    "NONE", 
-    "BLACKLIST", 
-    "BLACKLIST_ENABLE_LOGGING", 
-    "WHITELIST", 
+    "NONE",
+    "BLACKLIST",
+    "BLACKLIST_ENABLE_LOGGING",
+    "WHITELIST",
     "WHITELIST_ENABLE_LOGGING"
 ]
 
@@ -51,6 +51,36 @@ agent_opts = [
         'synchronization_queue_size',
         default=20,
         help="The maximum amount of objects witing in the queue for update."
+    ),
+    cfg.BoolOpt(
+        'force_mp_to_policy',
+        default=False,
+        help="Force NSX-T Manager API objects to be promoted to Policy API objects."
+    ),
+    cfg.IntOpt(
+        'migration_tag_count_trigger',
+        default=26,
+        help="The count of the tags per LogicalPort, above which an MP-to-Policy Promotion will be trigered for the port."
+    ),
+    cfg.IntOpt(
+        'migration_tag_count_max',
+        default=29,
+        help="The maximum count of the tags per LogicalPort, above which MP-to-Policy Promotion is impossible."
+    ),
+    cfg.IntOpt(
+        'max_sg_tags_per_segment_port',
+        default=27,
+        help="The maximum count of the tags per SegmentPort serving as a SecurityGroup Membership Criteria. Above that count standard NSX-T Group Membership will be used instead."
+    ),
+    cfg.StrOpt(
+        'logging_url',
+        default='unix:///var/run/redis/socket/redis.sock',
+        help="Redis URL"
+    ),
+    cfg.IntOpt(
+        'logging_expire',
+        default=1,
+        help="Redis key expiration time in days"
     )
 ]
 
@@ -105,7 +135,7 @@ nsxv3_opts = [
     ),
     cfg.IntOpt(
         'nsxv3_requests_per_second_timeout',
-        default=5,
+        default=7,
         help='''Number of seconds trying to send the request to NSXv3 Manager.'''
     ),
     cfg.IntOpt(
@@ -173,15 +203,25 @@ nsxv3_opts = [
     cfg.StrOpt(
         'nsxv3_dfw_connectivity_strategy',
         default='NONE',
-        help="NSXv3 Manager DFW connectivity strategy: {}"\
-            .format(str(nsxv3_dfw_connectivity_strategy))
+        help="NSXv3 Manager DFW connectivity strategy: {}"
+        .format(str(nsxv3_dfw_connectivity_strategy))
     ),
     cfg.BoolOpt(
         'nsxv3_default_policy_infrastructure_rules',
         default=False,
-        help="Enable create of default infrastructure rules like ICMP allow, " 
+        help="Enable create of default infrastructure rules like ICMP allow, "
              "DHCP and Metadata Agent access"
     ),
+    cfg.IntOpt(
+        'mp_to_policy_retry_count',
+        default=10,
+        help="NSX-T Mp-to-Policy client migration request retry-count."
+    ),
+    cfg.IntOpt(
+        'mp_to_policy_retry_sleep',
+        default=2,
+        help="NSX-T Mp-to-Policy client migration request retry-sleep in seconds."
+    )
 ]
 
 vsphere_opts = [

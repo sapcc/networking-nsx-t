@@ -1,4 +1,3 @@
-import json
 import re
 import time
 
@@ -10,15 +9,34 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import versionutils
 from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
+from requests import Response
 
-LOG = logging.getLogger(__name__)
+LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 def is_not_found(response):
     return re.search("The path.*is invalid", response.text)
 
+
 def is_atomic_request_error(response):
     return response.status_code == 400 and re.search("The object AtomicRequest", response.text)
+
+
+def is_migration_bussy_error(response):
+    return response.status_code == 400 and re.search("Migration coordinator backend is busy", response.text)
+
+
+def is_revision_error(response):
+    return response.status_code == 412 and re.search("Fetch the latest copy of the object and retry", response.text)
+
+
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
 
 
 class RetryPolicy(object):
@@ -26,15 +44,7 @@ class RetryPolicy(object):
     def __call__(self, func):
 
         def decorator(self, *args, **kwargs):
-
-            requestInfo = ""
-
-            if 'path' in kwargs and 'session/create' in kwargs.get('path'):
-                requestInfo = "Function {} Argumetns {}".format(
-                    func.__name__.upper(), str(kwargs))
-            else:
-                requestInfo = "Function {} Argumetns {}".format(
-                    func.__name__.upper(), str(kwargs))
+            request_info = "Function {} Argumetns {}".format(func.__name__.upper(), str(kwargs))
 
             until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
             pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
@@ -57,16 +67,16 @@ class RetryPolicy(object):
                     if 200 <= response.status_code < 300:
                         return response
 
-                    last_err = "Error Code={} Message={}"\
-                        .format(response.status_code, response.content)
-                    log_msg = "Request={} Response={}".format(requestInfo,
-                                                              last_err)
+                    last_err = "Error Code={} Message={}".format(response.status_code, response.content)
+                    log_msg = "Request={} Response={}".format(request_info, last_err)
 
                     # Handle resource not found gently
                     if is_not_found(response):
-                        LOG.info("Unable to find Resource={}"\
-                            .format(kwargs["path"]))
+                        LOG.info("Unable to find Resource={}".format(kwargs["path"]))
                         LOG.debug(log_msg)
+                        return response
+
+                    if is_revision_error(response):
                         return response
 
                     if response.status_code in [401, 403]:
@@ -74,34 +84,56 @@ class RetryPolicy(object):
                         continue
 
                     # Retry for The object AtomicRequest/10844 is already present in the system.
-                    if not is_atomic_request_error(response):
+                    # Retry for Migration coordinator backend is busy. Please try again after some time.
+                    if not is_atomic_request_error(response) or not is_migration_bussy_error(response):
                         # skip retry on the ramaining NSX errors
                         LOG.error(log_msg)
                         break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
-                    LOG.error("Request={} Response={}".format(requestInfo,
-                                                              last_err))
+                    LOG.error("Request={} Response={}".format(request_info, last_err))
 
                 msg = pattern.format(attempt, until, pause, method)
 
                 LOG.debug(msg)
                 eventlet.sleep(pause)
 
-            raise Exception(msg, last_err)
+            raise RuntimeError(msg, last_err)
 
         return decorator
 
 
+class MigrationRetryPolicy(object):
 
-class Client:
+    def __call__(self, func):
+
+        def decorator(self, *args, **kwargs):
+            until = cfg.CONF.NSXV3.mp_to_policy_retry_count
+            pause = cfg.CONF.NSXV3.mp_to_policy_retry_sleep
+
+            method = "{}.{}".format(self.__class__.__name__, func.__name__)
+
+            for attempt in range(1, until + 1):
+                response = func(self, *args, **kwargs)
+
+                if is_migration_bussy_error(response):
+                    LOG.info("Will retry due to: Code=%s Message=%s", response.status_code, response.content)
+                else:
+                    return response
+
+                LOG.debug("Retrying request ({}/{}) with timeout {}s for {}".format(attempt, until, pause, method))
+                eventlet.sleep(pause)
+
+        return decorator
+
+
+class Client(metaclass=Singleton):
 
     def __init__(self):
-        rate=cfg.CONF.NSXV3.nsxv3_requests_per_second
-        timeout=cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
-        limit=1
+        rate = cfg.CONF.NSXV3.nsxv3_requests_per_second
+        timeout = cfg.CONF.NSXV3.nsxv3_requests_per_second_timeout
 
-        self._api_scheduler = Scheduler(rate, limit, timeout)
+        self._api_scheduler = Scheduler(rate=rate, timeout=timeout)
 
         self._timeout = cfg.CONF.NSXV3.nsxv3_request_timeout
 
@@ -141,7 +173,7 @@ class Client:
                 resp = requests.post(**self._params(path=self._login_path,
                                                     data=self._login_data,
                                                     verify=self._session.verify))
-                
+
                 resp.raise_for_status()
 
                 self._session.headers["Cookie"] = \
@@ -167,31 +199,32 @@ class Client:
         return kwargs
 
     @RetryPolicy()
-    def post(self, path, data):
+    @MigrationRetryPolicy()
+    def post(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.post(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def patch(self, path, data):
+    def patch(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.patch(**self._params(path=path, json=data))
 
     @RetryPolicy()
-    def put(self, path, data):
+    def put(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.put(**self._params(path=path, json=data))
-    
+
     @RetryPolicy()
-    def delete(self, path, params=dict()):
+    def delete(self, path: str, params: dict = dict()) -> Response:
         with self._api_scheduler:
             return self._session.delete(**self._params(path=path, params=params))
 
     @RetryPolicy()
-    def get(self, path, params=dict()):
+    def get(self, path: str, params: dict = dict()) -> Response:
         with self._api_scheduler:
             return self._session.get(**self._params(path=path, params=params))
 
-    def get_unique(self, path, params=dict()):
+    def get_unique(self, path: str, params: dict = dict()) -> dict:
         results = self.get(path=path, params=params).json().get("results")
         if isinstance(results, list):
             if results:
@@ -202,10 +235,11 @@ class Client:
         elif results:
             return results
 
-    def get_all(self, path, params=dict(), cursor=""):
+    def get_all(self, path: str, params: dict = None, cursor: str = ""):
         # FYI - NSX does not allow to filter by custom property
         # Search API has hard limit of 50k objects (with cursor)
         PAGE_SIZE = cfg.CONF.NSXV3.nsxv3_max_records_per_query
+        params = params or dict()
         params.update({"page_size": PAGE_SIZE, "cursor": cursor})
 
         response = self.get(path=path, params=params)
@@ -213,7 +247,25 @@ class Client:
             return []
 
         content = response.json()
-        cursor = content.get("cursor", None)
+        cursor = content.get("cursor", "")
+        page_size = content.get("result_count", 0)
 
-        all = content.get("results", [])
-        return self.get_all(path, params, cursor) + all if cursor else all
+        _all = content.get("results", [])
+        plcy_cond = (cursor.isdigit() and int(cursor) != page_size)
+        mgmt_cond = (cursor and not cursor.isdigit())
+        return self.get_all(path, params, cursor) + _all if (plcy_cond or mgmt_cond) else _all
+
+    def get_unique_with_retry(self, path: str, retries: int = 5, params: dict = dict()):
+        retry = 0
+        ex = None
+        while retry < retries:
+            try:
+                o = self.get_unique(path=path, params=params)
+                if not o:
+                    raise Exception("Not found")
+                return o
+            except Exception as e:
+                ex = e
+                retry += 1
+                eventlet.sleep(seconds=10)
+        raise ex
