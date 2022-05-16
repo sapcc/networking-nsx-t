@@ -43,7 +43,8 @@ class TestAgentRealizer(base.BaseTestCase):
             eventlet.sleep(30)
         
         provider = env.manager.realizer.plcy_provider
-        for type,meta in env.dump_provider_inventory(printable=False).items():
+        _, plcy_meta = env.dump_provider_inventory(printable=False)
+        for type,meta in plcy_meta.items():
             if type != provider.SEGMENT and type != provider.SG_RULES_REMOTE_PREFIX:
                 self.assertEquals(meta["meta"], dict())
 
@@ -56,15 +57,16 @@ class TestAgentRealizer(base.BaseTestCase):
         self.cleanup()
         c = coverage
 
-        LOG.info("Create inventory with the legacy provider")
+        LOG.info("Create inventory with the provider")
         inventory=copy.deepcopy(coverage.OPENSTACK_INVENTORY)
-        env = Environment(name="Management API", inventory=inventory, force_api="Management")
+        env = Environment(inventory=inventory)
         with env:
             i = env.openstack_inventory
             i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
             i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
             i.port_bind(c.PORT_BACKEND["name"], "3200")
             i.port_bind(c.PORT_DB["name"], "3200")
+            i.port_bind(c.PORT_WITH_3_SG["name"], "1000")
 
             eventlet.sleep(30)
         
@@ -80,10 +82,11 @@ class TestAgentRealizer(base.BaseTestCase):
             eventlet.sleep(30)
 
             for index in range(1,10):
-                self._pollute(env, index)            
+                self._pollute(env, index)
 
             # Remove parent
             i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
+            i.port_delete(c.PORT_WITH_3_SG["name"])
             eventlet.sleep(10)
             # Remove child
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
@@ -94,8 +97,9 @@ class TestAgentRealizer(base.BaseTestCase):
     
     def _assert_create(self, os_inventory, environment):
         c = os_inventory
-        m = environment.dump_provider_inventory(printable=False)
-        p = environment.manager.realizer.provider
+        mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
+        m = {**mgmt_meta, **plcy_meta}
+        p = environment.manager.realizer.mngr_provider
 
         # Validate network creation
         self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -137,8 +141,9 @@ class TestAgentRealizer(base.BaseTestCase):
     
     def _assert_update(self, os_inventory, environment):
         c = os_inventory
-        m = environment.dump_provider_inventory(printable=False)
-        p = environment.manager.realizer.provider
+        mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
+        m = {**mgmt_meta, **plcy_meta}
+        p = environment.manager.realizer.mngr_provider
 
         # Validate network creation
         self.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -189,7 +194,7 @@ class TestAgentRealizer(base.BaseTestCase):
         
 
     def _pollute(self, env, index):
-        p = env.manager.realizer.provider
+        p = env.manager.realizer.mngr_provider
         id = "00000000-0000-0000-0000-00000000000{}".format(index)
 
         ipv4 = "192.168.0.0/{}".format(index)
@@ -198,35 +203,12 @@ class TestAgentRealizer(base.BaseTestCase):
         ipv4_id = re.sub(r"\.|:|\/", "-", ipv4)
         ipv6_id = re.sub(r"\.|:|\/", "-", ipv6)
 
-        mp = provider_nsx_mgmt.Payload()
         pp = provider_nsx_policy.Payload()
         api = provider_nsx_policy.API
-
-        p.client.post(path=api.IPSETS, data=mp.sg_rule_remote(ipv4))
-        p.client.post(path=api.IPSETS, data=mp.sg_rule_remote(ipv6))
 
         p.client.put(path=api.GROUP.format(ipv4_id), data=pp.sg_rule_remote(ipv4))
         p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
 
         p.client.put(path=api.GROUP.format(id), data=pp.sg_members_container({"id": id}, dict()))
         data=pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
-        if env.version < (3, 0):
-            del data["scope"] # No scope property before 3.0
         p.client.put(path=api.POLICY.format(id), data=data)
-
-        o = p.client.post(path=api.NSGROUPS, data=mp.sg_rules_ext_container({"id": id}, dict())).json()
-        p.client.post(path=api.SECTIONS, data=mp.sg_rules_container({"id": id}, {"applied_tos": o.get("id")}))
-
-        p.client.put(path=api.SERVICE.format(id), data={
-            "service_entries": [
-                {
-                    "l4_protocol": "TCP",
-                    "source_ports": [],
-                    "destination_ports": ["1024"],
-                    "resource_type": "L4PortSetServiceEntry",
-                    "display_name": id
-                }
-            ],
-            "resource_type": "Service",
-            "display_name": id
-        })
