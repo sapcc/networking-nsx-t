@@ -73,6 +73,7 @@ def get_security_groups_with_revisions(context, host, limit, cursor):
     ).filter(
         StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id,
         PortBindingLevel.host == host,
+        PortBindingLevel.level == 1,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         sg_db.SecurityGroup.standard_attr_id > cursor
     ).limit(
