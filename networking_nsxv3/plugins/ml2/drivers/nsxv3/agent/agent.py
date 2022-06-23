@@ -231,7 +231,6 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             "nsxv3_host": c.nsxv3_login_hostname,
             "nsxv3_port": c.nsxv3_login_port,
             "nsxv3_user": c.nsxv3_login_user,
-            "nsxv3_password": c.nsxv3_login_password,
             "nsxv3_managed_hosts": c.nsxv3_managed_hosts,
             "nsxv3_transport_zone": c.nsxv3_transport_zone_name,
         }
