@@ -9,10 +9,10 @@ from neutron.db.models.allowed_address_pair import AllowedAddressPair
 from neutron.db.models_v2 import IPAllocation, Port
 from neutron.db.qos.models import (QosBandwidthLimitRule, QosDscpMarkingRule,
                                    QosPolicy, QosPortPolicyBinding)
-from neutron.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.db.standard_attr import StandardAttribute
 # from sqlalchemy.orm.session import Session
 
 
