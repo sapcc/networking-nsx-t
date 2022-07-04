@@ -296,3 +296,83 @@ DEFAULT_INFRASTRUCTURE_POLICIES = [
 ]
 
 NSXV3_DEFAULT_L3_SECTION = "default-layer3-section"
+
+DEFAULT_APPLICATION_DROP_GROUP = {
+    "expression": [
+        # {
+        #     "paths": [],
+        #     "resource_type": "PathExpression",
+        #     "parent_path": "/infra/domains/default/groups/default-logged-drop-group",
+        #     "marked_for_delete": False,
+        #     "overridden": False
+        # }
+    ],
+    "extended_expression": [],
+    "reference": False,
+    "resource_type": "Group",
+    "id": "default-logged-drop-group",
+    "display_name": "Default Logged Drop Group",
+    "path": "/infra/domains/default/groups/default-logged-drop-group",
+    "parent_path": "/infra/domains/default",
+    "marked_for_delete": False,
+    "overridden": False
+}
+
+DEFAULT_APPLICATION_DROP_POLICY = {
+    "rules": [
+        {
+            "action": "DROP",
+            "resource_type": "Rule",
+            "id": "default-layer3-logged-drop-rule",
+            "display_name": "Default Layer3 Logged Drop Rule",
+            "path": "/infra/domains/default/security-policies/default-layer3-logged-drop-section/rules/default-layer3-logged-drop-rule",
+            "relative_path": "default-layer3-rule",
+            "parent_path": "/infra/domains/default/security-policies/default-layer3-logged-drop-section",
+            "marked_for_delete": False,
+            "overridden": False,
+            "sequence_number": 2147483647,  # MAX INT
+            "sources_excluded": False,
+            "destinations_excluded": False,
+            "source_groups": [
+                "ANY"
+            ],
+            "destination_groups": [
+                "ANY"
+            ],
+            "services": [
+                "ANY"
+            ],
+            "profiles": [
+                "ANY"
+            ],
+            "logged": True,
+            "scope": [
+                "ANY"
+            ],
+            "disabled": False,
+            "direction": "IN_OUT",
+            "ip_protocol": "IPV4_IPV6",
+            "is_default": True
+        }
+    ],
+    "logging_enabled": True,
+    "resource_type": "SecurityPolicy",
+    "id": "default-layer3-logged-drop-section",
+    "display_name": "Default Layer3 Logged Drop Section",
+    "path": "/infra/domains/default/security-policies/default-layer3-logged-drop-section",
+    "relative_path": "default-layer3-logged-drop-section",
+    "parent_path": "/infra/domains/default",
+    "marked_for_delete": False,
+    "overridden": False,
+    "sequence_number": 999999,  # MAX ALLOWED
+    "internal_sequence_number": 999999,  # MAX ALLOWED
+    "category": "Application",
+    "stateful": True,
+    "tcp_strict": False,
+    "locked": False,
+    "scope": [
+        DEFAULT_APPLICATION_DROP_GROUP["path"]
+    ],
+    "rule_count": 1,
+    "is_default": True
+}
