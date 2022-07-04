@@ -438,6 +438,8 @@ class Provider(base.Provider):
             self._setup_default_infrastructure_rules()
         if self.client.version >= (3, 0):
             self._ensure_default_l3_policy()
+        self._setup_default_app_drop_logged_group()
+        self._setup_default_app_drop_logged_section()
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
@@ -459,6 +461,32 @@ class Provider(base.Provider):
                 self.client.put(path=path, data=policy).raise_for_status()
             else:
                 res.raise_for_status()
+
+    def _setup_default_app_drop_logged_section(self):
+        LOG.info("Looking for the Default Layer3 Logged Drop Section.")
+        policy = DEFAULT_APPLICATION_DROP_POLICY
+        path = API.POLICY.format(policy["id"])
+        res = self.client.get(path=path)
+        if res.ok:
+            return
+        elif res.status_code == 404:
+            LOG.info("Default Layer3 Logged Drop Section %s not found, creating...", policy["display_name"])
+            self.client.put(path=path, data=policy).raise_for_status()
+        else:
+            res.raise_for_status()
+
+    def _setup_default_app_drop_logged_group(self):
+        LOG.info("Looking for the Default Logged Drop Group.")
+        grp = DEFAULT_APPLICATION_DROP_GROUP
+        path = API.GROUP.format(grp["id"])
+        res = self.client.get(path=path)
+        if res.ok:
+            return
+        elif res.status_code == 404:
+            LOG.info("Default Logged Drop Group %s not found, creating...", grp["display_name"])
+            self.client.put(path=path, data=grp).raise_for_status()
+        else:
+            res.raise_for_status()
 
     # overrides
     def _metadata_loader(self):
@@ -852,7 +880,9 @@ class Provider(base.Provider):
         for os_id in meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
-            if "0.0.0.0/" not in os_id and "::/" not in os_id:
+            if "0.0.0.0/" not in os_id\
+                and "::/" not in os_id\
+                    and DEFAULT_APPLICATION_DROP_GROUP["display_name"] not in os_id:
                 resource = meta.get(os_id)
                 if resource.get_all_ambiguous():
                     for res in resource.get_all_ambiguous():
