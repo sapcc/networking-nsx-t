@@ -99,8 +99,6 @@ class API(provider_nsx_mgmt.API):
 
     INFRA = "/policy/api/v1/infra"
 
-    DEFAULT_DROP_RULE_PREFIX = "drp_"
-
 
 class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
     def __init__(self, id, unique_id, rev, age, revision, last_modified_time,
@@ -191,17 +189,6 @@ class Resource(provider_nsx_mgmt.Resource):
     @property
     def path(self):
         return self.resource.get("path")
-
-    @property
-    def has_valid_os_uuid(self) -> bool:
-        if self.os_id and self.os_id.startswith(API.DEFAULT_DROP_RULE_PREFIX):
-            # Check for default DROP rule ID and concern it valid
-            try:
-                uuid.UUID(self.os_id[len(API.DEFAULT_DROP_RULE_PREFIX):])
-                return True
-            except (ValueError, TypeError):
-                return False
-        return super().has_valid_os_uuid
 
 
 class Payload(provider_nsx_mgmt.Payload):
@@ -364,15 +351,6 @@ class Payload(provider_nsx_mgmt.Payload):
     # Distributed Firewall Security Policy
     def sg_rules_container(self, os_sg: dict, provider_sg: dict) -> dict:
         os_id = os_sg.get("id")
-        rules = provider_sg.get("rules")
-
-        # Update or append the default DROP rule to the end of each Policy
-        if rules and len(rules) > 0:
-            if rules[-1].get("id").startswith(API.DEFAULT_DROP_RULE_PREFIX):
-                rules[-1] = self._default_drop_rule(os_id, rules[0].get("logged"), rules[-1].get("_revision"))
-            else:
-                rules.append(self._default_drop_rule(os_id, rules[0].get("logged")))
-
         return {
             "category": "Application",
             "display_name": os_id,
@@ -380,7 +358,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "tcp_strict": NSXV3_CAPABILITY_TCP_STRICT in os_sg.get("tags", dict()),
             "scope": ["/infra/domains/default/groups/{}".format(provider_sg.get("scope"))],
             "tags": self.tags(os_sg),
-            "rules": rules,
+            "rules": provider_sg.get("rules"),
             "path": API.POLICY_PATH.format(os_id),
             "_revision": provider_sg.get("_revision")
         }
@@ -388,12 +366,6 @@ class Payload(provider_nsx_mgmt.Payload):
     def sg_rule(self, os_rule: dict, provider_rule: dict, logged=False, **kwargs) -> dict or None:
         sp_id = kwargs["sp_id"]
         os_id = os_rule["id"]
-
-        # Check if it is the default drop rule and return different payload for it
-        if (provider_rule.get("id") and provider_rule.get("id").startswith(API.DEFAULT_DROP_RULE_PREFIX))\
-            or (os_rule.get("id") and os_rule.get("id").startswith(API.DEFAULT_DROP_RULE_PREFIX)):
-            return self._default_drop_rule(sp_id, logged, provider_rule.get("_revision"))
-
         ethertype = os_rule["ethertype"]
         direction = os_rule["direction"]
 
@@ -439,24 +411,6 @@ class Payload(provider_nsx_mgmt.Payload):
             "_revision": provider_rule.get("_revision")
         }
         return res
-
-    def _default_drop_rule(self, sp_id, logged, revision=None):
-        drop_rule_id = "{}{}".format(API.DEFAULT_DROP_RULE_PREFIX, sp_id)
-        return {
-            "id": drop_rule_id,
-            "direction": "IN_OUT",
-            "source_groups": ["ANY"],
-            "destination_groups": ["ANY"],
-            "disabled": False,
-            "display_name": drop_rule_id,
-            "action": "DROP",
-            "logged": logged,
-            "tag": sp_id,
-            "scope": ["ANY"],
-            "services": ["ANY"],
-            "path": API.RULE_PATH.format(sp_id, drop_rule_id),
-            "_revision": revision
-        }
 
     def _filter_out_ipv4_mapped_ipv6_nets(self, target):
         for cidr in target:
@@ -522,12 +476,7 @@ class Provider(base.Provider):
     def _create_provider_sg(self, os_sg: dict, os_id: str, logged=False):
         provider_rules = []
         meta = self.metadata(Provider.SG_RULES, os_id)
-
-        os_rules = os_sg.get("rules", [])
-        # Artificially add the default drop rule for each os_sg
-        os_rules.append({"id": "{}{}".format(API.DEFAULT_DROP_RULE_PREFIX, os_id)})
-
-        for rule in os_rules:
+        for rule in os_sg.get("rules", []):
             # Manually tested with 2K rules NSX-T 3.1.0.0.0.17107167
             revision = meta.rules.get(rule["id"], {}).get("_revision") if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)  # TODO: this could be optimized
