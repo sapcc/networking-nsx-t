@@ -62,6 +62,7 @@ class API(provider_nsx_mgmt.API):
     RULE_PATH = POLICY_PATH + "/rules/{}"
     POLICY = POLICY_BASE + POLICY_PATH
     RULES = POLICY_BASE + POLICY_PATH + "/rules"
+    RULES_CREATE = RULES + "/{}"
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
@@ -438,7 +439,6 @@ class Provider(base.Provider):
             self._setup_default_infrastructure_rules()
         if self.client.version >= (3, 0):
             self._ensure_default_l3_policy()
-        self._setup_default_app_drop_logged_group()
         self._setup_default_app_drop_logged_section()
 
     def _ensure_default_l3_policy(self):
@@ -472,19 +472,6 @@ class Provider(base.Provider):
         elif res.status_code == 404:
             LOG.info("Default Layer3 Logged Drop Section %s not found, creating...", policy["display_name"])
             self.client.put(path=path, data=policy).raise_for_status()
-        else:
-            res.raise_for_status()
-
-    def _setup_default_app_drop_logged_group(self):
-        LOG.info("Looking for the Default Logged Drop Group.")
-        grp = DEFAULT_APPLICATION_DROP_GROUP
-        path = API.GROUP.format(grp["id"])
-        res = self.client.get(path=path)
-        if res.ok:
-            return
-        elif res.status_code == 404:
-            LOG.info("Default Logged Drop Group %s not found, creating...", grp["display_name"])
-            self.client.put(path=path, data=grp).raise_for_status()
         else:
             res.raise_for_status()
 
@@ -638,6 +625,30 @@ class Provider(base.Provider):
             if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
                 LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
 
+    def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
+        logged_drop_policy_rules = self.client.get_all(API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
+        is_logged = [rule for rule in logged_drop_policy_rules if rule["id"] == os_sg["id"]]
+
+        if logged:
+            if len(is_logged) < 1:
+                rule = dict(DEFAULT_APPLICATION_DROP_RULE)
+                rule["id"] = os_sg["id"]
+                rule["display_name"] = os_sg["id"]
+                rule["tag"] = os_sg["id"]
+                rule["path"] = API.RULE_PATH.format(DEFAULT_APPLICATION_DROP_POLICY["id"], os_sg["id"])
+                rule["scope"] = [API.GROUP_PATH.format(os_sg["id"])]
+                logged_drop_policy_rules.append(rule)
+                return self.client.put(
+                    API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], rule["id"]), data=rule)
+        else:
+            if len(is_logged) > 0:
+                return self.client.delete(
+                    API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
+
+        if delete and len(is_logged) > 0:
+            return self.client.delete(
+                API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
+
     # overrides
     def port_realize(self, os_port: dict, delete=False):
         port_id = os_port.get("id")
@@ -732,6 +743,7 @@ class Provider(base.Provider):
     # overrides
     def sg_rules_realize(self, os_sg, delete=False, logged=False):
         os_id = os_sg.get("id")
+        self._sg_logged_drop_rules_realize(os_sg, delete, logged)
 
         if delete:
             self._realize(Provider.SG_RULES, delete, None, os_sg, dict())
@@ -880,9 +892,7 @@ class Provider(base.Provider):
         for os_id in meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
-            if "0.0.0.0/" not in os_id\
-                and "::/" not in os_id\
-                    and DEFAULT_APPLICATION_DROP_GROUP["display_name"] not in os_id:
+            if "0.0.0.0/" not in os_id and "::/" not in os_id:
                 resource = meta.get(os_id)
                 if resource.get_all_ambiguous():
                     for res in resource.get_all_ambiguous():
@@ -931,6 +941,7 @@ class Provider(base.Provider):
         # Update the logging state
         res = self.client.patch(path=API.POLICY.format(log_obj['resource_id']), data=data)
         res.raise_for_status()
+        self._sg_logged_drop_rules_realize({"id": log_obj['resource_id']}, False, enable_logging)
 
     def enable_policy_logging(self, log_obj):
         LOG.debug(f"PROVIDER: enable_policy_logging")
