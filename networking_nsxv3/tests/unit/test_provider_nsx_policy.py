@@ -326,14 +326,22 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.sg_rules_realize(sg1, logged=True)
         rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
         self.assertEquals(all(rules_logged), True)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(1, len(drop_rules))
+        self._assertDropLoggedRules(sg, drop_rules)
 
         provider.sg_rules_realize(sg1, logged=False)
         rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
         self.assertEquals(any(rules_logged), False)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(0, len(drop_rules))
 
         provider.sg_rules_realize(sg1, logged=True)
         rules_logged = [r["logged"] for r in self.get_by_name(inv[Inventory.POLICIES], sg["id"])["rules"]]
         self.assertEquals(all(rules_logged), True)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(1, len(drop_rules))
+        self._assertDropLoggedRules(sg1, drop_rules)
 
         log_obj = {
             "resource_type": "security_group",
@@ -343,29 +351,44 @@ class TestProviderPolicy(base.BaseTestCase):
         provider.disable_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(any(rules_logged), False)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(0, len(drop_rules))
 
         provider.enable_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(all(rules_logged), True)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(1, len(drop_rules))
+        self._assertDropLoggedRules(sg, drop_rules)
 
         provider.disable_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(any(rules_logged), False)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(0, len(drop_rules))
 
         log_obj["enabled"] = True
         provider.update_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(all(rules_logged), True)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(1, len(drop_rules))
+        self._assertDropLoggedRules(sg, drop_rules)
 
         log_obj["enabled"] = False
         provider.update_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(any(rules_logged), False)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(0, len(drop_rules))
 
         log_obj["enabled"] = True
         provider.update_policy_logging(log_obj)
         rules_logged = [r["logged"] for r in inv[Inventory.POLICIES][sg["id"]]["rules"]]
         self.assertEquals(all(rules_logged), True)
+        drop_rules = inv[Inventory.POLICIES]["default-layer3-logged-drop-section"]["_"]["rules"]
+        self.assertEqual(1, len(drop_rules))
+        self._assertDropLoggedRules(sg, drop_rules)
 
         LOG.info("FINISHED: test_security_group_logging")
 
@@ -748,3 +771,17 @@ class TestProviderPolicy(base.BaseTestCase):
 
         self.assertEquals(len(inv[self.inventory.GROUPS]), 1)
         self.assertEquals(inv[self.inventory.GROUPS].get("0-0-0-0-16", {}).get("display_name"), "0.0.0.0/16")
+
+    def _assertDropLoggedRules(self, sg, drop_rules):
+        self.assertEqual(sg["id"] in drop_rules, True)
+        self.assertEqual(drop_rules[sg["id"]]["action"], "DROP")
+        self.assertEqual(drop_rules[sg["id"]]["id"], sg["id"])
+        self.assertEqual(drop_rules[sg["id"]]["display_name"], sg["id"])
+        self.assertEqual(drop_rules[sg["id"]]["sequence_number"], 2147483647)
+        self.assertEqual(drop_rules[sg["id"]]["direction"], "IN_OUT")
+        self.assertEqual(drop_rules[sg["id"]]["ip_protocol"], "IPV4_IPV6")
+        self.assertEqual(drop_rules[sg["id"]]["logged"], True)
+        self.assertEqual(drop_rules[sg["id"]]["source_groups"], ["ANY"])
+        self.assertEqual(drop_rules[sg["id"]]["destination_groups"], ["ANY"])
+        self.assertEqual(drop_rules[sg["id"]]["services"], ["ANY"])
+        self.assertEqual(drop_rules[sg["id"]]["scope"], ["/infra/domains/default/groups/{}".format(sg["id"])])
