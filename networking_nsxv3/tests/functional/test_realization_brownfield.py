@@ -18,7 +18,6 @@ LOG = logging.getLogger(__name__)
 
 class TestAgentRealizer(base.BaseTestCase):
 
-    inventory = copy.deepcopy(coverage.OPENSTACK_INVENTORY)
     cleanup_on_teardown = True
 
     def setUp(self):
@@ -128,9 +127,11 @@ class TestAgentRealizer(base.BaseTestCase):
 
         LOG.info("Create inventory with the provider")
         inventory = copy.deepcopy(coverage.OPENSTACK_INVENTORY)
+        
         env = Environment(inventory=inventory)
         with env:
             i = env.openstack_inventory
+
             LOG.info("Binding port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
 
@@ -185,9 +186,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
         env = Environment(inventory=inventory)
         with env:
-            inventory = i = env.openstack_inventory
-            provider = p = env.manager.realizer.plcy_provider
-
+            i = env.openstack_inventory
             eventlet.sleep(30)
 
             LOG.info("Polluting ...")
