@@ -11,34 +11,7 @@ from neutron.tests import base
 from oslo_config import cfg
 from oslo_log import log as logging
 
-# LOG = logging.getLogger(__name__)
-
-
-class LOG:
-    log_file_name = '/tmp/mylog.log'
-    from oslo_log import log as logging
-    pytest_logger = logging.getLogger(__name__)
-
-    @staticmethod
-    def clean():
-        try:
-            import os
-            os.remove(LOG.log_file_name)
-        except Exception:
-            LOG.info(f"Log file \"{LOG.log_file_name}\" has already been cleaned.")
-
-    @staticmethod
-    def log_line(line):
-        with open(LOG.log_file_name, 'a') as file:
-            file.write(line + '\n')
-
-    @staticmethod
-    def info(line):
-        LOG.log_line(line)
-        LOG.pytest_logger.info(line)
-
-
-LOG.clean()
+LOG = logging.getLogger(__name__)
 
 # TODO - replace static wait/sleep with active polling
 
