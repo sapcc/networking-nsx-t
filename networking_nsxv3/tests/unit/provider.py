@@ -92,7 +92,7 @@ class Inventory(object):
                     "_create_user": "system"
                 },
                 "default-layer3-logged-drop-section": {
-                    "logging_enabled": True,
+                    # "logging_enabled": True,
                     "id": "default-layer3-logged-drop-section",
                     "_create_user": "admin"
                 }
