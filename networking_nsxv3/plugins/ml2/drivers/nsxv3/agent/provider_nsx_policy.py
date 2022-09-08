@@ -743,6 +743,7 @@ class Provider(base.Provider):
     # overrides
     def sg_rules_realize(self, os_sg, delete=False, logged=False):
         os_id = os_sg.get("id")
+        logged = bool(logged)
         self._sg_logged_drop_rules_realize(os_sg, delete, logged)
 
         if delete:

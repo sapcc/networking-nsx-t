@@ -4,7 +4,7 @@ import re
 
 import eventlet
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    agent, provider_nsx_mgmt, provider_nsx_policy)
+    agent, provider_nsx_mgmt, provider_nsx_policy, client_nsx)
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
 from neutron.tests import base
@@ -18,7 +18,7 @@ LOG = logging.getLogger(__name__)
 
 class TestAgentRealizer(base.BaseTestCase):
 
-    cleanup_on_teardown = True
+    cleanup_on_teardown = False
 
     def setUp(self):
         super(TestAgentRealizer, self).setUp()
@@ -41,6 +41,7 @@ class TestAgentRealizer(base.BaseTestCase):
         o("nsxv3_remove_orphan_ports_after", "0", "NSXV3")
 
         TestAgentRealizer.instance = self
+        TestAgentRealizer.cleanup_on_teardown = False
 
     @staticmethod
     def cleanup():
@@ -48,10 +49,10 @@ class TestAgentRealizer(base.BaseTestCase):
         env = Environment(name="Cleanup")
         with env:
             eventlet.sleep(30)
-        
+
         provider = env.manager.realizer.plcy_provider
         _, plcy_meta = env.dump_provider_inventory(printable=False)
-        for type,meta in plcy_meta.items():
+        for type, meta in plcy_meta.items():
             if type != provider.SEGMENT and type != provider.SG_RULES_REMOTE_PREFIX:
                 TestAgentRealizer.instance.assertEquals(meta["meta"], dict())
 
@@ -64,70 +65,87 @@ class TestAgentRealizer(base.BaseTestCase):
         else:
             LOG.info("NO cleanup on tearDown")
 
-    def test_01_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_01_end_to_end_generated\" ...")
+    def test_01_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_01_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_01_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_02_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_02_end_to_end_generated\" ...")
+    def test_02_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_02_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_02_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_03_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_03_end_to_end_generated\" ...")
+    def test_03_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_03_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_03_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_04_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_04_end_to_end_generated\" ...")
+    def test_04_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_04_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_04_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_05_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_05_end_to_end_generated\" ...")
+    def test_05_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_05_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_05_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_06_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_06_end_to_end_generated\" ...")
+    def test_06_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_06_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_06_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_07_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_07_end_to_end_generated\" ...")
+    def test_07_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_07_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_07_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_08_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_08_end_to_end_generated\" ...")
+    def test_08_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_08_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_08_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_09_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_09_end_to_end_generated\" ...")
+    def test_09_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_09_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_09_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_10_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_10_end_to_end_generated\" ...")
+    def test_10_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_10_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_10_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_11_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_11_end_to_end_generated\" ...")
+    def test_11_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_11_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_11_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
+
+    def test_12_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_12_functional_generated.__name__}\" ...")
+        y = next(self.tests_generator)
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
+
+    def test_13_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_13_functional_generated.__name__}\" ...")
+        y = next(self.tests_generator)
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
+
+    def test_14_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_14_functional_generated.__name__}\" ...")
+        y = next(self.tests_generator)
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
     @staticmethod
-    def end_to_end_test_generator():
+    def functional_test_generator():
         LOG.info("Starting end to end tests ...")
         TestAgentRealizer.cleanup()
         c = coverage
 
+        ################ PORT-BIND FUNCTIONAL TESTS ##############
+
         LOG.info("Create inventory with the provider")
         inventory = copy.deepcopy(coverage.OPENSTACK_INVENTORY)
-        
+
         env = Environment(inventory=inventory)
         with env:
             i = env.openstack_inventory
@@ -136,101 +154,120 @@ class TestAgentRealizer(base.BaseTestCase):
             i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 1
-            TestAgentRealizer.cleanup_on_teardown = True
 
             LOG.info("Binding port \"PORT_FRONTEND_INTERNAL\"")
             i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 2
-            TestAgentRealizer.cleanup_on_teardown = True
 
             LOG.info("Binding port \"PORT_BACKEND\"")
             i.port_bind(c.PORT_BACKEND["name"], "3200")
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 3
-            TestAgentRealizer.cleanup_on_teardown = True
 
             LOG.info("Binding port \"PORT_DB\"")
             i.port_bind(c.PORT_DB["name"], "3200")
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 4
-            TestAgentRealizer.cleanup_on_teardown = True
 
             LOG.info("Binding port \"PORT_WITH_3_SG\"")
             i.port_bind(c.PORT_WITH_3_SG["name"], "1000")
 
             eventlet.sleep(30)
-
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 5
-            TestAgentRealizer.cleanup_on_teardown = True
 
         LOG.info("Checking \"_assert_create\"")
         TestAgentRealizer._assert_create(c, env)
+        eventlet.sleep(10)
+        yield 6  # Test split point
 
-        # Test split point
-        TestAgentRealizer.cleanup_on_teardown = False
-        yield 6
-        TestAgentRealizer.cleanup_on_teardown = True
-
+        # ################ PORT-UNBIND FUNCTIONAL TESTS ##############
         LOG.info("Create inventory with the provider")
 
         env = Environment(inventory=inventory)
         with env:
             i = env.openstack_inventory
-            eventlet.sleep(30)
+            eventlet.sleep(10)
 
             LOG.info("Polluting ...")
             for index in range(1, 10):
                 TestAgentRealizer._pollute(env, index)
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 7
-            TestAgentRealizer.cleanup_on_teardown = True
 
             # Remove parent
             LOG.info("Deleting port \"PORT_FRONTEND_INTERNAL\"")
             i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 8
-            TestAgentRealizer.cleanup_on_teardown = True
 
             LOG.info("Deleting port \"PORT_WITH_3_SG\"")
             i.port_delete(c.PORT_WITH_3_SG["name"])
-            eventlet.sleep(10)
 
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 9
-            TestAgentRealizer.cleanup_on_teardown = True
 
             # Remove child
             LOG.info("Deleting port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
-            eventlet.sleep(60)
 
+            eventlet.sleep(30)
             # Test split point
-            TestAgentRealizer.cleanup_on_teardown = False
             yield 10
-            TestAgentRealizer.cleanup_on_teardown = True
 
         LOG.info("Checking \"_assert_update\"")
         TestAgentRealizer._assert_update(c, env)
 
-        LOG.info("End of end to end tests.")
+        # Test split point
+        TestAgentRealizer.cleanup_on_teardown = True
+        eventlet.sleep(10)
         yield 11
+
+        ################ MP-TO-POLICY FUNCTIONAL TESTS ##############
+        cl = client_nsx.Client()
+        mp_service_status = cl.get(path="/api/v1/node/services/migration-coordinator/status").json()
+        if (mp_service_status.get("monitor_runtime_state") == "running") and (mp_service_status.get("runtime_state") == "running"):
+            LOG.info("Migration coordinator is UP and RUNNING.")
+        else:
+            LOG.info("Migration coordinator is NOT running. Enabling ...")
+            cl.post(path="/api/v1/node/services/migration-coordinator?action=start", data={})
+            eventlet.sleep(120)
+
+        yield 12
+
+        cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
+        cfg.CONF.set_override("migration_tag_count_trigger", 2, "AGENT")
+        cfg.CONF.set_override("migration_tag_count_max", 5, "AGENT")
+        cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
+
+        migration_inventory = copy.deepcopy(coverage.OPENSTACK_INVENTORY_MIGRATION)
+        env = Environment(inventory=migration_inventory)
+
+        with env:
+            i = env.openstack_inventory
+            i.port_bind(c.PORT_FOR_MIGRATION_1["name"], "1000")
+            i.port_bind(c.PORT_FOR_MIGRATION_2["name"], "1000")
+            i.port_bind(c.PORT_FOR_NOT_MIGRATION_1["name"], "1000")
+            i.port_bind(c.PORT_FOR_NOT_MIGRATION_2["name"], "1000")
+
+            eventlet.sleep(60)
+            # Test split point
+            yield 13
+
+        LOG.info("Checking \"_assert_migrate\"")
+        TestAgentRealizer._assert_migrate(c, env)
+
+        LOG.info("End of end to end tests.")
+        TestAgentRealizer.cleanup_on_teardown = True
+        eventlet.sleep(10)
+        yield 14
 
     @staticmethod
     def _assert_create(os_inventory, environment):
@@ -254,7 +291,8 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], True)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
 
         # Validate Security Group Rules Sections
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], True)
@@ -262,17 +300,20 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
 
         if environment.is_management_api_mode():
             # Validate Security Group Rules NSGroups
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
@@ -300,7 +341,8 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
         TestAgentRealizer.instance.assertEquals(len(m[p.SG_MEMBERS]["meta"].keys()), 4)
 
         # Validate Security Group Rules Sections
@@ -309,27 +351,36 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
         TestAgentRealizer.instance.assertEquals(len(m[p.SG_RULES]["meta"].keys()), 3)
 
         if environment.is_management_api_mode():
             # Validate Security Group Rules NSGroups
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
             TestAgentRealizer.instance.assertEquals(len(m[p.SG_RULES_EXT]["meta"].keys()), 3)
 
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
-        
-        params = {"default_service": False} # User services only
+
+        params = {"default_service": False}  # User services only
         services = p.client.get_all(path=provider_nsx_policy.API.SERVICES, params=params)
         services = [s for s in services if not s.get("is_default")]
         TestAgentRealizer.instance.assertEquals(len(services), 0)
+
+    @staticmethod
+    def _assert_migrate(os_inventory, environment):
+        # TODO: do test comparisons
+        pass
 
     @staticmethod
     def _pollute(env, index):
@@ -349,9 +400,9 @@ class TestAgentRealizer(base.BaseTestCase):
         p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
 
         p.client.put(path=api.GROUP.format(id), data=pp.sg_members_container({"id": id}, dict()))
-        data=pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
+        data = pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
         p.client.put(path=api.POLICY.format(id), data=data)
 
 
 # Initialize end to end tests generator
-TestAgentRealizer.tests_generator = TestAgentRealizer.end_to_end_test_generator()
+TestAgentRealizer.tests_generator = TestAgentRealizer.functional_test_generator()
