@@ -299,7 +299,7 @@ NSXV3_DEFAULT_L3_SECTION = "default-layer3-section"
 
 DEFAULT_APPLICATION_DROP_POLICY = {
     "rules": [],
-    "logging_enabled": True,
+    # "logging_enabled": True,
     "resource_type": "SecurityPolicy",
     "id": "default-layer3-logged-drop-section",
     "display_name": "Default Layer3 Logged Drop Section",
