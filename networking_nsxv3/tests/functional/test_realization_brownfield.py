@@ -135,6 +135,11 @@ class TestAgentRealizer(base.BaseTestCase):
         y = next(self.tests_generator)
         LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
+    def test_15_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_15_functional_generated.__name__}\" ...")
+        y = next(self.tests_generator)
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
+
     @staticmethod
     def functional_test_generator():
         LOG.info("Starting end to end tests ...")
@@ -239,7 +244,6 @@ class TestAgentRealizer(base.BaseTestCase):
             LOG.info("Migration coordinator is NOT running. Enabling ...")
             cl.post(path="/api/v1/node/services/migration-coordinator?action=start", data={})
             eventlet.sleep(120)
-
         yield 12
 
         cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
@@ -257,17 +261,18 @@ class TestAgentRealizer(base.BaseTestCase):
             i.port_bind(c.PORT_FOR_NOT_MIGRATION_1["name"], "1000")
             i.port_bind(c.PORT_FOR_NOT_MIGRATION_2["name"], "1000")
 
-            eventlet.sleep(60)
-            # Test split point
+            eventlet.sleep(240)
             yield 13
 
         LOG.info("Checking \"_assert_migrate\"")
         TestAgentRealizer._assert_migrate(c, env)
+        eventlet.sleep(10)
+        yield 14
 
         LOG.info("End of end to end tests.")
         TestAgentRealizer.cleanup_on_teardown = True
         eventlet.sleep(10)
-        yield 14
+        yield 15
 
     @staticmethod
     def _assert_create(os_inventory, environment):
@@ -379,8 +384,31 @@ class TestAgentRealizer(base.BaseTestCase):
 
     @staticmethod
     def _assert_migrate(os_inventory, environment):
-        # TODO: do test comparisons
-        pass
+        c = os_inventory
+        mngr_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
+        mngr = environment.manager.realizer.mngr_provider
+        plcy = environment.manager.realizer.plcy_provider
+
+        # Validate Networks
+        TestAgentRealizer.instance.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
+        TestAgentRealizer.instance.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
+        TestAgentRealizer.instance.assertEquals("1000" in plcy_meta[plcy.SEGMENT]["meta"], True)
+        TestAgentRealizer.instance.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], False)
+
+        # Validate Ports migrated
+        cl = client_nsx.Client()
+        p1 = cl.get_unique(path=provider_nsx_policy.API.SEARCH_QUERY, params={
+                           "query": provider_nsx_policy.API.SEARCH_Q_SEG_PORT.format(c.PORT_FOR_MIGRATION_1["id"])})
+        p2 = cl.get_unique(path=provider_nsx_policy.API.SEARCH_QUERY, params={
+                           "query": provider_nsx_policy.API.SEARCH_Q_SEG_PORT.format(c.PORT_FOR_MIGRATION_2["id"])})
+        # TODO: more tests
+
+        TestAgentRealizer.instance.assertEquals(p1.get("display_name"), c.PORT_FOR_MIGRATION_1["name"])
+        TestAgentRealizer.instance.assertEquals(p2.get("display_name"), c.PORT_FOR_MIGRATION_2["name"])
+
+        # Validate Security Group Remote Prefix IPSets
+        for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
     @staticmethod
     def _pollute(env, index):
