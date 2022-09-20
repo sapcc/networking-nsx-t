@@ -118,16 +118,12 @@ class AgentRealizer(object):
             seg_qos_outdated, seg_qos_current = pp.outdated(pp.SEGM_QOS, qos_meta)
 
             # Remove duplicated policy/manager objects
+            # Only process outdated segment ports which are also in management
+            # if we are in migration mode
             seg_port_outdated, seg_port_current, port_outdated = self._filter_plcy_mngr_objs(
                 seg_port_outdated, seg_port_current, port_outdated, port_current)
             seg_qos_outdated, seg_qos_current, qos_outdated = self._filter_plcy_mngr_objs(
                 seg_qos_outdated, seg_qos_current, qos_outdated, qos_current)
-
-            # Only process outdated segment ports which are also in management
-            # if we are in migration mode
-            if not self.force_mp_to_policy:
-                seg_port_outdated = seg_port_outdated.difference(port_current)
-                seg_qos_outdated = seg_qos_outdated.difference(qos_current)
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, sgm_maybe_orphans = pp.outdated(pp.SG_MEMBERS, {sg: 0 for sg in sg_meta})
