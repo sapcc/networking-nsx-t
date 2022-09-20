@@ -411,6 +411,7 @@ class AgentRealizer(object):
             mp.metadata_delete(mp.PORT, os_id)
             # Update Policy meta
             pp.get_port(os_id=os_id)
+            return pp.port_realize(os_port)
         except Exception as e:
             LOG.info(f"Port with ID: {os_id} was not promoted to Policy API. ({e})")
             LOG.debug(traceback.format_exc())
