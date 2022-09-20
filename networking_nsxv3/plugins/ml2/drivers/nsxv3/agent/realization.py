@@ -181,6 +181,10 @@ class AgentRealizer(object):
             return self._age_cycle(_slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans)
 
     def _filter_plcy_mngr_objs(self, plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated, mngr_obj_current):
+        """This method will filter all duplicated Manager Meta IDs from the Policy Meta IDs.
+           This is needed because NSX-T SwitchPorts and SegmentPorts exist on at the same time with the same IDs
+           in Manager and Policy API respectively.
+        """
         plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_outdated)
         plcy_obj_current = plcy_obj_current.difference(mngr_obj_current)
         plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_current)
