@@ -118,10 +118,10 @@ class AgentRealizer(object):
             seg_qos_outdated, seg_qos_current = pp.outdated(pp.SEGM_QOS, qos_meta)
 
             # Remove duplicated policy/manager objects
-            seg_port_outdated = seg_port_outdated.difference(port_outdated)
-            seg_port_current = seg_port_current.difference(port_current)
-            seg_qos_outdated = seg_qos_outdated.difference(qos_outdated)
-            seg_qos_current = seg_qos_current.difference(qos_current)
+            seg_port_outdated, seg_port_current, port_outdated = self._filter_plcy_mngr_objs(
+                seg_port_outdated, seg_port_current, port_outdated, port_current)
+            seg_qos_outdated, seg_qos_current, qos_outdated = self._filter_plcy_mngr_objs(
+                seg_qos_outdated, seg_qos_current, qos_outdated, qos_current)
 
             # Only process outdated segment ports which are also in management
             # if we are in migration mode
@@ -183,6 +183,13 @@ class AgentRealizer(object):
                 return
 
             return self._age_cycle(_slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans)
+
+    def _filter_plcy_mngr_objs(self, plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated, mngr_obj_current):
+        plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_outdated)
+        plcy_obj_current = plcy_obj_current.difference(mngr_obj_current)
+        plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_current)
+        mngr_obj_outdated = mngr_obj_outdated.difference(plcy_obj_current)
+        return plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated
 
     def _age_cycle(self, _slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans):
         mp = self.mngr_provider
