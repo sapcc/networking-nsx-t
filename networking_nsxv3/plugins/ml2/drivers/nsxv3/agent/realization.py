@@ -118,10 +118,12 @@ class AgentRealizer(object):
             seg_qos_outdated, seg_qos_current = pp.outdated(pp.SEGM_QOS, qos_meta)
 
             # Remove duplicated policy/manager objects
-            seg_port_outdated = seg_port_outdated.difference(port_outdated)
-            seg_port_current = seg_port_current.difference(port_current)
-            seg_qos_outdated = seg_qos_outdated.difference(qos_outdated)
-            seg_qos_current = seg_qos_current.difference(qos_current)
+            # Only process outdated segment ports which are also in management
+            # if we are in migration mode
+            seg_port_outdated, seg_port_current, port_outdated = self._filter_plcy_mngr_objs(
+                seg_port_outdated, seg_port_current, port_outdated, port_current)
+            seg_qos_outdated, seg_qos_current, qos_outdated = self._filter_plcy_mngr_objs(
+                seg_qos_outdated, seg_qos_current, qos_outdated, qos_current)
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, sgm_maybe_orphans = pp.outdated(pp.SG_MEMBERS, {sg: 0 for sg in sg_meta})
@@ -177,6 +179,17 @@ class AgentRealizer(object):
                 return
 
             return self._age_cycle(_slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans)
+
+    def _filter_plcy_mngr_objs(self, plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated, mngr_obj_current):
+        """This method will filter all duplicated Manager Meta IDs from the Policy Meta IDs.
+           This is needed because NSX-T SwitchPorts and SegmentPorts exist on at the same time with the same IDs
+           in Manager and Policy API respectively.
+        """
+        plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_outdated)
+        plcy_obj_current = plcy_obj_current.difference(mngr_obj_current)
+        plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_current)
+        mngr_obj_outdated = mngr_obj_outdated.difference(plcy_obj_current)
+        return plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated
 
     def _age_cycle(self, _slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans):
         mp = self.mngr_provider
@@ -398,6 +411,7 @@ class AgentRealizer(object):
             mp.metadata_delete(mp.PORT, os_id)
             # Update Policy meta
             pp.get_port(os_id=os_id)
+            return pp.port_realize(os_port)
         except Exception as e:
             LOG.info(f"Port with ID: {os_id} was not promoted to Policy API. ({e})")
             LOG.debug(traceback.format_exc())
