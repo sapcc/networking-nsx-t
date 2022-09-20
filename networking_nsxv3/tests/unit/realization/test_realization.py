@@ -431,7 +431,7 @@ class TestGroupsRealization(base.BaseTestCase):
             with env:
                 i = env.openstack_inventory
                 i.port_bind(c.PORT_WITH_3_SG["name"], "1000")
-                eventlet.sleep(10)
+                eventlet.sleep(30)
 
                 # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
 
