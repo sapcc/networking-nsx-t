@@ -247,9 +247,9 @@ class TestAgentRealizer(base.BaseTestCase):
         yield 12
 
         cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
-        cfg.CONF.set_override("migration_tag_count_trigger", 2, "AGENT")
-        cfg.CONF.set_override("migration_tag_count_max", 5, "AGENT")
-        cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
+        cfg.CONF.set_override("migration_tag_count_trigger", 5, "AGENT")
+        cfg.CONF.set_override("migration_tag_count_max", 6, "AGENT")
+        cfg.CONF.set_override("max_sg_tags_per_segment_port", 5, "AGENT")
 
         migration_inventory = copy.deepcopy(coverage.OPENSTACK_INVENTORY_MIGRATION)
         env = Environment(inventory=migration_inventory)
@@ -396,15 +396,19 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], False)
 
         # Validate Ports migrated
-        cl = client_nsx.Client()
-        p1 = cl.get_unique(path=provider_nsx_policy.API.SEARCH_QUERY, params={
-                           "query": provider_nsx_policy.API.SEARCH_Q_SEG_PORT.format(c.PORT_FOR_MIGRATION_1["id"])})
-        p2 = cl.get_unique(path=provider_nsx_policy.API.SEARCH_QUERY, params={
-                           "query": provider_nsx_policy.API.SEARCH_Q_SEG_PORT.format(c.PORT_FOR_MIGRATION_2["id"])})
-        # TODO: more tests
+        TestAgentRealizer.instance.assertEquals(c.PORT_FOR_MIGRATION_1["id"] in mngr_meta[mngr.PORT]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(c.PORT_FOR_MIGRATION_2["id"] in mngr_meta[mngr.PORT]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(c.PORT_FOR_NOT_MIGRATION_1["id"] in mngr_meta[mngr.PORT]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(c.PORT_FOR_NOT_MIGRATION_2["id"] in mngr_meta[mngr.PORT]["meta"], True)
 
-        TestAgentRealizer.instance.assertEquals(p1.get("display_name"), c.PORT_FOR_MIGRATION_1["name"])
-        TestAgentRealizer.instance.assertEquals(p2.get("display_name"), c.PORT_FOR_MIGRATION_2["name"])
+        TestAgentRealizer.instance.assertEquals(
+            c.PORT_FOR_NOT_MIGRATION_1["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.PORT_FOR_NOT_MIGRATION_2["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.PORT_FOR_MIGRATION_1["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(
+            c.PORT_FOR_MIGRATION_2["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
 
         # Validate Security Group Remote Prefix IPSets
         for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
