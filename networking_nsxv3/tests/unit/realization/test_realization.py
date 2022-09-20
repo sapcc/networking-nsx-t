@@ -408,7 +408,6 @@ class TestGroupsRealization(base.BaseTestCase):
         o("nsxv3_login_hostname", hostname, "NSXV3")
         o("nsxv3_login_port", port, "NSXV3")
         o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
-        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
 
         o("force_mp_to_policy", True, "AGENT")
         o("migration_tag_count_trigger", 4, "AGENT")
@@ -431,7 +430,7 @@ class TestGroupsRealization(base.BaseTestCase):
             with env:
                 i = env.openstack_inventory
                 i.port_bind(c.PORT_WITH_3_SG["name"], "1000")
-                eventlet.sleep(30)
+                eventlet.sleep(10)
 
                 # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
 
