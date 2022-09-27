@@ -615,15 +615,17 @@ class Provider(base.Provider):
         os_id = os_port.get("id")
         nsx_segment_id = port_meta.parent_path.replace(API.SEGMENT_PATH.format(""), "")
         target_o = {"id": nsx_segment_id, "resource_type": Provider.SEGMENT}
-        child_o = vars(port_meta)
-        child_o["marked_for_delete"] = True
-        payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
-        try:
-            self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
-            return self.metadata_delete(Provider.SEGM_PORT, os_id)
-        except RuntimeError as e:
-            if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
-                LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
+        resp = self.client.get(API.SEGMENT_PORT.format(nsx_segment_id, port_meta.id))
+        if resp.ok:
+            child_o = resp.json()
+            child_o["marked_for_delete"] = True
+            payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
+            try:
+                self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
+                return self.metadata_delete(Provider.SEGM_PORT, os_id)
+            except RuntimeError as e:
+                if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
+                    LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
 
     def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
         logged_drop_policy_rules = self.client.get_all(API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
@@ -668,6 +670,7 @@ class Provider(base.Provider):
             parent_port = self.get_port(parent_port_id)
             if parent_port:
                 provider_port["parent_id"] = parent_port[0].id
+                provider_port["id"] = sg_meta.id
             else:
                 LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s", parent_port_id, port_id)
                 return
