@@ -667,12 +667,12 @@ class Provider(base.Provider):
 
         if parent_port_id:
             # Child port always created internally
-            parent_port = self.get_port(parent_port_id)
-            if parent_port:
-                provider_port["parent_id"] = parent_port[0].id
+            parent_meta, nsx_port = self.get_port(parent_port_id)
+            if parent_meta:
+                provider_port["parent_id"] = parent_meta.id
                 provider_port["id"] = sg_meta.id
             else:
-                LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s", parent_port_id, port_id)
+                LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s.", parent_port_id, port_id)
                 return
         else:
             if sg_meta:
@@ -724,7 +724,9 @@ class Provider(base.Provider):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
         if port and not port.get("id").startswith(API.POLICY_MNG_PREFIX):
             return self.metadata_update(Provider.SEGM_PORT, port), port
-        return None
+        elif port:
+            return None, port
+        return None, None
 
     def get_port_meta_by_ids(self, port_ids: Set[str]) -> Set[PolicyResourceMeta]:
         segment_ports = set()
