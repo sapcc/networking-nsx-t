@@ -30,6 +30,10 @@ def is_revision_error(response):
     return response.status_code == 412 and re.search("Fetch the latest copy of the object and retry", response.text)
 
 
+def is_child_deps_error(response):
+    return response.status_code == 400 and re.search("cannot be deleted as either it has children or it is being referenced by other objects path", response.text)
+
+
 class Singleton(type):
     _instances = {}
 
@@ -77,6 +81,9 @@ class RetryPolicy(object):
                         return response
 
                     if is_revision_error(response):
+                        return response
+
+                    if is_child_deps_error(response):
                         return response
 
                     if response.status_code in [401, 403]:

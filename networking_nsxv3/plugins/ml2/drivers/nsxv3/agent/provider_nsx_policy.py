@@ -4,7 +4,7 @@ import re
 from requests.exceptions import HTTPError
 import uuid
 import functools
-from typing import Callable, Dict, List, Set
+from typing import Callable, List, Set
 
 import eventlet
 from oslo_config import cfg
@@ -621,11 +621,37 @@ class Provider(base.Provider):
             child_o["marked_for_delete"] = True
             payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
             try:
-                self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
+                resp = self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
+                if not resp.ok:
+                    err_json = resp.json()
+                    err_msg = str(err_json.get("error_message"))
+                    LOG.warning(f"{err_msg}")
+                    match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
+                    if match:
+                        self._realize_sg_members_after_port_deletion(child_o, match)
+
                 return self.metadata_delete(Provider.SEGM_PORT, os_id)
             except RuntimeError as e:
                 if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
                     LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
+
+    def _realize_sg_members_after_port_deletion(self, child_o, match):
+        refs = match.groups()[0].split(",")
+        sg_paths = filter(lambda r: re.match(r'\/infra\/domains\/default\/groups\/', r), refs)
+        meta = self._metadata[Provider.SG_MEMBERS].meta
+        meta_keys = meta.keys()
+        for path in sg_paths:
+            for sg_id in meta_keys:
+                sg_meta = meta.get(sg_id)
+                if path == sg_meta.path:
+                    with LockManager.get_lock("member-{}".format(sg_id)):
+                        try:
+                            sg_m = self._metadata[Provider.SG_MEMBERS].meta.get(sg_id)
+                            sg_m.sg_members.remove(child_o.get("path"))
+                        except:
+                            pass
+                        else:
+                            self.sg_members_realize({"id": sg_id, "member_paths": sg_m.sg_members})
 
     def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
         logged_drop_policy_rules = self.client.get_all(API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
