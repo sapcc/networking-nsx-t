@@ -479,6 +479,41 @@ PORT_DB = {
 }
 
 # ---- SEGMENT MIGRATION STUB OBJECTS ---- #
+MP_QOS_EXTERNAL = {
+    "id": "1a7602ea-196c-42c9-a205-70d53486c6a8",
+    "revision_number": "1",
+    "name": "qos-public-mp",
+    "rules": [
+        {
+            "dscp_mark": "5"
+        },
+        {
+            "direction": "ingress",
+            "max_kbps": "4800",
+            "max_burst_kbps": "100000"
+        },
+        {
+            "direction": "egress",
+            "max_kbps": "6400",
+            "max_burst_kbps": "128000"
+        }
+    ]
+}
+MP_QOS_INTERNAL = {
+    "id": "79bb02d9-cd60-4bcc-a71a-f43b81148df1",
+    "revision_number": "2",
+    "name": "qos-internal-mp",
+    "rules": [
+        {
+            "dscp_mark": "2"
+        },
+        {
+            "direction": "ingress",
+            "max_kbps": "2400",
+            "max_burst_kbps": "64000"
+        }
+    ]
+}
 
 MP_TO_POLICY_GRP_1 = {
     "id": "30b4b09c-25a7-400b-ace9-49654216792b",
@@ -578,7 +613,7 @@ PORT_FOR_MIGRATION_1 = {
     "parent_id": "",
     "mac_address": "fa:16:3e:e4:11:f7",
     "admin_state_up": "UP",
-    "qos_policy_id": "",
+    "qos_policy_id": "",  # MP_QOS_EXTERNAL["id"],
     "security_groups": [
         MP_TO_POLICY_GRP_1["id"],
         MP_TO_POLICY_GRP_2["id"],
@@ -623,7 +658,7 @@ PORT_FOR_NOT_MIGRATION_1 = {
     "parent_id": "",
     "mac_address": "fa:16:3e:e4:11:f9",
     "admin_state_up": "UP",
-    "qos_policy_id": "",
+    "qos_policy_id": "",  # MP_QOS_INTERNAL["id"],
     "security_groups": [
         MP_TO_POLICY_GRP_1["id"],
         MP_TO_POLICY_GRP_2["id"]
@@ -715,20 +750,22 @@ OPENSTACK_INVENTORY_MIGRATION = {
         MP_TO_POLICY_GRP_2,
         MP_TO_POLICY_GRP_3,
         MP_TO_POLICY_GRP_4,
-        MP_TO_POLICY_GRP_5),
+        MP_TO_POLICY_GRP_5,
+        SECURITY_GROUP_OPERATIONS_NOT_REFERENCED),
     "security-group": load_security_groups(
         MP_TO_POLICY_GRP_1,
         MP_TO_POLICY_GRP_2,
         MP_TO_POLICY_GRP_3,
         MP_TO_POLICY_GRP_4,
-        MP_TO_POLICY_GRP_5),
+        MP_TO_POLICY_GRP_5,
+        SECURITY_GROUP_OPERATIONS_NOT_REFERENCED),
     "port": load_ports(
         PORT_FOR_MIGRATION_1,
         PORT_FOR_MIGRATION_2,
         PORT_FOR_NOT_MIGRATION_1,
         PORT_FOR_NOT_MIGRATION_2),
     "qos": load_qos_profiles(
-        QOS_EXTERNAL,
-        QOS_INTERNAL,
+        MP_QOS_EXTERNAL,
+        MP_QOS_INTERNAL,
         QOS_NOT_REFERENCED)
 }
