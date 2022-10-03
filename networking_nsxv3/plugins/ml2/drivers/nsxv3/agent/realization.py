@@ -124,8 +124,6 @@ class AgentRealizer(object):
                 seg_port_outdated, seg_port_current, port_outdated, port_current)
             seg_qos_outdated, seg_qos_current, qos_outdated = self._filter_plcy_mngr_objs(
                 seg_qos_outdated, seg_qos_current, qos_outdated, qos_current)
-            qos_outdated, qos_current, seg_qos_outdated = self._filter_plcy_mngr_objs(
-                qos_outdated, qos_current, seg_qos_outdated, seg_qos_current)
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, sgm_maybe_orphans = pp.outdated(pp.SG_MEMBERS, {sg: 0 for sg in sg_meta})
@@ -373,11 +371,18 @@ class AgentRealizer(object):
             try:
                 pp.qos_realize(os_qos, delete=True)
             except:
-                pass
-            mp.qos_realize(os_qos, delete=True)
+                try:
+                    mp.qos_realize(os_qos, delete=True)
+                except:
+                    pass
             return
 
-        return pp.qos_realize(os_qos, delete) if is_plcy else mp.qos_realize(os_qos, delete)
+        if is_plcy:
+            return pp.qos_realize(os_qos, delete)
+
+        mp.qos_realize(os_qos, delete)
+        if self.force_mp_to_policy and not delete:
+            self._get_notmigrated_switching_profiles()
 
     def _port_realize(self, os_port: dict, delete: bool = False):
         pp = self.plcy_provider
