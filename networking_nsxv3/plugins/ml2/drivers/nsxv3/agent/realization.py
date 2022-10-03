@@ -124,6 +124,8 @@ class AgentRealizer(object):
                 seg_port_outdated, seg_port_current, port_outdated, port_current)
             seg_qos_outdated, seg_qos_current, qos_outdated = self._filter_plcy_mngr_objs(
                 seg_qos_outdated, seg_qos_current, qos_outdated, qos_current)
+            qos_outdated, qos_current, seg_qos_outdated = self._filter_plcy_mngr_objs(
+                qos_outdated, qos_current, seg_qos_outdated, seg_qos_current)
 
             # There is not way to revision group members but can 'age' them
             sgm_outdated, sgm_maybe_orphans = pp.outdated(pp.SG_MEMBERS, {sg: 0 for sg in sg_meta})
@@ -437,7 +439,7 @@ class AgentRealizer(object):
         nsxt_max = 29
         tag_trigger = cfg.CONF.AGENT.migration_tag_count_trigger
         tag_max = cfg.CONF.AGENT.migration_tag_count_max
-        tag_count = len(port.get("tags"))
+        tag_count = len(port.get("tags")) if port.get("tags") else 0
         if not force:
             if tag_trigger <= tag_count <= tag_max:
                 LOG.info(f"Migration criteria met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
