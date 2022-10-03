@@ -472,7 +472,7 @@ class AgentRealizer(object):
         not_migrated_sys_owned, not_migrated_not_sys_owned = [], []
 
         if self.force_mp_to_policy and self.migr_provider:
-            mgmt_profile_ids = [p.get("id") for p in mgmt_sw_profiles if p]
+            mgmt_profile_ids = [p.get("id") for p in mgmt_sw_profiles if p and p.get("_create_user") != "nsx_policy"]
             plcy_profile_ids = [p.get("id") for p in policy_sw_profiles if p]
 
             not_migrated_ids = [p_id for p_id in mgmt_profile_ids if p_id not in plcy_profile_ids]
