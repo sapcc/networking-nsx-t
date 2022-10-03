@@ -4,7 +4,7 @@ import re
 
 import eventlet
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    agent, provider_nsx_mgmt, provider_nsx_policy)
+    agent, provider_nsx_mgmt, client_nsx, provider_nsx_policy)
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
 from neutron.tests import base
@@ -47,11 +47,11 @@ class TestAgentRealizer(base.BaseTestCase):
         LOG.info("==>>>>>>>>>>>>>>>>>>> cleanup")
         env = Environment(name="Cleanup")
         with env:
-            eventlet.sleep(30)
-        
+            eventlet.sleep(60)
+
         provider = env.manager.realizer.plcy_provider
         _, plcy_meta = env.dump_provider_inventory(printable=False)
-        for type,meta in plcy_meta.items():
+        for type, meta in plcy_meta.items():
             if type != provider.SEGMENT and type != provider.SG_RULES_REMOTE_PREFIX:
                 TestAgentRealizer.instance.assertEquals(meta["meta"], dict())
 
@@ -246,12 +246,19 @@ class TestAgentRealizer(base.BaseTestCase):
 
         with env:
             i = env.openstack_inventory
-            # TODO: Check QOS realization
+            # QOS
+            i.qos_create(c.MP_QOS_EXTERNAL["id"])
+            eventlet.sleep(60)
+
+            # PORT
             i.port_bind(c.PORT_FOR_MIGRATION_1["name"], "1000")
             i.port_bind(c.PORT_FOR_MIGRATION_2["name"], "1000")
-            #TODO TRUNK PORT TEST
             i.port_bind(c.PORT_FOR_NOT_MIGRATION_1["name"], "1000")
             i.port_bind(c.PORT_FOR_NOT_MIGRATION_2["name"], "1000")
+            eventlet.sleep(10)
+
+            # TRUNK
+            i.port_bind(c.SUBPORT_FOR_MIGRATION_1["name"], "1000")
 
             eventlet.sleep(240)
             yield 13
@@ -263,10 +270,8 @@ class TestAgentRealizer(base.BaseTestCase):
 
         LOG.info("End of end to end tests.")
         TestAgentRealizer.cleanup_on_teardown = True
-        eventlet.sleep(120)
+        eventlet.sleep(240)
         yield 15
-
-        # TODO: ASSERT CLEAR
 
     @staticmethod
     def _assert_create(os_inventory, environment):
@@ -290,7 +295,8 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], True)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
 
         # Validate Security Group Rules Sections
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES]["meta"], True)
@@ -298,17 +304,20 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
 
         if environment.is_management_api_mode():
             # Validate Security Group Rules NSGroups
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
-        
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
@@ -336,7 +345,8 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_MEMBERS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_MEMBERS]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_MEMBERS]["meta"], False)
         TestAgentRealizer.instance.assertEquals(len(m[p.SG_MEMBERS]["meta"].keys()), 4)
 
         # Validate Security Group Rules Sections
@@ -345,24 +355,28 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(
+            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES]["meta"], False)
         TestAgentRealizer.instance.assertEquals(len(m[p.SG_RULES]["meta"].keys()), 3)
 
         if environment.is_management_api_mode():
             # Validate Security Group Rules NSGroups
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_RULES_EXT]["meta"], False)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_DB["id"] in m[p.SG_RULES_EXT]["meta"], True)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS["id"] in m[p.SG_RULES_EXT]["meta"], True)
             TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_AUTH["id"] in m[p.SG_RULES_EXT]["meta"], False)
-            TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
+            TestAgentRealizer.instance.assertEquals(
+                c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in m[p.SG_RULES_EXT]["meta"], False)
             TestAgentRealizer.instance.assertEquals(len(m[p.SG_RULES_EXT]["meta"].keys()), 3)
 
         # Validate Security Group Remote Prefix IPSets
         for id in m[p.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
-        
-        params = {"default_service": False} # User services only
+
+        params = {"default_service": False}  # User services only
         services = p.client.get_all(path=provider_nsx_policy.API.SERVICES, params=params)
         services = [s for s in services if not s.get("is_default")]
         TestAgentRealizer.instance.assertEquals(len(services), 0)
@@ -383,6 +397,7 @@ class TestAgentRealizer(base.BaseTestCase):
         # Validate Ports migrated
         TestAgentRealizer.instance.assertEquals(c.PORT_FOR_MIGRATION_1["id"] in mngr_meta[mngr.PORT]["meta"], False)
         TestAgentRealizer.instance.assertEquals(c.PORT_FOR_MIGRATION_2["id"] in mngr_meta[mngr.PORT]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(c.SUBPORT_FOR_MIGRATION_1["id"] in mngr_meta[mngr.PORT]["meta"], False)
         TestAgentRealizer.instance.assertEquals(c.PORT_FOR_NOT_MIGRATION_1["id"] in mngr_meta[mngr.PORT]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.PORT_FOR_NOT_MIGRATION_2["id"] in mngr_meta[mngr.PORT]["meta"], True)
         TestAgentRealizer.instance.assertEquals(
@@ -390,20 +405,18 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(
             c.PORT_FOR_NOT_MIGRATION_2["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], False)
         TestAgentRealizer.instance.assertEquals(
+            c.SUBPORT_FOR_MIGRATION_1["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(
             c.PORT_FOR_MIGRATION_1["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
         TestAgentRealizer.instance.assertEquals(
             c.PORT_FOR_MIGRATION_2["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
 
         # Validate QoS State
-        # TestAgentRealizer.instance.assertEquals(c.MP_QOS_INTERNAL["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], True)
-        # TestAgentRealizer.instance.assertEquals(c.MP_QOS_EXTERNAL["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], True)
-        # TestAgentRealizer.instance.assertEquals(
-        #     c.MP_QOS_NOT_REFERENCED["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], False)
-        # TestAgentRealizer.instance.assertEquals(len(plcy_meta[plcy.SEGM_QOS]["meta"].keys()), 2)
-        # TestAgentRealizer.instance.assertEquals(c.MP_QOS_INTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
-        # TestAgentRealizer.instance.assertEquals(c.MP_QOS_EXTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
-        # TestAgentRealizer.instance.assertEquals(c.MP_QOS_NOT_REFERENCED["id"] in mngr_meta[mngr.QOS]["meta"], False)
-        # TestAgentRealizer.instance.assertEquals(len(mngr_meta[mngr.QOS]["meta"].keys()), 2)
+        TestAgentRealizer.instance.assertEquals(c.MP_QOS_EXTERNAL["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(c.MP_QOS_EXTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(
+            c.MP_QOS_NOT_REFERENCED["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], False)
+        TestAgentRealizer.instance.assertEquals(c.MP_QOS_NOT_REFERENCED["id"] in mngr_meta[mngr.QOS]["meta"], False)
 
         # Validate Security Groups Members
         TestAgentRealizer.instance.assertEquals(c.MP_TO_POLICY_GRP_1["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
@@ -465,7 +478,7 @@ class TestAgentRealizer(base.BaseTestCase):
         p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
 
         p.client.put(path=api.GROUP.format(id), data=pp.sg_members_container({"id": id}, dict()))
-        data=pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
+        data = pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
         p.client.put(path=api.POLICY.format(id), data=data)
 
 
