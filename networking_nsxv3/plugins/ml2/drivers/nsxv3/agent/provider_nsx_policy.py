@@ -620,20 +620,17 @@ class Provider(base.Provider):
             child_o = resp.json()
             child_o["marked_for_delete"] = True
             payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
-            try:
-                resp = self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
-                if not resp.ok:
-                    err_json = resp.json()
-                    err_msg = str(err_json.get("error_message"))
-                    LOG.warning(f"{err_msg}")
-                    match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
-                    if match:
-                        self._realize_sg_members_after_port_deletion(child_o, match)
+            resp = self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
+            if not resp.ok:
+                err_json = resp.json()
+                err_msg = str(err_json.get("error_message"))
+                LOG.debug(f"{err_msg}")
+                match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
+                LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
+                if match:
+                    self._realize_sg_members_after_port_deletion(child_o, match)
 
-                return self.metadata_delete(Provider.SEGM_PORT, os_id)
-            except RuntimeError as e:
-                if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
-                    LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
+            return self.metadata_delete(Provider.SEGM_PORT, os_id)
 
     def _realize_sg_members_after_port_deletion(self, child_o, match):
         refs = match.groups()[0].split(",")

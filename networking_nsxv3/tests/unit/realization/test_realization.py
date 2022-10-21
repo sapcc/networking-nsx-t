@@ -15,7 +15,6 @@ LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 # TODO - replace static wait/sleep with active polling
-# TODO - split into more granual functional tests
 
 def set_logging_levels():
     cfg.CONF.set_override("default_log_levels", [

@@ -382,7 +382,7 @@ class AgentRealizer(object):
 
         mp.qos_realize(os_qos, delete)
         if self.force_mp_to_policy and not delete:
-            self._get_notmigrated_switching_profiles()
+            self._promote_switching_profiles()
 
     def _port_realize(self, os_port: dict, delete: bool = False):
         pp = self.plcy_provider
