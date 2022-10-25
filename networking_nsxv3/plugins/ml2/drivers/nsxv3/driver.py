@@ -184,3 +184,11 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             provisioning_blocks.provisioning_complete(
                 context._plugin_context, port['id'], resources.PORT,
                 provisioning_blocks.L2_AGENT_ENTITY)
+
+    def trigger_sync(self, id, type):
+        if type == "port_id":
+            LOG.info("Manual trigger sync via rpc for port %s" % id)
+        elif type == "security_group_id":
+            LOG.info("Manual trigger sync via rpc security group %s" % id)
+        else:
+            LOG.info("Type %s not known" % type)
