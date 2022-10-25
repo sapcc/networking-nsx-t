@@ -678,7 +678,7 @@ PORT_FOR_NOT_MIGRATION_1 = {
         "mac_address": "fa:16:3e:e4:11:f9"
     }],
     "vif_details": {
-        "segmentation_id": "1000"
+        "segmentation_id": "3200"
     }
 }
 PORT_FOR_NOT_MIGRATION_2 = {
@@ -701,7 +701,7 @@ PORT_FOR_NOT_MIGRATION_2 = {
         "mac_address": "fa:16:3e:e4:11:a0"
     }],
     "vif_details": {
-        "segmentation_id": "1000"
+        "segmentation_id": "3200"
     }
 }
 

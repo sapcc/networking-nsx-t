@@ -1,4 +1,5 @@
 import copy
+import json
 import os
 import re
 
@@ -18,7 +19,8 @@ LOG = logging.getLogger(__name__)
 
 class TestAgentRealizer(base.BaseTestCase):
 
-    cleanup_on_teardown = True
+    cleanup_on_teardown = False
+    cleanup_sleep = 30
 
     def setUp(self):
         super(TestAgentRealizer, self).setUp()
@@ -47,13 +49,16 @@ class TestAgentRealizer(base.BaseTestCase):
         LOG.info("==>>>>>>>>>>>>>>>>>>> cleanup")
         env = Environment(name="Cleanup")
         with env:
-            eventlet.sleep(60)
-
-        provider = env.manager.realizer.plcy_provider
-        _, plcy_meta = env.dump_provider_inventory(printable=False)
-        for type, meta in plcy_meta.items():
-            if type != provider.SEGMENT and type != provider.SG_RULES_REMOTE_PREFIX:
-                TestAgentRealizer.instance.assertEquals(meta["meta"], dict())
+            eventlet.sleep(TestAgentRealizer.cleanup_sleep)
+            mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
+            for type, meta in plcy_meta.items():
+                p = env.manager.realizer.plcy_provider
+                if type != p.SEGMENT and type != p.SG_RULES_REMOTE_PREFIX:
+                    TestAgentRealizer.instance.assertEquals(dict(), meta["meta"])
+            for type, meta in mngr_meta.items():
+                p = env.manager.realizer.mngr_provider
+                if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
+                    TestAgentRealizer.instance.assertEquals(dict(), meta["meta"])
 
     def tearDown(self):
         super(TestAgentRealizer, self).tearDown()
@@ -63,6 +68,13 @@ class TestAgentRealizer(base.BaseTestCase):
             TestAgentRealizer.cleanup()
         else:
             LOG.info("NO cleanup on tearDown")
+
+    @staticmethod
+    def setup_networks(env: Environment, inventory):
+        for port_id in inventory.get("port"):
+            net = env.openstack_inventory.network_create(inventory["port"][port_id]["vif_details"]["segmentation_id"])
+            inventory["port"][port_id]["vif_details"]["nsx-logical-switch-id"] = net.get("nsx-logical-switch-id")
+        env.openstack_inventory.reload_inventory(inventory)
 
     def test_01_functional_generated(self):
         LOG.info(f"==> Starting \"{TestAgentRealizer.test_01_functional_generated.__name__}\" ...")
@@ -114,25 +126,37 @@ class TestAgentRealizer(base.BaseTestCase):
         y = next(self.tests_generator)
         LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_09_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_09_end_to_end_generated\" ...")
+    def test_11_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_11_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_09_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_10_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_10_end_to_end_generated\" ...")
+    def test_12_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_12_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_10_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
-    def test_11_end_to_end_generated(self):
-        LOG.info("==> Starting \"test_11_end_to_end_generated\" ...")
+    def test_13_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_13_functional_generated.__name__}\" ...")
         y = next(self.tests_generator)
-        LOG.info(f"==> End \"test_11_end_to_end_generated\". Finished yield = {y}")
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
+
+    def test_14_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_14_functional_generated.__name__}\" ...")
+        y = next(self.tests_generator)
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
+
+    def test_15_functional_generated(self):
+        LOG.info(f"==> Starting \"{TestAgentRealizer.test_15_functional_generated.__name__}\" ...")
+        y = next(self.tests_generator)
+        LOG.info(f"==> End \"test_{y}_functional_generated\". Finished yield = {y}")
 
     @staticmethod
     def end_to_end_test_generator():
         LOG.info("Starting end to end tests ...")
+        TestAgentRealizer.cleanup_sleep = 180
         TestAgentRealizer.cleanup()
+        TestAgentRealizer.cleanup_sleep = 30
         c = coverage
 
         ################ PORT-BIND FUNCTIONAL TESTS ##############
@@ -142,8 +166,8 @@ class TestAgentRealizer(base.BaseTestCase):
 
         env = Environment(inventory=inventory)
         with env:
+            TestAgentRealizer.setup_networks(env, inventory)
             i = env.openstack_inventory
-
             LOG.info("Binding port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_bind(c.PORT_FRONTEND_EXTERNAL["name"], "1000")
 
@@ -185,6 +209,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
         env = Environment(inventory=inventory)
         with env:
+            TestAgentRealizer.setup_networks(env, inventory)
             i = env.openstack_inventory
             eventlet.sleep(10)
 
@@ -212,19 +237,20 @@ class TestAgentRealizer(base.BaseTestCase):
             LOG.info("Deleting port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
 
-            eventlet.sleep(30)
+            eventlet.sleep(120)
             # Test split point
             yield 10
 
         LOG.info("Checking \"_assert_update\"")
         TestAgentRealizer._assert_update(c, env)
-
-        # Test split point
         TestAgentRealizer.cleanup_on_teardown = True
+        TestAgentRealizer.cleanup_sleep = 120
         eventlet.sleep(10)
         yield 11
 
         ################ MP-TO-POLICY FUNCTIONAL TESTS ##############
+        TestAgentRealizer.cleanup_on_teardown = False
+        TestAgentRealizer.cleanup_sleep = 30
         cl = client_nsx.Client()
         mp_service_status = cl.get(path="/api/v1/node/services/migration-coordinator/status").json()
         if (mp_service_status.get("monitor_runtime_state") == "running") and (mp_service_status.get("runtime_state") == "running"):
@@ -232,7 +258,7 @@ class TestAgentRealizer(base.BaseTestCase):
         else:
             LOG.info("Migration coordinator is NOT running. Enabling ...")
             cl.post(path="/api/v1/node/services/migration-coordinator?action=start", data={})
-            eventlet.sleep(120)
+            eventlet.sleep(240)
         yield 12
 
         cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
@@ -245,32 +271,23 @@ class TestAgentRealizer(base.BaseTestCase):
         env = Environment(inventory=migration_inventory)
 
         with env:
+            TestAgentRealizer.setup_networks(env, migration_inventory)
             i = env.openstack_inventory
             # QOS
             i.qos_create(c.MP_QOS_EXTERNAL["id"])
-            eventlet.sleep(60)
 
-            # PORT
-            i.port_bind(c.PORT_FOR_MIGRATION_1["name"], "1000")
-            i.port_bind(c.PORT_FOR_MIGRATION_2["name"], "1000")
-            i.port_bind(c.PORT_FOR_NOT_MIGRATION_1["name"], "1000")
-            i.port_bind(c.PORT_FOR_NOT_MIGRATION_2["name"], "1000")
-            eventlet.sleep(10)
-
-            # TRUNK
-            i.port_bind(c.SUBPORT_FOR_MIGRATION_1["name"], "1000")
-
-            eventlet.sleep(240)
+            eventlet.sleep(580)
             yield 13
 
         LOG.info("Checking \"_assert_migrate\"")
         TestAgentRealizer._assert_migrate(c, env)
+        LOG.info("End of end to end tests.")
         eventlet.sleep(10)
         yield 14
 
-        LOG.info("End of end to end tests.")
         TestAgentRealizer.cleanup_on_teardown = True
-        eventlet.sleep(240)
+        TestAgentRealizer.cleanup_sleep = 320
+        eventlet.sleep(10)
         yield 15
 
     @staticmethod
@@ -392,7 +409,7 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
         TestAgentRealizer.instance.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
         TestAgentRealizer.instance.assertEquals("1000" in plcy_meta[plcy.SEGMENT]["meta"], True)
-        TestAgentRealizer.instance.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], False)
+        TestAgentRealizer.instance.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], True)
 
         # Validate Ports migrated
         TestAgentRealizer.instance.assertEquals(c.PORT_FOR_MIGRATION_1["id"] in mngr_meta[mngr.PORT]["meta"], False)
@@ -414,9 +431,6 @@ class TestAgentRealizer(base.BaseTestCase):
         # Validate QoS State
         TestAgentRealizer.instance.assertEquals(c.MP_QOS_EXTERNAL["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.MP_QOS_EXTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
-        TestAgentRealizer.instance.assertEquals(
-            c.MP_QOS_NOT_REFERENCED["id"] in plcy_meta[plcy.SEGM_QOS]["meta"], False)
-        TestAgentRealizer.instance.assertEquals(c.MP_QOS_NOT_REFERENCED["id"] in mngr_meta[mngr.QOS]["meta"], False)
 
         # Validate Security Groups Members
         TestAgentRealizer.instance.assertEquals(c.MP_TO_POLICY_GRP_1["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)

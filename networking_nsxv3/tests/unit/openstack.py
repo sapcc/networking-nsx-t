@@ -1,5 +1,4 @@
 import copy
-import json
 from select import select
 import uuid
 
@@ -253,7 +252,7 @@ class NeutronMock(object):
         self._delete(self.SECURITY_GROUP, name)
 
     def network_create(self, segmentation_id):
-        self.notifier.rpc.realizer.network(segmentation_id)
+        return self.notifier.rpc.realizer.network(segmentation_id)
 
     def port_bind(self, name, segmentation_id):
         port = self._get_by_name(NeutronMock.PORT, name)
