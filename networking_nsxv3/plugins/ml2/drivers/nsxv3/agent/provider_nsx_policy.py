@@ -442,7 +442,7 @@ class Provider(base.Provider):
         self._setup_default_app_drop_logged_section()
 
     def _ensure_default_l3_policy(self):
-        res = self.client.get(API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
+        res = self.client.get(path=API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
         res.raise_for_status()
         for rule in res.json()["rules"]:
             if rule["action"] not in ["DROP", "REJECT"]:
@@ -504,7 +504,7 @@ class Provider(base.Provider):
         return provider_sg
 
     def _fetch_rules_from_nsx(self, meta):
-        rulez = self.client.get_all(API.RULES.format(meta.id))
+        rulez = self.client.get_all(path=API.RULES.format(meta.id))
         return {Resource(r).os_id: r for r in rulez}
 
     # overrides
@@ -626,7 +626,7 @@ class Provider(base.Provider):
                 LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
 
     def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
-        logged_drop_policy_rules = self.client.get_all(API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
+        logged_drop_policy_rules = self.client.get_all(path=API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
         is_logged = [rule for rule in logged_drop_policy_rules if rule["id"] == os_sg["id"]]
 
         if logged:
@@ -639,15 +639,15 @@ class Provider(base.Provider):
                 rule["scope"] = [API.GROUP_PATH.format(os_sg["id"])]
                 logged_drop_policy_rules.append(rule)
                 return self.client.put(
-                    API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], rule["id"]), data=rule)
+                    path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], rule["id"]), data=rule)
         else:
             if len(is_logged) > 0:
                 return self.client.delete(
-                    API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
+                    path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
 
         if delete and len(is_logged) > 0:
             return self.client.delete(
-                API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
+                path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
 
     # overrides
     def port_realize(self, os_port: dict, delete=False):
@@ -927,7 +927,7 @@ class Provider(base.Provider):
             return
 
         # Get current rules configuration
-        res = self.client.get(API.POLICY.format(log_obj['resource_id']))
+        res = self.client.get(path=API.POLICY.format(log_obj['resource_id']))
         res.raise_for_status()
 
         # Prepare update data

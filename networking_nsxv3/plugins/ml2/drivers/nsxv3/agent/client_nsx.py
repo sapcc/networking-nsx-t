@@ -1,5 +1,7 @@
+import logging
 import re
 import time
+import uuid
 
 import eventlet
 import requests
@@ -41,6 +43,16 @@ class Singleton(type):
 
 class RetryPolicy(object):
 
+    def _create_sentry_fingerprint(path: str):
+        #check if uuid is part of path -> replace with {}
+        for sub in path.split("/"):
+            try:
+                uuid.UUID(sub)
+                path.replace(sub, "{}")
+            except ValueError:
+                pass
+        return path
+
     def __call__(self, func):
 
         def decorator(self, *args, **kwargs):
@@ -55,10 +67,15 @@ class RetryPolicy(object):
             msg = None
             last_err = None
 
+            sentry_extra = {
+
+            }
+
             for attempt in range(1, until + 1):
                 try:
                     response = func(self, *args, **kwargs)
                     #LOG.debug("REQUEST: %s STATUS: %s, RESPONSE.CONTENT %s", requestInfo, response.status_code, response.content)
+
 
                     if response.status_code in [404]:
                         LOG.warning("Warning Code=%s Message=%s", response.status_code, response.content)
@@ -68,7 +85,7 @@ class RetryPolicy(object):
                         return response
 
                     last_err = "Error Code={} Message={}".format(response.status_code, response.content)
-                    log_msg = "Request={} Response={}".format(request_info, last_err)
+                    log_msg = "Request=%s Response=%s".format(request_info, last_err)
 
                     # Handle resource not found gently
                     if is_not_found(response):
@@ -87,11 +104,15 @@ class RetryPolicy(object):
                     # Retry for Migration coordinator backend is busy. Please try again after some time.
                     if not is_atomic_request_error(response) or not is_migration_bussy_error(response):
                         # skip retry on the ramaining NSX errors
-                        LOG.error(log_msg)
+                        sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs["path"]),
+                                                       response.request.method]
+                        LOG.error("Request=%s Response=%s".format(request_info, last_err), extra=sentry_extra)
                         break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
-                    LOG.error("Request={} Response={}".format(request_info, last_err))
+                    sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs["path"]),
+                                                   response.request.method]
+                    LOG.error("Request={} Response={}".format(request_info, last_err), extra=sentry_extra)
 
                 msg = pattern.format(attempt, until, pause, method)
 
