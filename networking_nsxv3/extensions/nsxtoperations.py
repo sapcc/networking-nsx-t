@@ -82,26 +82,21 @@ class TriggerManualSync(wsgi.Controller):
         self.plugin = plugin
         self.driver = driver
 
-
-
     def _validate_payload(self, payload):
         if not payload:
             return False
-
         if not all([i in NsxtOpsApiDefinition.RESOURCE_ATTRIBUTE_MAP[NsxtOpsApiDefinition.COLLECTION] for i in payload.keys()]):
             raise web_exc.HTTPBadRequest("Please use {keys}".format(keys=str(NsxtOpsApiDefinition.RESOURCE_ATTRIBUTE_MAP[NsxtOpsApiDefinition.COLLECTION])))
         return True
 
     def _process_payload(self, payload, method):
-        print(method)
-
         for type, ids in payload.items():
             if isinstance(ids, list):
                 #iterate over list of ids
-                [LOG.info("Start update process for %s" % id ) for id in ids]
+                [LOG.info("Trigger update process for %s" % id ) for id in ids]
                 [method(id=id, type=type) for id in ids]
             elif isinstance(ids, str):
-                LOG.info("Start update process for %s" % ids)
+                LOG.info("Trigger update process for %s" % ids)
                 method(id=ids, type=type)
 
 
