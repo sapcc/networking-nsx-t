@@ -104,6 +104,19 @@ class NSXv3AgentRpcClient(object):
         self._get_call_context()\
             .cast(self.context, 'resource_update', log_objs=log_objs)
 
+    def trigger_manual_update(self, id, type):
+        if type == "port_id":
+            id = {"id": id }
+            LOG.debug("NSXv3AgentRpcClient: (port_update): " + str(id))
+            self._get_call_context() \
+                .cast(self.context, 'port_update', port=id)
+        elif type == "security_group_id":
+            LOG.debug("NSXv3AgentRpcClient: (security_groups_rule_updated): " + str(id))
+            self._get_call_context() \
+                .cast(self.context, 'security_groups_rule_updated', security_groups=id)
+        else:
+            LOG.debug("NSXv3AgentRpcClient: (no rpc call triggered): pass security_group_id or port_id as tupe ")
+
 
 class NSXv3ServerRpcApi(object):
     """Agent-side RPC (stub) for agent-to-plugin interaction.
