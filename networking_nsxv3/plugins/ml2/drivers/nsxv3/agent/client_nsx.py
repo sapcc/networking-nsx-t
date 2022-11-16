@@ -85,7 +85,7 @@ class RetryPolicy(object):
                         return response
 
                     last_err = "Error Code={} Message={}".format(response.status_code, response.content)
-                    log_msg = "Request=%s Response=%s".format(request_info, last_err)
+                    log_msg = "Request={} Response={}".format(request_info, last_err)
 
                     # Handle resource not found gently
                     if is_not_found(response):
@@ -106,7 +106,7 @@ class RetryPolicy(object):
                         # skip retry on the ramaining NSX errors
                         sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs["path"]),
                                                        response.request.method]
-                        LOG.error("Request=%s Response=%s".format(request_info, last_err), extra=sentry_extra)
+                        LOG.error("Request={} Response={}".format(request_info, last_err), extra=sentry_extra)
                         break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
