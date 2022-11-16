@@ -1,7 +1,9 @@
 import abc
 import json
 import importlib
+import functools
 
+from neutron import policy
 from neutron.api import extensions
 from neutron.api.v2.resource import Resource
 from neutron_lib.api import extensions as api_extensions
@@ -17,13 +19,24 @@ import networking_nsxv3.extensions
 
 LOG = log.getLogger(__name__)
 
+ACCESS_RULE = "context_is_cloud_admin"
+
+
+def check_cloud_admin(f):
+    @functools.wraps(f)
+    def wrapper(self, request, *args, **kwargs):
+        if not policy.check(request.context, ACCESS_RULE, {'project_id': request.context.project_id}):
+            raise web_exc.HTTPUnauthorized("{} required for access".format(ACCESS_RULE))
+        return f(self, request, *args, **kwargs)
+    return wrapper
+
 class NsxtOpsApiDefinition():
     COLLECTION="nsxtops"
     PATH = "nsxt-ops"
     NAME = "nsxt-operations"
     ALIAS = "nsxt-ops"
     DESCRIPTION = "API Extension supporting operative"
-    UPDATED_TIMESTAMP = "2022-10-18T00:00:00-00:00"
+    UPDATED_TIMESTAMP = "2022-11-16T00:00:00-00:00"
     RESOURCE_ATTRIBUTE_MAP = {
         COLLECTION: {
             "security_group_id", "port_id"
@@ -99,13 +112,15 @@ class TriggerManualSync(wsgi.Controller):
                 LOG.info("Trigger update process for %s" % ids)
                 method(id=ids, type=type)
 
-
+    @check_cloud_admin
     def index(self, request, **kwargs):
         raise web_exc.HTTPNotImplemented("Method not implemented")
 
+    @check_cloud_admin
     def show(self, request, **kwargs):
         raise web_exc.HTTPNotImplemented("Method not implemented")
 
+    @check_cloud_admin
     def create(self, request, **kwargs):
        payload = json.loads(request.body)
        if self._validate_payload(payload):
@@ -114,8 +129,10 @@ class TriggerManualSync(wsgi.Controller):
        else:
            raise web_exc.HTTPError("Payload validation failed")
 
+    @check_cloud_admin
     def update(self, request, **kwargs):
         raise web_exc.HTTPNotImplemented("Method not implemented")
 
+    @check_cloud_admin
     def delete(self, request, **kwargs):
         raise web_exc.HTTPNotImplemented("Method not implemented")
