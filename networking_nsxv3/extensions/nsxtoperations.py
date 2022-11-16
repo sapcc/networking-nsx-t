@@ -106,8 +106,9 @@ class TriggerManualSync(wsgi.Controller):
         for type, ids in payload.items():
             if isinstance(ids, list):
                 #iterate over list of ids
-                [LOG.info("Trigger update process for %s" % id ) for id in ids]
-                [method(id=id, type=type) for id in ids]
+                for id in ids:
+                    LOG.info("Trigger update process for %s" % id)
+                    method(id=id, type=type)
             elif isinstance(ids, str):
                 LOG.info("Trigger update process for %s" % ids)
                 method(id=ids, type=type)
