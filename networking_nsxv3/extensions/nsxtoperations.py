@@ -120,6 +120,18 @@ class TriggerManualSync(wsgi.Controller):
     def show(self, request, **kwargs):
         raise web_exc.HTTPNotImplemented("Method not implemented")
 
+    """
+    Trigger synchronization between neuton database and nsxt based on security_group_id or port_id. 
+    Call inputs requires at least one security_group or port_id (either specified as string or as list). 
+    Optionally both arguements can be specified in the same call.  
+    Sample call: 
+            curl --location --request POST 'http://127.0.0.1:9696/v2.0/nsxt-ops' \
+                 --header 'Content-Type: application/json' \
+                 --data-raw '{
+                         "port_id": ["uuid-port1", "uuid-port2"] or "port_id": "uuid-port",
+                         "security_group_id": ["uuid-sq1", "uuid-sg2"] or "port_id": "uuid-sg"
+            }'
+    """
     @check_cloud_admin
     def create(self, request, **kwargs):
        payload = json.loads(request.body)
