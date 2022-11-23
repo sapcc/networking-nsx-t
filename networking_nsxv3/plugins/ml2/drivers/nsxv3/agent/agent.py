@@ -62,7 +62,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             and current.get("status") == nsxv3_constants.neutron_constants.ACTIVE
         ):
             # This is a double-bound port with inactive new binding, proactivly sync it
-            self.port_update(context, port=current)
+            self.port_update(context, port=current, detached=True)
         else:
             try_create_port = True
 
@@ -94,6 +94,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             self.callback(sg, self.realizer.security_group_rules)
             # Also ensure allowed_address_pairs are re-processed
             self.callback(sg, self.realizer.security_group_members)
+        if kwargs.get("detached"):
+            # Prevent PSOD of ESXi 7.0.1 with NSX 3.0.x
+            self.realizer.delete_port(kwargs["port"]["id"])
         self.callback(kwargs["port"]["id"], self.realizer.port)
 
     def port_delete(self, context, **kwargs):

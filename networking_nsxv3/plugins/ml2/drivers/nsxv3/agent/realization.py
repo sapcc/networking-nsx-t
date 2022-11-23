@@ -292,6 +292,14 @@ class AgentRealizer(object):
 
                 self._port_realize(port)
 
+    def delete_port(self, os_id: str):
+        """
+        Delete port.
+        :os_id: -- OpenStack ID of the Port
+        """
+        with LockManager.get_lock("port-{}".format(os_id)):
+            self._port_realize({"id": os_id}, delete=True)
+
     def port(self, os_id: str):
         """
         Realize port state.
