@@ -238,7 +238,7 @@ DEFAULT_INFRASTRUCTURE_POLICIES = [
                 "logged": False,
                 "scope": ["ANY"],
                 "disabled": False,
-                "direction": "IN_OUT",
+                "direction": "OUT",
                 "ip_protocol": "IPV4_IPV6",
             }
         ],
