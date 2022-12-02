@@ -186,6 +186,8 @@ VALID_ICMP_RANGES = {
     }
 }
 
+# WARNING: Changes to this policies using the same `id`
+# won't be reflected to previously provisioned NSX-T Managers.
 DEFAULT_INFRASTRUCTURE_POLICIES = [
     {
         "resource_type": "SecurityPolicy",
