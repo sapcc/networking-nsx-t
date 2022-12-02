@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: [3.6]
+        python: [3.6.15]
         tox-env: [unit,pep8,pip-missing-reqs]
     env:
       TOXENV: ${{ matrix.tox-env }}

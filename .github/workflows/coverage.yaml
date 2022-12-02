@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: [3.6]
+        python: [3.6.15]
         tox-env: [coverage]
     env:
       TOXENV: ${{ matrix.tox-env }}
