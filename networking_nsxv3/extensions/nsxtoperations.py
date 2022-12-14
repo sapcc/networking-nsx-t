@@ -130,7 +130,7 @@ class TriggerManualSync(wsgi.Controller):
                  --header 'Content-Type: application/json' \
                  --data-raw '{
                          "port_id": ["uuid-port1", "uuid-port2"] or "port_id": "uuid-port",
-                         "security_group_id": ["uuid-sq1", "uuid-sg2"] or "port_id": "uuid-sg"
+                         "security_group_id": ["uuid-sq1", "uuid-sg2"] or "security_group_id": "uuid-sg"
             }'
     """
     @check_cloud_admin
