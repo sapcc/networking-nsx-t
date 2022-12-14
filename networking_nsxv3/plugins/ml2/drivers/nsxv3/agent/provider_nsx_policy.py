@@ -132,7 +132,7 @@ class Resource(provider_nsx_mgmt.Resource):
             return False
         if not self.resource.get("locked"):
             user = self.resource.get("_create_user")
-            if user == "admin":
+            if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
                 return True
 
             if self.type == "SegmentPort":
