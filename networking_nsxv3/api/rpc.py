@@ -154,6 +154,11 @@ class NSXv3ServerRpcApi(object):
     def get_port(self, port_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
+    @log_helpers.log_method_call
+    def get_port_with_children(self, port_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_port_with_children', host=self.host, port_id=port_id)
+
 
     @log_helpers.log_method_call
     def get_rules_for_security_group_id(self, security_group_id):
@@ -294,6 +299,28 @@ class NSXv3ServerRpcCallback(object):
 
         return port
 
+    @log_helpers.log_method_call
+    def get_port_with_children(self, context, host, port_id):
+        port = db.get_port_with_children(context, host, port_id)
+
+        if not port:
+            return None
+        # NSX-T does not support CIDR as port manual binding - skipping X/X
+
+        for ip in db.get_port_addresses(context, port_id):
+            if "/" in ip:
+                continue
+            port["address_bindings"].append({"ip_address": ip[0], "mac_address": port["mac_address"]})
+
+        for ip, mac in db.get_port_allowed_pairs(context, port_id):
+            if "/" in ip:
+                continue
+            port["address_bindings"].append({"ip_address": ip, "mac_address": mac})
+
+        for sg_id in db.get_port_security_groups(context, port_id):
+            port["security_groups"].append(sg_id[0])
+
+        return port
     @log_helpers.log_method_call
     @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
     def get_qos(self, context, host, qos_id):

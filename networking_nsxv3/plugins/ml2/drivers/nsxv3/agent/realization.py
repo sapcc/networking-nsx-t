@@ -281,7 +281,7 @@ class AgentRealizer(object):
         :network_meta: -- NSX Switch metadata
         """
         with LockManager.get_lock("port-{}".format(os_id)):
-            port: dict = self.rpc.get_port(os_id)
+            port: dict = self.rpc.get_port_with_children(os_id)
             if port:
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
@@ -291,6 +291,12 @@ class AgentRealizer(object):
                     port["vif_details"] = network_meta
 
                 self._port_realize(port)
+
+                child_ports_ids = port.get("child_port_ids")
+
+                for child_port_id in child_ports_ids:
+                    self.precreate_port(child_port_id, network_meta)
+
 
     def port(self, os_id: str):
         """
