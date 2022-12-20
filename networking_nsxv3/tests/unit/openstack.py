@@ -359,6 +359,13 @@ class TestNSXv3ServerRpcApi(object):
     def get_port(self, id):
         return self.inventory.get_by_id(NeutronMock.PORT, id)
 
+    def get_port_with_children(self, id):
+        # TODO: return some real children
+        port = self.inventory.get_by_id(NeutronMock.PORT, id)
+        return port.update({
+            "child_port_ids": []
+        }) if port else None
+
     def get_qos(self, os_id):
         """
         Return QoS only if associated with port

@@ -149,7 +149,9 @@ def get_qos_dscp_rules(context, qos_id):
         QosDscpMarkingRule.qos_policy_id == qos_id
     ).all()
 
+
 def get_port_with_children(context, host, port_id):
+    child_port_ids = []
     port = context.session.query(
         Port.id,
         Port.mac_address,
@@ -183,16 +185,15 @@ def get_port_with_children(context, host, port_id):
         trunk_model.SubPort.port_id == port_id,
     ).one_or_none()
 
-    child_port = []
     if not parent_port:
-        #port_id = parent port id
-        child_port = context.session.query(
+        # port_id = parent port id
+        child_port_ids = context.session.query(
             trunk_model.SubPort.port_id
         ).join(
             trunk_model.Trunk
         ).filter(
-            trunk_model.port_id == port_id
-        )
+            trunk_model.Trunk.port_id == port_id
+        ).distinct().all()
 
     if not port:
         return None
@@ -202,7 +203,7 @@ def get_port_with_children(context, host, port_id):
     return {
         "id": id,
         "parent_id": parent_port[0] if parent_port else "",
-        "child_port_ids": child_port if child_port else [],
+        "child_port_ids": [c_port_row[0] for c_port_row in child_port_ids] if child_port_ids else [],
         "traffic_tag": parent_port[1] if parent_port else None,
         "mac_address": mac,
         "admin_state_up": up,
@@ -216,6 +217,7 @@ def get_port_with_children(context, host, port_id):
         portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
         portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
     }
+
 
 def get_port(context, host, port_id):
     port = context.session.query(
@@ -251,16 +253,6 @@ def get_port(context, host, port_id):
         trunk_model.SubPort.port_id == port_id,
     ).one_or_none()
 
-    child_port = []
-    if not parent_port:
-        child_port = context.session.query(
-            trunk_model.SubPort.port_id
-        ).join(
-            trunk_model.Trunk
-        ).filter(
-            trunk_model.port_id == port_id
-        )
-
     if not port:
         return None
 
@@ -269,7 +261,6 @@ def get_port(context, host, port_id):
     return {
         "id": id,
         "parent_id": parent_port[0] if parent_port else "",
-        "child_port_id": child_port if child_port else "",
         "traffic_tag": parent_port[1] if parent_port else None,
         "mac_address": mac,
         "admin_state_up": up,
