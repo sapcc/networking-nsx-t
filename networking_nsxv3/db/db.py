@@ -151,7 +151,7 @@ def get_qos_dscp_rules(context, qos_id):
 
 
 def get_port_with_children(context, host, port_id):
-    child_port_ids = []
+    child_ports = []
     port = context.session.query(
         Port.id,
         Port.mac_address,
@@ -187,8 +187,9 @@ def get_port_with_children(context, host, port_id):
 
     if not parent_port:
         # port_id = parent port id
-        child_port_ids = context.session.query(
-            trunk_model.SubPort.port_id
+        child_ports = context.session.query(
+            trunk_model.SubPort.port_id,
+            trunk_model.SubPort.segmentation_id
         ).join(
             trunk_model.Trunk
         ).filter(
@@ -203,7 +204,7 @@ def get_port_with_children(context, host, port_id):
     return {
         "id": id,
         "parent_id": parent_port[0] if parent_port else "",
-        "child_port_ids": [c_port_row[0] for c_port_row in child_port_ids] if child_port_ids else [],
+        "child_ports": child_ports if child_ports else [],
         "traffic_tag": parent_port[1] if parent_port else None,
         "mac_address": mac,
         "admin_state_up": up,

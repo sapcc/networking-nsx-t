@@ -274,12 +274,14 @@ class AgentRealizer(object):
                 self.plcy_provider.sg_rules_realize({"id": os_id}, delete=True)
                 # Skip members as they can be used as references
 
-    def precreate_port(self, os_id: str, network_meta: dict):
+    def precreate_port(self, os_id: str, network_meta: dict) -> tuple or None:
         """
         Try to precreate port on first binding request.
         :os_id: -- OpenStack ID of the Port
         :network_meta: -- NSX Switch metadata
+        :returns: If the port has children -> returns a tuple of (child_port_id, vlan_id) else None
         """
+        child_ports = None
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port_with_children(os_id)
             if port:
@@ -291,12 +293,8 @@ class AgentRealizer(object):
                     port["vif_details"] = network_meta
 
                 self._port_realize(port)
-
-                child_ports_ids = port.get("child_port_ids")
-
-                for child_port_id in child_ports_ids:
-                    self.precreate_port(child_port_id, network_meta)
-
+                child_ports = port.get("child_ports")
+        return child_ports
 
     def port(self, os_id: str):
         """

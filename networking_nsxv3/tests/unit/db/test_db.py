@@ -195,7 +195,7 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         self.assertDictSupersetOf(
             {
                 "id": self.port_id_1,
-                "child_port_ids": [self.subport_id_1],
+                "child_ports": [(self.subport_id_1, 1200)],
                 "parent_id": "",
                 "traffic_tag": None,
                 "admin_state_up": True,

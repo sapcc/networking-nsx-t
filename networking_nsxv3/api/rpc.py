@@ -154,11 +154,11 @@ class NSXv3ServerRpcApi(object):
     def get_port(self, port_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
+
     @log_helpers.log_method_call
     def get_port_with_children(self, port_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_port_with_children', host=self.host, port_id=port_id)
-
 
     @log_helpers.log_method_call
     def get_rules_for_security_group_id(self, security_group_id):
@@ -321,6 +321,7 @@ class NSXv3ServerRpcCallback(object):
             port["security_groups"].append(sg_id[0])
 
         return port
+
     @log_helpers.log_method_call
     @oslo_messaging.expected_exceptions(exceptions.ObjectNotFound)
     def get_qos(self, context, host, qos_id):

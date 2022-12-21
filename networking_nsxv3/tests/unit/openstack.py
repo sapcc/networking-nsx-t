@@ -363,7 +363,7 @@ class TestNSXv3ServerRpcApi(object):
         # TODO: return some real children
         port = self.inventory.get_by_id(NeutronMock.PORT, id)
         return port.update({
-            "child_port_ids": []
+            "child_ports": []
         }) if port else None
 
     def get_qos(self, os_id):
