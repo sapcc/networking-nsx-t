@@ -274,7 +274,7 @@ class AgentRealizer(object):
                 self.plcy_provider.sg_rules_realize({"id": os_id}, delete=True)
                 # Skip members as they can be used as references
 
-    def precreate_port(self, os_id: str, network_meta: dict) -> tuple or None:
+    def precreate_port(self, os_id: str, network_meta: dict) -> List[Tuple] or None:
         """
         Try to precreate port on first binding request.
         :os_id: -- OpenStack ID of the Port
@@ -291,10 +291,22 @@ class AgentRealizer(object):
 
                 if not port.get("vif_details") and network_meta:
                     port["vif_details"] = network_meta
+                child_ports = port.get("child_ports")
+                self._port_realize(port)
+        return child_ports
+
+    def precreate_subport(self, os_id: str, network_meta: dict):
+        with LockManager.get_lock("port-{}".format(os_id)):
+            port: dict = self.rpc.get_subport(os_id)
+            if port:
+                os_qid = port.get("qos_policy_id")
+                if os_qid:
+                    self.qos(os_qid, reference=True)
+
+                if not port.get("vif_details") and network_meta:
+                    port["vif_details"] = network_meta
 
                 self._port_realize(port)
-                child_ports = port.get("child_ports")
-        return child_ports
 
     def port(self, os_id: str):
         """

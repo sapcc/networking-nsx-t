@@ -277,6 +277,65 @@ def get_port(context, host, port_id):
     }
 
 
+def get_subport(context, port_id):
+    port = context.session.query(
+        Port.id,
+        Port.mac_address,
+        Port.admin_state_up,
+        Port.status,
+        StandardAttribute.revision_number,
+        PortBinding.host,
+        PortBinding.vif_details,
+    ).join(
+        StandardAttribute,
+        PortBinding
+    ).filter(
+        Port.id == port_id,
+    ).one_or_none()
+
+    if not port:
+        return None
+
+    qos_id = context.session.query(
+        QosPolicy.id
+    ).join(
+        QosPortPolicyBinding
+    ).filter(
+        QosPortPolicyBinding.port_id == port_id
+    ).one_or_none()
+
+    parent_port = context.session.query(
+        trunk_model.Trunk.port_id,
+        trunk_model.SubPort.segmentation_id
+    ).join(
+        trunk_model.SubPort
+    ).filter(
+        trunk_model.SubPort.port_id == port_id,
+    ).one_or_none()
+
+    if not parent_port:
+        return None
+
+    (id, mac, up, status, rev, binding_host, vif_details) = port
+
+    return {
+        "id": id,
+        "parent_id": parent_port[0] if parent_port else "",
+        "traffic_tag": parent_port[1] if parent_port else None,
+        "mac_address": mac,
+        "admin_state_up": up,
+        "status": status,
+        "qos_policy_id": qos_id[0] if qos_id else "",
+        "security_groups": [],
+        "address_bindings": [],
+        "revision_number": rev,
+        "binding:host_id": binding_host,
+        "vif_details": json.loads(vif_details) if vif_details else vif_details,
+        portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
+        portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
+    }
+
+
 def get_port_security_groups(context, port_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.security_group_id
