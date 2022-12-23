@@ -306,7 +306,7 @@ class NSXv3ServerRpcCallback(object):
 
     @log_helpers.log_method_call
     def get_subport(self, context, port_id):
-        port = db.get_subport(context, "", port_id)
+        port = db.get_subport(context, port_id)
 
         if not port:
             return None
