@@ -1,5 +1,5 @@
 import copy
-import json
+from select import select
 import uuid
 
 from oslo_log import log as logging
@@ -32,7 +32,7 @@ class TestNSXv3AgentManagerRpcCallBackBase(Notifier):
 
         if resource_type == NeutronMock.PORT:
             if operation == self.ADD:
-                self.rpc.port_create(None, port=o)
+                self.rpc.port_create(port=o)
             else:
                 self.rpc.port_update(None, port=o)
             self.rpc.security_groups_member_updated(None, security_groups=o.get("security_groups"))
@@ -135,7 +135,27 @@ class NeutronMock(object):
         )
         return self._get_by_name(self.PORT, name)
 
+    def port_create(self, p: dict):
+        vif = self.notifier.rpc.realizer.network(p.get("vif_details").get("segmentation_id"))
+
+        if not vif.get("external-id"):
+            raise Exception("Unable to get network for Port:{} VIF:{}".format(p.get("name"), vif))
+
+        p["vif_details"] = vif
+
+        self._add(
+            self.PORT,
+            p
+        )
+        return self._get_by_name(self.PORT, p.get("name"))
+
     def port_update(self, name, qos_name=None, security_group_names=[]):
+        p = self._get_by_name(self.PORT, name)
+        vif = self.notifier.rpc.realizer.network(p.get("vif_details").get("segmentation_id"))
+
+        if not vif.get("external-id"):
+            raise Exception("Unable to get network for Port:{} VIF:{}".format(p.get("name"), vif))
+
         self._update(
             self.PORT,
             {
@@ -144,6 +164,7 @@ class NeutronMock(object):
                 "security_groups": [
                     self._get_by_name(self.SECURITY_GROUP, gname).get("id") for gname in security_group_names
                 ],
+                "vif_details": vif
             },
         )
         return self._get_by_name(self.PORT, name)
@@ -231,7 +252,7 @@ class NeutronMock(object):
         self._delete(self.SECURITY_GROUP, name)
 
     def network_create(self, segmentation_id):
-        self.notifier.rpc.realizer.network(segmentation_id)
+        return self.notifier.rpc.realizer.network(segmentation_id)
 
     def port_bind(self, name, segmentation_id):
         port = self._get_by_name(NeutronMock.PORT, name)
@@ -368,4 +389,5 @@ class TestNSXv3ServerRpcApi(object):
             return self.inventory.get_by_id(NeutronMock.QOS, os_id)
 
     def has_security_group_logging(self, security_group_id):
-        return security_group_id is not None
+        g = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, security_group_id)
+        return g is not None and g.get("logged")

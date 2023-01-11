@@ -4,7 +4,7 @@ import re
 from requests.exceptions import HTTPError
 import uuid
 import functools
-from typing import Callable, Dict, List, Set
+from typing import Callable, List, Set
 
 import eventlet
 from oslo_config import cfg
@@ -615,15 +615,40 @@ class Provider(base.Provider):
         os_id = os_port.get("id")
         nsx_segment_id = port_meta.parent_path.replace(API.SEGMENT_PATH.format(""), "")
         target_o = {"id": nsx_segment_id, "resource_type": Provider.SEGMENT}
-        child_o = vars(port_meta)
-        child_o["marked_for_delete"] = True
-        payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
-        try:
-            self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
-            return self.metadata_delete(Provider.SEGM_PORT, os_id)
-        except RuntimeError as e:
-            if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
+        resp = self.client.get(API.SEGMENT_PORT.format(nsx_segment_id, port_meta.id))
+        if resp.ok:
+            child_o = resp.json()
+            child_o["marked_for_delete"] = True
+            payload = self.payload.infra(target_obj=target_o, child_objs=[child_o])
+            resp = self.client.patch(path=f"{API.INFRA}?enforce_revision_check=false", data=payload)
+            if not resp.ok:
+                err_json = resp.json()
+                err_msg = str(err_json.get("error_message"))
+                LOG.debug(f"{err_msg}")
+                match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
                 LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
+                if match:
+                    self._realize_sg_members_after_port_deletion(child_o, match)
+
+            return self.metadata_delete(Provider.SEGM_PORT, os_id)
+
+    def _realize_sg_members_after_port_deletion(self, child_o, match):
+        refs = match.groups()[0].split(",")
+        sg_paths = filter(lambda r: re.match(r'\/infra\/domains\/default\/groups\/', r), refs)
+        meta = self._metadata[Provider.SG_MEMBERS].meta
+        meta_keys = meta.keys()
+        for path in sg_paths:
+            for sg_id in meta_keys:
+                sg_meta = meta.get(sg_id)
+                if path == sg_meta.path:
+                    with LockManager.get_lock("member-{}".format(sg_id)):
+                        try:
+                            sg_m = self._metadata[Provider.SG_MEMBERS].meta.get(sg_id)
+                            sg_m.sg_members.remove(child_o.get("path"))
+                        except:
+                            pass
+                        else:
+                            self.sg_members_realize({"id": sg_id, "member_paths": sg_m.sg_members})
 
     def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
         logged_drop_policy_rules = self.client.get_all(API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
@@ -665,11 +690,12 @@ class Provider(base.Provider):
 
         if parent_port_id:
             # Child port always created internally
-            parent_port = self.get_port(parent_port_id)
-            if parent_port:
-                provider_port["parent_id"] = parent_port[0].id
+            parent_meta, nsx_port = self.get_port(parent_port_id)
+            if parent_meta:
+                provider_port["parent_id"] = parent_meta.id
+                provider_port["id"] = sg_meta.id
             else:
-                LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s", parent_port_id, port_id)
+                LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s.", parent_port_id, port_id)
                 return
         else:
             if sg_meta:
@@ -721,7 +747,9 @@ class Provider(base.Provider):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
         if port and not port.get("id").startswith(API.POLICY_MNG_PREFIX):
             return self.metadata_update(Provider.SEGM_PORT, port), port
-        return None
+        elif port:
+            return None, port
+        return None, None
 
     def get_port_meta_by_ids(self, port_ids: Set[str]) -> Set[PolicyResourceMeta]:
         segment_ports = set()
@@ -743,6 +771,7 @@ class Provider(base.Provider):
     # overrides
     def sg_rules_realize(self, os_sg, delete=False, logged=False):
         os_id = os_sg.get("id")
+        logged = bool(logged)
         self._sg_logged_drop_rules_realize(os_sg, delete, logged)
 
         if delete:

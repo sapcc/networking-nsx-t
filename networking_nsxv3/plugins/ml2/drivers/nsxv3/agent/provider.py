@@ -128,7 +128,7 @@ class Meta(object):
     def reset(self):
         self.meta = dict()
 
-    def keys(self) -> dict:
+    def keys(self) -> List[str]:
         keys = self.meta.keys()
         if self.meta_transaction:
             keys += self.meta_transaction.keys()

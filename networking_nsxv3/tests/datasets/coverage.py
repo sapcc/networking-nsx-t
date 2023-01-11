@@ -1,3 +1,5 @@
+
+
 SECURITY_GROUP_AUTH = {
     "id": "22D4CB40-31A6-4C61-A527-76B7867E221B",
     "name": "22D4CB40-31A6-4C61-A527-76B7867E221B",
@@ -478,6 +480,233 @@ PORT_DB = {
     }
 }
 
+# ---- SEGMENT MIGRATION STUB OBJECTS ---- #
+MP_QOS_EXTERNAL = {
+    "id": "B8689350-9A6C-4A27-9938-B3FD2F3F3321",
+    "revision_number": "1",
+    "name": "qos-public-mp",
+    "rules": [
+        {
+            "dscp_mark": "5"
+        },
+        {
+            "direction": "ingress",
+            "max_kbps": "4800",
+            "max_burst_kbps": "100000"
+        },
+        {
+            "direction": "egress",
+            "max_kbps": "6400",
+            "max_burst_kbps": "128000"
+        }
+    ]
+}
+
+MP_TO_POLICY_GRP_1 = {
+    "id": "30b4b09c-25a7-400b-ace9-49654216792b",
+    "name": "30b4b09c-25a7-400b-ace9-49654216792b",
+    "tags": [],
+    "logged": False,
+    "revision_number": 1,
+    "rules": [{
+            "id": "4d239959-0f41-4e81-b802-248e8b36d6fe",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "remote_group_id": "",
+            "security_group_id": "30b4b09c-25a7-400b-ace9-49654216792b",
+            "port_range_min": "12345",
+            "port_range_max": "12345",
+            "protocol": "tcp"
+    }]
+}
+MP_TO_POLICY_GRP_2 = {
+    "id": "30b4b09c-25a7-400b-ace9-49654216792c",
+    "name": "30b4b09c-25a7-400b-ace9-49654216792c",
+    "tags": [],
+    "logged": True,
+    "revision_number": 1,
+    "rules": [{
+            "id": "4d239959-0f41-4e81-b802-248e8b36d6ff",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "remote_group_id": "",
+            "security_group_id": "30b4b09c-25a7-400b-ace9-49654216792c",
+            "port_range_min": "12346",
+            "port_range_max": "12346",
+            "protocol": "tcp"
+    }]
+}
+MP_TO_POLICY_GRP_3 = {
+    "id": "30b4b09c-25a7-400b-ace9-49654216792d",
+    "name": "30b4b09c-25a7-400b-ace9-49654216792d",
+    "tags": [],
+    "logged": False,
+    "revision_number": 1,
+    "rules": [{
+            "id": "4d239959-0f41-4e81-b802-248e8b36d700",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "",
+            "remote_group_id": MP_TO_POLICY_GRP_1["id"],
+            "security_group_id": "30b4b09c-25a7-400b-ace9-49654216792d",
+            "port_range_min": "12347",
+            "port_range_max": "12347",
+            "protocol": "tcp"
+    }]
+}
+MP_TO_POLICY_GRP_4 = {
+    "id": "30b4b09c-25a7-400b-ace9-49654216792e",
+    "name": "30b4b09c-25a7-400b-ace9-49654216792e",
+    "tags": [],
+    "logged": False,
+    "revision_number": 1,
+    "rules": [{
+            "id": "4d239959-0f41-4e81-b802-248e8b36d701",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "remote_group_id": "",
+            "security_group_id": "30b4b09c-25a7-400b-ace9-49654216792e",
+            "port_range_min": "12348",
+            "port_range_max": "12348",
+            "protocol": "tcp"
+    }]
+}
+MP_TO_POLICY_GRP_5 = {
+    "id": "30b4b09c-25a7-400b-ace9-49654216792f",
+    "name": "30b4b09c-25a7-400b-ace9-49654216792f",
+    "tags": [],
+    "logged": True,
+    "revision_number": 1,
+    "rules": [{
+            "id": "4d239959-0f41-4e81-b802-248e8b36d702",
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "0.0.0.0/0",
+            "remote_group_id": "",
+            "security_group_id": "30b4b09c-25a7-400b-ace9-49654216792f",
+            "port_range_min": "12349",
+            "port_range_max": "12349",
+            "protocol": "tcp"
+    }]
+}
+
+PORT_FOR_MIGRATION_1 = {
+    "id": "C0F13EE5-F099-4C3A-BFC7-CC62C749FC48",
+    "name": "C0F13EE5-F099-4C3A-BFC7-CC62C749FC48",
+    "revision_number": "1",
+    "parent_id": "",
+    "mac_address": "fa:16:3e:e4:11:f7",
+    "admin_state_up": "UP",
+    "qos_policy_id": "",  # MP_QOS_EXTERNAL["id"],
+    "security_groups": [
+        MP_TO_POLICY_GRP_1["id"],
+        MP_TO_POLICY_GRP_2["id"],
+        MP_TO_POLICY_GRP_3["id"]
+    ],
+    "address_bindings": [{
+        "ip_address": "172.16.10.12",
+        "mac_address": "fa:16:3e:e4:11:f7"
+    }],
+    "vif_details": {
+        "segmentation_id": "1000"
+    }
+}
+
+PORT_FOR_MIGRATION_2 = {
+    "id": "C0F13EE5-F099-4C3A-BFC7-CC62C749FC49",
+    "name": "C0F13EE5-F099-4C3A-BFC7-CC62C749FC49",
+    "revision_number": "1",
+    "parent_id": "",
+    "mac_address": "fa:16:3e:e4:11:f8",
+    "admin_state_up": "UP",
+    "qos_policy_id": MP_QOS_EXTERNAL["id"],
+    "security_groups": [
+        MP_TO_POLICY_GRP_1["id"],
+        MP_TO_POLICY_GRP_2["id"],
+        MP_TO_POLICY_GRP_3["id"],
+        MP_TO_POLICY_GRP_4["id"]
+    ],
+    "address_bindings": [{
+        "ip_address": "172.16.10.13",
+        "mac_address": "fa:16:3e:e4:11:f8"
+    }],
+    "vif_details": {
+        "segmentation_id": "1000"
+    }
+}
+
+SUBPORT_FOR_MIGRATION_1 = {
+    "id": "4F84DAE5-0F90-42D4-9B25-4615A72D9BDD",
+    "name": "4F84DAE5-0F90-42D4-9B25-4615A72D9BDD",
+    "revision_number": "1",
+    "parent_id": PORT_FOR_MIGRATION_1["id"],
+    "mac_address": "fa:16:3e:e4:12:01",
+    "admin_state_up": "UP",
+    "qos_policy_id": "",
+    "security_groups": [
+        MP_TO_POLICY_GRP_1["id"],
+        MP_TO_POLICY_GRP_2["id"],
+        MP_TO_POLICY_GRP_3["id"],
+        MP_TO_POLICY_GRP_4["id"]
+    ],
+    "address_bindings": [{
+        "ip_address": "172.16.10.13",
+        "mac_address": "fa:16:3e:e4:11:f8"
+    }],
+    "vif_details": {
+        "segmentation_id": "1000"
+    }
+}
+
+PORT_FOR_NOT_MIGRATION_1 = {
+    "id": "B8AF6026-4835-41A2-8204-6DF68DC58FC7",
+    "name": "B8AF6026-4835-41A2-8204-6DF68DC58FC7",
+    "revision_number": "1",
+    "parent_id": "",
+    "mac_address": "fa:16:3e:e4:11:f9",
+    "admin_state_up": "UP",
+    "qos_policy_id": "",  # MP_QOS_INTERNAL["id"],
+    "security_groups": [
+        MP_TO_POLICY_GRP_1["id"],
+        MP_TO_POLICY_GRP_2["id"]
+    ],
+    "address_bindings": [{
+        "ip_address": "172.16.10.14",
+        "mac_address": "fa:16:3e:e4:11:f9"
+    }],
+    "vif_details": {
+        "segmentation_id": "3200"
+    }
+}
+PORT_FOR_NOT_MIGRATION_2 = {
+    "id": "B8AF6026-4835-41A2-8204-6DF68DC58FC8",
+    "name": "B8AF6026-4835-41A2-8204-6DF68DC58FC8",
+    "revision_number": "1",
+    "parent_id": "",
+    "mac_address": "fa:16:3e:e4:11:a0",
+    "admin_state_up": "UP",
+    "qos_policy_id": "",
+    "security_groups": [
+        MP_TO_POLICY_GRP_1["id"],
+        MP_TO_POLICY_GRP_2["id"],
+        MP_TO_POLICY_GRP_3["id"],
+        MP_TO_POLICY_GRP_4["id"],
+        MP_TO_POLICY_GRP_5["id"]
+    ],
+    "address_bindings": [{
+        "ip_address": "172.16.10.15",
+        "mac_address": "fa:16:3e:e4:11:a0"
+    }],
+    "vif_details": {
+        "segmentation_id": "3200"
+    }
+}
+
+# ---- SEGMENT MIGRATION STUB OBJECTS ---- #
+
 
 def load_security_groups_rules(*groups):
     rules = dict()
@@ -518,10 +747,35 @@ OPENSTACK_INVENTORY = {
         PORT_FRONTEND_INTERNAL,
         PORT_BACKEND,
         PORT_DB,
-        PORT_WITH_3_SG
-    ),
+        PORT_WITH_3_SG),
     "qos": load_qos_profiles(
         QOS_EXTERNAL,
         QOS_INTERNAL,
+        QOS_NOT_REFERENCED)
+}
+
+OPENSTACK_INVENTORY_MIGRATION = {
+    "security-group-rule": load_security_groups_rules(
+        MP_TO_POLICY_GRP_1,
+        MP_TO_POLICY_GRP_2,
+        MP_TO_POLICY_GRP_3,
+        MP_TO_POLICY_GRP_4,
+        MP_TO_POLICY_GRP_5,
+        SECURITY_GROUP_OPERATIONS_NOT_REFERENCED),
+    "security-group": load_security_groups(
+        MP_TO_POLICY_GRP_1,
+        MP_TO_POLICY_GRP_2,
+        MP_TO_POLICY_GRP_3,
+        MP_TO_POLICY_GRP_4,
+        MP_TO_POLICY_GRP_5,
+        SECURITY_GROUP_OPERATIONS_NOT_REFERENCED),
+    "port": load_ports(
+        PORT_FOR_MIGRATION_1,
+        PORT_FOR_MIGRATION_2,
+        SUBPORT_FOR_MIGRATION_1,
+        PORT_FOR_NOT_MIGRATION_1,
+        PORT_FOR_NOT_MIGRATION_2),
+    "qos": load_qos_profiles(
+        MP_QOS_EXTERNAL,
         QOS_NOT_REFERENCED)
 }

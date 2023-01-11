@@ -371,11 +371,18 @@ class AgentRealizer(object):
             try:
                 pp.qos_realize(os_qos, delete=True)
             except:
-                pass
-            mp.qos_realize(os_qos, delete=True)
+                try:
+                    mp.qos_realize(os_qos, delete=True)
+                except:
+                    pass
             return
 
-        return pp.qos_realize(os_qos, delete) if is_plcy else mp.qos_realize(os_qos, delete)
+        if is_plcy:
+            return pp.qos_realize(os_qos, delete)
+
+        mp.qos_realize(os_qos, delete)
+        if self.force_mp_to_policy and not delete:
+            self._promote_switching_profiles()
 
     def _port_realize(self, os_port: dict, delete: bool = False):
         pp = self.plcy_provider
@@ -385,6 +392,7 @@ class AgentRealizer(object):
 
         # Realize using Policy API
         if plcy_port_meta and plcy_port_meta[0]:
+            self._check_migrate_trunk_parent(os_port)
             return pp.port_realize(os_port, delete)
 
         # Realize using Manager API
@@ -394,12 +402,27 @@ class AgentRealizer(object):
         if self.force_mp_to_policy and mngr_port_meta and mngr_port_meta[0] and not delete:
             self.try_promote_port(os_port, mngr_port_meta)
 
-    def try_promote_port(self, os_port, mngr_port_meta):
+    def _check_migrate_trunk_parent(self, os_port):
+        pp = self.plcy_provider
+        mp = self.mngr_provider
+
+        parent_port_id = os_port.get("parent_id")
+        if parent_port_id:
+            parent_meta, nsx_port = pp.get_port(parent_port_id)
+            # If parent is not migrated, migrate it before continue
+            if not parent_meta and nsx_port:
+                with LockManager.get_lock("port-{}".format(parent_port_id)):
+                    parent_os_port: dict = self.rpc.get_port(parent_port_id)
+                    if parent_os_port:
+                        parent_mngr_port_meta = mp.get_port(os_id=parent_os_port.get("id"))
+                        self.try_promote_port(parent_os_port, parent_mngr_port_meta, force=True)
+
+    def try_promote_port(self, os_port, mngr_port_meta, force=False):
         pp = self.plcy_provider
         mp = self.mngr_provider
         os_id = os_port.get("id")
         try:
-            self._check_port_migration_criteria(port=mngr_port_meta[1])
+            self._check_port_migration_criteria(port=mngr_port_meta[1], force=force)
             vlan_id = os_port.get("vif_details").get("segmentation_id")
             segment = pp.metadata(pp.SEGMENT, vlan_id)
             switch = mp.metadata(mp.NETWORK, vlan_id)
@@ -417,15 +440,21 @@ class AgentRealizer(object):
             LOG.debug(traceback.format_exc())
 
     @staticmethod
-    def _check_port_migration_criteria(port: dict):
+    def _check_port_migration_criteria(port: dict, force=False):
+        nsxt_max = 29
         tag_trigger = cfg.CONF.AGENT.migration_tag_count_trigger
         tag_max = cfg.CONF.AGENT.migration_tag_count_max
-        tag_count = len(port.get("tags"))
-        if tag_trigger <= tag_count <= tag_max:
-            LOG.info(f"Migration criteria met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
+        tag_count = len(port.get("tags")) if port.get("tags") else 0
+        if not force:
+            if tag_trigger <= tag_count <= tag_max:
+                LOG.info(f"Migration criteria met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
+            else:
+                raise RuntimeError(
+                    f"Migration criteria not met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max}, nsxt_max: {nsxt_max})")
         else:
-            raise RuntimeError(
-                f"Migration criteria not met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
+            LOG.info(f"Force Migration. Current Tags: {tag_count} (nsxt_max: {nsxt_max})")
+        if tag_count > nsxt_max:
+            raise RuntimeError(f"Migration impossible. Tags: {tag_count} (nsxt_max: {nsxt_max})")
 
     def _network_realize(self, segmentation_id: int):
         segment_meta = self.plcy_provider.network_realize(segmentation_id)
@@ -443,7 +472,7 @@ class AgentRealizer(object):
         not_migrated_sys_owned, not_migrated_not_sys_owned = [], []
 
         if self.force_mp_to_policy and self.migr_provider:
-            mgmt_profile_ids = [p.get("id") for p in mgmt_sw_profiles if p]
+            mgmt_profile_ids = [p.get("id") for p in mgmt_sw_profiles if p and p.get("_create_user") != "nsx_policy"]
             plcy_profile_ids = [p.get("id") for p in policy_sw_profiles if p]
 
             not_migrated_ids = [p_id for p_id in mgmt_profile_ids if p_id not in plcy_profile_ids]
