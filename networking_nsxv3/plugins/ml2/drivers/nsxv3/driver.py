@@ -15,6 +15,8 @@ from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
 from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 from networking_nsxv3.services.logapi.drivers.nsxv3 import driver as nsxv3_logging
 
+from networking_nsxv3.extensions.nsxtoperations import Nsxtoperations  #auto-loads api on neutron server start
+
 from oslo_utils import importutils
 from neutron.services.logapi.drivers import manager
 
@@ -182,3 +184,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             provisioning_blocks.provisioning_complete(
                 context._plugin_context, port['id'], resources.PORT,
                 provisioning_blocks.L2_AGENT_ENTITY)
+
+    def trigger_sync(self, id, type):
+        self.rpc.trigger_manual_update(id=id,type=type)
+
