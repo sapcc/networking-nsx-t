@@ -106,7 +106,7 @@ class NSXv3AgentRpcClient(object):
 
     def trigger_manual_update(self, id, type):
         if type == "port_id":
-            id = {"id": id }
+            id = {"id": id}
             LOG.debug("NSXv3AgentRpcClient: (port_update): " + str(id))
             self._get_call_context() \
                 .cast(self.context, 'port_update', port=id)
@@ -167,11 +167,6 @@ class NSXv3ServerRpcApi(object):
     def get_port(self, port_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
-
-    @log_helpers.log_method_call
-    def get_subport(self, port_id):
-        cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_subport', port_id=port_id)
 
     @log_helpers.log_method_call
     def get_rules_for_security_group_id(self, security_group_id):
@@ -292,29 +287,6 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def get_port(self, context, host, port_id):
         port = db.get_port(context, host, port_id)
-
-        if not port:
-            return None
-        # NSX-T does not support CIDR as port manual binding - skipping X/X
-
-        for ip in db.get_port_addresses(context, port_id):
-            if "/" in ip:
-                continue
-            port["address_bindings"].append({"ip_address": ip[0], "mac_address": port["mac_address"]})
-
-        for ip, mac in db.get_port_allowed_pairs(context, port_id):
-            if "/" in ip:
-                continue
-            port["address_bindings"].append({"ip_address": ip, "mac_address": mac})
-
-        for sg_id in db.get_port_security_groups(context, port_id):
-            port["security_groups"].append(sg_id[0])
-
-        return port
-
-    @log_helpers.log_method_call
-    def get_subport(self, context, port_id):
-        port = db.get_subport(context, port_id)
 
         if not port:
             return None
