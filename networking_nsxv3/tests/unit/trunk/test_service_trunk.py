@@ -419,6 +419,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 par_payload.current_trunk = SimpleObject()
                 par_payload.subports = 'MyTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
+                par_payload.context = None
 
                 # Initialize/Prepare the call tracker for test call number 1
                 self.call_tracker.init_track('subport_delete')
@@ -427,8 +428,8 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 par_payload.current_trunk.port_id = None
                 nsx_trunc_driver.subport_delete(par_resource, None, None, par_payload)
 
-                # No activity is expected
-                self.assertEquals(len(self.call_tracker.get_steps('subport_delete')) == 0, True)
+                # Activity is expected
+                self.assertEquals(len(self.call_tracker.get_steps('subport_delete')), 1)
 
                 # Reinitialize/Prepare the call tracker for test call number 1
                 self.call_tracker.init_track('subport_delete')

@@ -41,13 +41,11 @@ class NSXv3TrunkDriver(base.DriverBase):
     @registry.receives(resources.TRUNK_PLUGIN, [events.AFTER_INIT])
     def register(self, resource, event, trigger, payload=None):
         LOG.info("NSXv3 trunk driver initializing ...")
-        super(
-            NSXv3TrunkDriver,
-            self).register(
-                resource,
-                event,
-                trigger,
-                payload=payload)
+        super(NSXv3TrunkDriver, self).register(
+            resource,
+            event,
+            trigger,
+            payload=payload)
 
         self.core_plugin = directory.get_plugin()
 
@@ -96,10 +94,7 @@ class NSXv3TrunkDriver(base.DriverBase):
 
     def subport_delete(self, resource, event, trunk_plugin, payload):
         ctx, parent = self._get_context_and_parent_port(payload.current_trunk.port_id)
-        if not parent:
-            return
-
-        self._bind_subports(ctx, parent, payload.current_trunk, payload.subports, delete=True)
+        self._bind_subports(ctx or payload.context, parent, payload.current_trunk, payload.subports, delete=True)
 
     def _bind_subports(self, ctx, parent, trunk, subports, delete=False):
         for subport in subports:
