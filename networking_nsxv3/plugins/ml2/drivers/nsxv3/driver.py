@@ -162,6 +162,13 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 LOG.warn("No segment found for physical_network=" + str(physical_network))
                 return False
 
+        subport = trunk_objects.SubPort.get_object(context=ctx.get_admin_context(), port_id=context.current['id'])
+        if bool(subport)\
+            and context.current.get("binding:profile") == {}\
+                and context.current.get("device:owner") != "trunk:subport":
+            # skip binding as this is a binding request for subport without parent binding
+            raise Exception(f"Standalone binding of subports not allowed! Subport: {subport}")
+
         response = self.rpc.get_network_bridge(
             context.current, [segment], context.network.current, context.host
         )
