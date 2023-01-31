@@ -3,9 +3,9 @@ from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
 from neutron_lib.services.trunk import constants as trunk_consts
-from neutron_lib import context, rpc
+from neutron_lib import context as ctx, rpc
 from neutron_lib.api.definitions import portbindings
-from neutron_lib.callbacks import resources
+from neutron_lib.callbacks import resources, registry, events
 from neutron_lib.plugins.ml2 import api
 from oslo_log import log
 
@@ -14,13 +14,22 @@ from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.services.qos.drivers.nsxv3 import qos as nsxv3_qos
 from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 from networking_nsxv3.services.logapi.drivers.nsxv3 import driver as nsxv3_logging
+from neutron.objects import trunk as trunk_objects
 
-from networking_nsxv3.extensions.nsxtoperations import Nsxtoperations  #auto-loads api on neutron server start
+from networking_nsxv3.extensions.nsxtoperations import Nsxtoperations  # auto-loads api on neutron server start
 
 from oslo_utils import importutils
 from neutron.services.logapi.drivers import manager
 
 LOG = log.getLogger(__name__)
+
+
+class TrunkPayload(events.EventPayload):
+    def __init__(self, context, trunk_id, current_trunk, subports):
+        super(TrunkPayload, self).__init__(context)
+        self.current_trunk = current_trunk
+        self.trunk_id = trunk_id
+        self.subports = subports
 
 
 class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
@@ -48,7 +57,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.agent_type = nsxv3_constants.NSXV3_AGENT_TYPE
         LOG.info("Initializing Mechanism Driver Type=" + str(self.agent_type))
 
-        self.context = context.get_admin_context_without_session()
+        self.context = ctx.get_admin_context_without_session()
 
         sg_enabled = securitygroups_rpc.is_firewall_enabled()
         LOG.info("Security Gruop Enabled=" + str(sg_enabled))
@@ -74,7 +83,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 self.agent_type,
                 self.vif_type,
                 self.vif_details
-            )
+        )
 
         LOG.info("Initialized Mechanism Driver Type = " + str(self.agent_type))
 
@@ -103,7 +112,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     def try_to_bind_segment_for_agent(self, context, segment, agent):
         LOG.debug('Bind Segment={} for Agent={}'.format(segment, agent))
 
-        device = context.current.get('device_owner', "")
+        device = context.current.get('device_owner', '')
         admin_state_up = agent.get('admin_state_up', False)
         agent_alive = agent.get('alive', False)
         agent_type = agent['agent_type']
@@ -153,6 +162,13 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 LOG.warn("No segment found for physical_network=" + str(physical_network))
                 return False
 
+        subport = trunk_objects.SubPort.get_object(context=ctx.get_admin_context(), port_id=context.current['id'])
+        if bool(subport)\
+            and context.current.get("binding:profile") == {}\
+                and context.current.get("device:owner") != "trunk:subport":
+            # skip binding as this is a binding request for subport without parent binding
+            raise Exception(f"Standalone binding of subports not allowed! Subport: {subport}")
+
         response = self.rpc.get_network_bridge(
             context.current, [segment], context.network.current, context.host
         )
@@ -165,10 +181,31 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                      .format(host, context.network.current.get('id'), context.current.get('id')))
             return False
         else:
+            # Bind the port
             context.set_binding(segment[api.ID], self.vif_type, vif_details)
+
             return True
 
-    def update_port_postcommit(self, context):
+    def _update_trunk_subports(self, parent, delete=False):
+        admin_ctx = ctx.get_admin_context()
+        truk_id = parent.get('trunk_details', {}).get('trunk_id')
+        sub_ports = parent.get('trunk_details', {}).get('sub_ports', [])
+
+        subports = [trunk_objects.SubPort(
+                        context=admin_ctx,
+                        port_id=p['port_id'],
+                        segmentation_id=p['segmentation_id'],
+                        segmentation_type=p['segmentation_type'])
+                for p in sub_ports]
+        trunk = trunk_objects.Trunk.get_object(context=admin_ctx, id=truk_id)
+        payload = TrunkPayload(admin_ctx, trunk.id, trunk, subports)
+
+        if delete:
+            registry.publish(resources.SUBPORTS, events.AFTER_DELETE, self, payload=payload)
+        else:
+            registry.publish(resources.SUBPORTS, events.AFTER_CREATE, self, payload=payload)
+
+    def update_port_postcommit(self, context: api.PortContext):
         """ Set port status to ACTIVE, this is normaly done by
             neutron itself if the device (port) has been added
             to the updated devices, but this won't work because
@@ -177,14 +214,25 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 self.updated_devices.add(port['mac_address'])
 
             As a workaround we manually set every updated port
-            using our database session to completed."""
+            using our database session to completed.
+
+            As an addition we also bind/unbind subports if the any"""
         port = context.current
-        if (port[portbindings.VNIC_TYPE] in self.supported_vnic_types and
-                port[portbindings.VIF_TYPE] == self.vif_type):
-            provisioning_blocks.provisioning_complete(
-                context._plugin_context, port['id'], resources.PORT,
-                provisioning_blocks.L2_AGENT_ENTITY)
+        if port[portbindings.VNIC_TYPE] in self.supported_vnic_types:
+            sub_ports = port.get('trunk_details', {}).get('sub_ports')
+            if port[portbindings.VIF_TYPE] in ['unbound', 'binding_failed']:
+                # If we have subports, we need to unbind them also
+                if bool(sub_ports):
+                    self._update_trunk_subports(port, delete=True)
+                provisioning_blocks.remove_provisioning_component(
+                    context._plugin_context, port['id'], resources.PORT, provisioning_blocks.L2_AGENT_ENTITY)
+            elif port[portbindings.VIF_TYPE] == self.vif_type:
+                # If we have subports, we need to bind them also
+                if bool(sub_ports):
+                    self._update_trunk_subports(port)
+                # Set status to ACTIVE
+                provisioning_blocks.provisioning_complete(
+                    context._plugin_context, port['id'], resources.PORT, provisioning_blocks.L2_AGENT_ENTITY)
 
     def trigger_sync(self, id, type):
-        self.rpc.trigger_manual_update(id=id,type=type)
-
+        self.rpc.trigger_manual_update(id=id, type=type)

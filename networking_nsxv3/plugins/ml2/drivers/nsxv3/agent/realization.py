@@ -289,7 +289,6 @@ class AgentRealizer(object):
 
                 if not port.get("vif_details") and network_meta:
                     port["vif_details"] = network_meta
-
                 self._port_realize(port)
 
     def port(self, os_id: str):

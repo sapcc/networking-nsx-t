@@ -106,7 +106,7 @@ class NSXv3AgentRpcClient(object):
 
     def trigger_manual_update(self, id, type):
         if type == "port_id":
-            id = {"id": id }
+            id = {"id": id}
             LOG.debug("NSXv3AgentRpcClient: (port_update): " + str(id))
             self._get_call_context() \
                 .cast(self.context, 'port_update', port=id)
