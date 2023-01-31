@@ -1,4 +1,5 @@
-
+from random import randint
+import uuid
 
 SECURITY_GROUP_AUTH = {
     "id": "22D4CB40-31A6-4C61-A527-76B7867E221B",
@@ -727,6 +728,10 @@ def load_ports(*ports):
     return {p["id"]: p for p in ports}
 
 
+def load_nets(*nets):
+    return {n["id"]: n for n in nets}
+
+
 OPENSTACK_INVENTORY = {
     "security-group-rule": load_security_groups_rules(
         SECURITY_GROUP_FRONTEND,
@@ -779,3 +784,148 @@ OPENSTACK_INVENTORY_MIGRATION = {
         MP_QOS_EXTERNAL,
         QOS_NOT_REFERENCED)
 }
+
+
+def generate_os_inventory(num_nets: int, num_ports_per_net: int, num_sg: int, num_qos: int) -> dict:
+    """Generate OpenStack inventory.
+
+    Args:
+        num_nets (_type_): Number of networks to generate.
+        num_ports_per_net (_type_): Number of ports per network to generate.
+        num_sg (_type_): Number of security groups to generate.
+        num_qos (_type_): Number of QoS profiles to generate.
+
+    Returns:
+        dict: OpenStack inventory.
+    """
+    _validate_gen_params(num_nets, num_ports_per_net, num_sg, num_qos)
+    num_ports = num_nets * num_ports_per_net
+    nets = []
+    ports = []
+    sg = []
+    qos = []
+
+    for i in range(num_nets):
+        nets.append(generate_network(i))
+    for i in range(num_sg):
+        sg.append(generate_security_group(i))
+    for i in range(num_qos):
+        qos.append(generate_qos_profile(i))
+    for i in range(num_ports):
+        ports.append(generate_port(i, nets, qos, sg, current_ports=ports))
+
+    return {
+        "security-group-rule": load_security_groups_rules(*sg),
+        "security-group": load_security_groups(*sg),
+        "qos": load_qos_profiles(*qos),
+        "network": load_nets(*nets),
+        "port": load_ports(*ports)
+    }
+
+
+def _validate_gen_params(num_nets, num_ports_per_net, num_sg, num_qos):
+    error_messages = []
+    if num_nets > 500:
+        error_messages.append("Number of networks is too high. Max: 500")
+    n_ports = num_nets * num_ports_per_net
+    if n_ports > 2500:
+        error_messages.append("Calculated number of ports is too high. Max: 2500")
+    if num_sg > 6000:
+        error_messages.append("Number of security groups is too high. Max: 6000")
+    if num_sg < 3:
+        error_messages.append("Number of security groups is too low. Min: 3")
+    if num_qos > 100:
+        error_messages.append("Number of QOS is too high. Max: 100")
+    if num_qos < 1:
+        error_messages.append("Number of QOS is too Low. Min: 1")
+    if error_messages:
+        raise RuntimeError("\n".join(error_messages))
+
+
+def generate_qos_profile(i):
+    return {
+        "id": str(uuid.uuid4()),
+        "revision_number": i,
+        "name": "qos-gen-%d" % i,
+        "rules": [
+            {
+                "dscp_mark": "5"
+            },
+            {
+                "direction": "ingress",
+                "max_kbps": "4800",
+                "max_burst_kbps": "100000"
+            },
+            {
+                "direction": "egress",
+                "max_kbps": "6400",
+                "max_burst_kbps": "128000"
+            }
+        ],
+        "nsx_id": ""
+    }
+
+
+def generate_network(i):
+    return {
+        "id": str(uuid.uuid4()),
+        "name": "network_%d" % i,
+        "revision_number": i,
+        "physical_network": "physnet1",
+        "network_type": "vlan",
+        "segmentation_id": i % 4096 + 1,
+        "nsx_id": "",
+    }
+
+
+def generate_port(i, nets, qos, sg, current_ports=None):
+    port_uuid = str(uuid.uuid4())
+    each_nth_2be_child = 4
+    net = nets[i % len(nets)]
+    q = qos[i % len(qos)]
+
+    return {
+        "id": port_uuid,
+        "name": port_uuid,
+        "revision_number": i,
+        "parent_id": current_ports[randint(0, each_nth_2be_child - 1)]["id"] if current_ports and i > 0 and i % each_nth_2be_child == 0 else None,
+        "mac_address": "02:00:00:%02x:%02x:%02x" % (i % 255, randint(0, 255), randint(0, 255)),
+        "admin_state_up": "UP",
+        "qos_policy_id": q.get("id"),
+        "security_groups": [
+            sg[(i + 1) % len(sg)]["id"],
+            sg[(i + 2) % len(sg)]["id"],
+            sg[(i + 3) % len(sg)]["id"]
+        ],
+        "address_bindings": [],
+        "vif_details": {
+            "segmentation_id": net.get("segmentation_id"),
+            "nsx-logical-switch-id": None
+        },
+        "network_id": net.get("id")
+    }
+
+
+def generate_security_group(i):
+    grp_uuid = str(uuid.uuid4())
+    rule_uuid = str(uuid.uuid4())
+    logged = ((i % 5) == 0)
+    return {
+        "id": grp_uuid,
+        "name": grp_uuid,
+        "tags": [],
+        "logged": logged,
+        "revision_number": i,
+        "rules": [{
+            "id": rule_uuid,
+            "ethertype": "IPv4",
+            "direction": "ingress",
+            "remote_ip_prefix": "",
+            "remote_group_id": "",
+            "security_group_id": grp_uuid,
+            "port_range_min": "12345",
+            "port_range_max": "12345",
+            "protocol": "tcp",
+            "logged": logged,
+        }]
+    }
