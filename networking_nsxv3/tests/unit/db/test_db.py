@@ -32,6 +32,7 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         self.ip_pool_id = uuidutils.generate_uuid()
         self.net_id = uuidutils.generate_uuid()
         self.port_id_1 = uuidutils.generate_uuid()
+        self.subport_id_1 = uuidutils.generate_uuid()
         self.port_id_2 = uuidutils.generate_uuid()
         self.qos_id_1 = uuidutils.generate_uuid()
         self.trunk_id_1 = uuidutils.generate_uuid()
@@ -87,6 +88,17 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
             "device_owner": "admin",
             "description": ""
         }})
+        self.plugin.create_port(self.ctx, {"port": {
+            "tenant_id": self.tenant_id,
+            "name": "test_subport_1",
+            "id": self.subport_id_1,
+            "network_id": self.net_id,
+            "fixed_ips": constants.ATTR_NOT_SPECIFIED,
+            "admin_state_up": True,
+            "device_id": "123",
+            "device_owner": "admin",
+            "description": ""
+        }})
 
         subnet = self.plugin.create_subnet(self.ctx, {"subnet": {
             "tenant_id": self.tenant_id,
@@ -129,6 +141,12 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
                 project_id=self.tenant_id,
                 name="test_trunk_1",
                 port_id=self.port_id_1
+            ),
+            trunk_model.SubPort(
+                trunk_id=self.trunk_id_1,
+                port_id=self.subport_id_1,
+                segmentation_type="vlan",
+                segmentation_id=1200
             ),
             sg_model.SecurityGroup(
                 id=self.sg_id_1,
@@ -252,7 +270,7 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         self.assertEqual(self.sg_id_1, port_sgs[0][0])
         self.assertEqual(1, len(port_ids))
         self.assertEqual(self.port_id_1, port_ids[0])
-        self.assertEqual(8, len(sgs_for_host))
+        self.assertEqual(9, len(sgs_for_host))
         for sgs_for_h in sgs_for_host:
             self.assertEqual(self.sg_id_1, sgs_for_h[0])
         self.assertEqual(1, len(sg_ips))

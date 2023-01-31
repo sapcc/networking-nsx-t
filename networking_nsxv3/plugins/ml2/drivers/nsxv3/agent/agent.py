@@ -74,7 +74,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 network_meta = self.realizer.network(seg_id)
                 break
 
-        if try_create_port and bool(network_meta):
+        if try_create_port and bool(network_meta.get("nsx-logical-switch-id")):
             self.realizer.precreate_port(current["id"], network_meta)
 
         return network_meta
