@@ -1,0 +1,21 @@
+---
+RED:
+    NAME: "red_server"
+    PORT: "red_parent_port"
+    SERVER_NET: "red"
+    SUBNET_RANGE: "10.180.10.0/24"
+    SUBNET_NAME: "red_subnet"
+BLUE:
+    NAME: "blue_server"
+    PORT: "blue_child_port"
+    SERVER_NET: "blue"
+    SUBNET_RANGE: "10.180.20.0/24"
+    SUBNET_NAME: "blue_subnet"
+TRUNK:
+    NAME: "red_blue_trunk"
+    PARENT_PORT: "red_parent_port"
+    CHILD_PORT: "blue_child_port"
+    SEGMENTATION_ID: 102
+IMAGE: 'ubuntu-20.04-amd64-vmware'
+FLAVOR: 'm1.small'
+KEY: 'i572056_v2'
