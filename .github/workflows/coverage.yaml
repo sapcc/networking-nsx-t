@@ -5,10 +5,10 @@ name: Coverage
 
 on:
   pull_request:
-    branches: [ stable/ussuri-m3 ]
+    branches: [ stable/yoga-m3 ]
 
 env:
-  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/ussuri-m3/upper-constraints.txt
+  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/yoga-m3/upper-constraints.txt
   VIRTUALENV_PIP: "20.2.3"
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: [3.6]
+        python: [3.8]
         tox-env: [coverage]
     env:
       TOXENV: ${{ matrix.tox-env }}
@@ -30,7 +30,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install Tox and any other packages
         run: |
-          pip install tox
+          pip install "tox<4.0"
       - name: Running Tox
         run: tox
       - name: Comment coverage report
