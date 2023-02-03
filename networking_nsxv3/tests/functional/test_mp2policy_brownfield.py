@@ -1,5 +1,4 @@
 import eventlet
-import pytest
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
@@ -7,13 +6,12 @@ from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
 
 from oslo_config import cfg
 from oslo_log import log as logging
-from networking_nsxv3.tests.functional.test_nsxv3_api import BaseNsxTest
+from networking_nsxv3.tests.functional.base_nsxv3_api import BaseNsxTest
 
 LOG = logging.getLogger(__name__)
 
 
 def is_nsx_min_ver() -> bool:
-    BaseNsxTest.load_env_variables()
     cl = client_nsx.Client()
     return cl.version >= MP2POLICY_NSX_MIN_VERSION
 
@@ -21,30 +19,18 @@ def is_nsx_min_ver() -> bool:
 class TestMp2PolicyMigr(BaseNsxTest):
 
     @classmethod
-    def setup_class(cls):
+    def setUpClass(cls):
         LOG.info(f"Global setup - READ Enviroment Variables, Activate Migration")
         cls.load_env_variables()
+        if not is_nsx_min_ver():
+            cls.skipTest(cls, "Migration Functional Tests skipped. Migration is not supported for NSX-T < 3.2.2")
         cls.clean_all_from_nsx()
         cls.enable_nsxtside_m2policy_migration()
         cls.enable_driverside_mp2policy_migation()
 
     @classmethod
-    def teardown_class(cls):
+    def tearDownClass(cls):
         LOG.info(f"Global Teardwon")
-
-    def setUp(self):
-        super(TestMp2PolicyMigr, self).setUp()
-        LOG.info(f"Setup before running test")
-        self.number_of_networks = 2  # 200
-        self.number_of_ports_per_network = 7  # 12
-        self.total_number_of_security_groups = 6  # 6000
-        self.total_number_of_qos_policies = 5  # 100
-        self.cleanup_on_setup = False
-
-    def tearDown(self):
-        super(TestMp2PolicyMigr, self).tearDown()
-        LOG.info(f"Teardown after running test")
-        LOG.info("NO cleanup on tearDown")
 
     @classmethod
     def enable_nsxtside_m2policy_migration(cls):
@@ -68,6 +54,39 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cfg.CONF.set_override("migration_tag_count_max", 6, "AGENT")
         cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
         cfg.CONF.set_override("polling_interval", 20, "AGENT")
+
+    def setUp(self):
+        super().setUp()
+        LOG.info(f"Setup before running test")
+        self.number_of_networks = 20
+        self.number_of_ports_per_network = 12
+        self.total_number_of_security_groups = 60
+        self.total_number_of_qos_policies = 10
+        self.cleanup_on_setup = False
+
+    def tearDown(self):
+        super().tearDown()
+        LOG.info(f"Teardown after running test")
+        LOG.info("NO cleanup on tearDown")
+
+    def test_policy_migration(self):
+        LOG.info("Starting end to end tests ...")
+
+        MIGR_INVENTORY = self._polute_environment(
+            num_nets=self.number_of_networks,
+            num_ports_per_net=self.number_of_ports_per_network,
+            num_groups=self.total_number_of_security_groups,
+            num_qos=self.total_number_of_qos_policies)
+
+        eventlet.sleep(10)
+
+        LOG.info("Length of inventory: %s", len(MIGR_INVENTORY))
+
+        # env = Environment(inventory=MIGR_INVENTORY)
+        # with env:
+        #     i = env.openstack_inventory
+        #     eventlet.sleep(580)
+        # LOG.info(f"Inventories: {i}")
 
     def _assert_migrate(self, os_inventory, environment):
         c = os_inventory
@@ -144,33 +163,15 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
-    @pytest.mark.skipif(not is_nsx_min_ver(), reason="Migration Functional Tests skipped. Migration is not supported for NSX-T < 3.2.2")
-    def test_policy_migration(self):
-        LOG.info("Starting end to end tests ...")
-
-        MIGR_INVENTORY = self._polute_environment(
-            num_nets=self.number_of_networks,
-            num_ports_per_net=self.number_of_ports_per_network,
-            num_groups=self.total_number_of_security_groups,
-            num_qos=self.total_number_of_qos_policies)
-
-        eventlet.sleep(10)
-
-        # env = Environment(inventory=MIGR_INVENTORY)
-        # with env:
-        #     i = env.openstack_inventory
-        #     eventlet.sleep(580)
-        # LOG.info(f"Inventories: {i}")
-
     def _polute_environment(self, num_nets=500, num_ports_per_net=5, num_groups=3000, num_qos=100) -> dict:
         """Polutes the environment with the given number of networks, ports and security groups.
         """
         os_inventory = coverage.generate_os_inventory(num_nets, num_ports_per_net, num_groups, num_qos)
-        self.polute_nsx(os_inventory)
+        self._polute_nsx(os_inventory)
 
         return os_inventory
 
-    def polute_nsx(self, os_inventory):
+    def _polute_nsx(self, os_inventory: dict):
         cl = client_nsx.Client()
         mngr_payload = provider_nsx_mgmt.Payload()
         plcy_payload = provider_nsx_policy.Payload()
@@ -194,13 +195,23 @@ class TestMp2PolicyMigr(BaseNsxTest):
             sw = cl.post(path=mngr_api.SWITCHES, data=net_payload).json()
             nets[k]["nsx_id"] = sw["id"]
 
+        n = 0
         LOG.info(f"Poluting with {len(grps)} Security Groups ...")
         for k in grps:
+            n += 1
             grp_payload = plcy_payload.sg_members_container(os_sg=grps[k], provider_sg={})
             cl.put(path=plcy_api.GROUP.format(k), data=grp_payload)
+            if n % 1000 == 0:
+                LOG.info(f"Security Group {n} of {len(grps)}")
 
+        # Await Group Creation
+        LOG.info("Sleeping 60 secs. to allow Security Groups to be created ...")
+        eventlet.sleep(60)
+
+        n = 0
         LOG.info(f"Poluting with {len(rules)} Security Rules ...")
         for k in rules:
+            n += 1
             r = rules[k]
             rules_payload = plcy_payload.sg_rule(os_rule=r,
                                                  provider_rule={"_revision": None},
@@ -211,7 +222,10 @@ class TestMp2PolicyMigr(BaseNsxTest):
                 os_sg={"id": r.get("security_group_id")},
                 provider_sg={"scope": r.get("security_group_id"), "rules": [rules_payload], "_revision": None}
             )
-            cl.put(path=plcy_api.POLICY.format(r.get("security_group_id")), data=secp_payload)
+            r = cl.put(path=plcy_api.POLICY.format(r.get("security_group_id")), data=secp_payload)
+            r.raise_for_status()
+            if n % 1000 == 0:
+                LOG.info(f"Security Rule {n} of {len(rules)}")
 
         LOG.info(f"Poluting with {len(qos)} QOS Profiles ...")
         for k in qos:
