@@ -1,7 +1,7 @@
 import eventlet
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.environment import Environment
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy, mp_to_policy_migration
 from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
 
 from oslo_config import cfg
@@ -23,7 +23,8 @@ class TestMp2PolicyMigr(BaseNsxTest):
         LOG.info(f"Global setup - READ Enviroment Variables, Activate Migration")
         cls.load_env_variables()
         if not is_nsx_min_ver():
-            cls.skipTest(cls, "Migration Functional Tests skipped. Migration is not supported for NSX-T < 3.2.2")
+            cls.skipTest(
+                cls, f"Migration Functional Tests skipped. Migration is not supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
         cls.clean_all_from_nsx()
         cls.enable_nsxtside_m2policy_migration()
         cls.enable_driverside_mp2policy_migation()
@@ -50,6 +51,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         LOG.info(f"Activate migration on driver side")
 
         cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
+        cfg.CONF.set_override("continue_on_failed_promotions", True, "AGENT")
         cfg.CONF.set_override("migration_tag_count_trigger", 1, "AGENT")
         cfg.CONF.set_override("migration_tag_count_max", 6, "AGENT")
         cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
@@ -58,10 +60,10 @@ class TestMp2PolicyMigr(BaseNsxTest):
     def setUp(self):
         super().setUp()
         LOG.info(f"Setup before running test")
-        self.number_of_networks = 20
-        self.number_of_ports_per_network = 12
-        self.total_number_of_security_groups = 60
-        self.total_number_of_qos_policies = 10
+        self.number_of_networks = 10  # 100
+        self.number_of_ports_per_network = 5  # 20
+        self.total_number_of_security_groups = 100  # 1000
+        self.total_number_of_qos_policies = 10  # 100
         self.cleanup_on_setup = False
 
     def tearDown(self):
@@ -76,19 +78,27 @@ class TestMp2PolicyMigr(BaseNsxTest):
             num_nets=self.number_of_networks,
             num_ports_per_net=self.number_of_ports_per_network,
             num_groups=self.total_number_of_security_groups,
-            num_qos=self.total_number_of_qos_policies)
+            num_qos=self.total_number_of_qos_policies,
+            sg_gt_27=True)  # TODO: case 1: sg_gt_27=True, case 2: sg_gt_27=False
 
         eventlet.sleep(10)
-
         LOG.info("Length of inventory: %s", len(MIGR_INVENTORY))
 
-        # env = Environment(inventory=MIGR_INVENTORY)
-        # with env:
-        #     i = env.openstack_inventory
-        #     eventlet.sleep(580)
-        # LOG.info(f"Inventories: {i}")
+        env = Environment(inventory=MIGR_INVENTORY)
+        with env:
+            i = env.openstack_inventory
+            eventlet.sleep(10)
+            for k, v in MIGR_INVENTORY.get("port").items():
+                # i.port_delete(k)
+                # TODO: Do some updates
+                break
+            eventlet.sleep(1200)
+        LOG.info(f"Inventories: {i}")
 
     def _assert_migrate(self, os_inventory, environment):
+        # TODO: Case 1: Assert that all objects are migrated as expected
+        # TODO: Case 2: Assert no one is migrated in case of failed port migration
+
         c = os_inventory
         mngr_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         mngr = environment.manager.realizer.mngr_provider
@@ -163,10 +173,10 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
             self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
-    def _polute_environment(self, num_nets=500, num_ports_per_net=5, num_groups=3000, num_qos=100) -> dict:
+    def _polute_environment(self, num_nets=500, num_ports_per_net=5, num_groups=3000, num_qos=100, sg_gt_27=False) -> dict:
         """Polutes the environment with the given number of networks, ports and security groups.
         """
-        os_inventory = coverage.generate_os_inventory(num_nets, num_ports_per_net, num_groups, num_qos)
+        os_inventory = coverage.generate_os_inventory(num_nets, num_ports_per_net, num_groups, num_qos, sg_gt_27)
         self._polute_nsx(os_inventory)
 
         return os_inventory
@@ -205,8 +215,9 @@ class TestMp2PolicyMigr(BaseNsxTest):
                 LOG.info(f"Security Group {n} of {len(grps)}")
 
         # Await Group Creation
-        LOG.info("Sleeping 60 secs. to allow Security Groups to be created ...")
-        eventlet.sleep(60)
+        secs = min(len(grps), 60)
+        LOG.info(f"Sleeping {secs} secs. to allow Security Groups to be created ...")
+        eventlet.sleep(secs)
 
         n = 0
         LOG.info(f"Poluting with {len(rules)} Security Rules ...")

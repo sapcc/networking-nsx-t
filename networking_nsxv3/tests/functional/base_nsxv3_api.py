@@ -78,6 +78,7 @@ class NsxPolicyInfraApiProvider(object):
 
     def _calculate_child_sizes(self, obj, parent_obj_type, obj_type):
         if parent_obj_type:
+            size = 0
             parent = obj.get(parent_obj_type, {})
             if parent:
                 parent_children = parent.get("children", [])

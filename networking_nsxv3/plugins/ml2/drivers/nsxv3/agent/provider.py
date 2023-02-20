@@ -3,7 +3,7 @@ import time
 import netaddr
 from oslo_config import cfg
 from oslo_log import log as logging
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Set, Tuple
 
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
@@ -282,7 +282,7 @@ class Provider(abc.ABC):
         """
 
     @abc.abstractmethod
-    def outdated(self, resource_type: str, os_meta: dict) -> Tuple[set, set]:
+    def outdated(self, resource_type: str, os_meta: Dict[str, dict]) -> Tuple[Set[str], Set[str]]:
         """
         Get outdated OpenStack IDs for a resource
         :resource_type: str -- One of the RESOURCE types

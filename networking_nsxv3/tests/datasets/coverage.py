@@ -786,14 +786,15 @@ OPENSTACK_INVENTORY_MIGRATION = {
 }
 
 
-def generate_os_inventory(num_nets: int, num_ports_per_net: int, num_sg: int, num_qos: int) -> dict:
+def generate_os_inventory(num_nets: int, num_ports_per_net: int, num_sg: int, num_qos: int, port_sgs_gt_27=False) -> dict:
     """Generate OpenStack inventory.
 
     Args:
-        num_nets (_type_): Number of networks to generate.
-        num_ports_per_net (_type_): Number of ports per network to generate.
-        num_sg (_type_): Number of security groups to generate.
-        num_qos (_type_): Number of QoS profiles to generate.
+        num_nets (int): Number of networks to generate.
+        num_ports_per_net (int): Number of ports per network to generate.
+        num_sg (int): Number of security groups to generate.
+        num_qos (int): Number of QoS profiles to generate.
+        port_sgs_gt_27 (bool): Whether to generate ports with more than 27 security groups (num_sg must be > 27 also).
 
     Returns:
         dict: OpenStack inventory.
@@ -812,7 +813,7 @@ def generate_os_inventory(num_nets: int, num_ports_per_net: int, num_sg: int, nu
     for i in range(num_qos):
         qos.append(generate_qos_profile(i))
     for i in range(num_ports):
-        ports.append(generate_port(i, nets, qos, sg, current_ports=ports))
+        ports.append(generate_port(i, nets, qos, sg, current_ports=ports, sgs_gt_27=port_sgs_gt_27))
 
     return {
         "security-group-rule": load_security_groups_rules(*sg),
@@ -878,11 +879,13 @@ def generate_network(i):
     }
 
 
-def generate_port(i, nets, qos, sg, current_ports=None):
+def generate_port(i, nets, qos, sg, current_ports=None, sgs_gt_27=False):
     port_uuid = str(uuid.uuid4())
-    each_nth_2be_child = 4
+    each_nth_2be_child = 5
     net = nets[i % len(nets)]
     q = qos[i % len(qos)]
+    sg_num_range = range(1, randint(25, 28)) if (sgs_gt_27 and len(sg) > 27) else range(1, randint(2, 28))
+    vary_num_sg = [sg[(i + ii) % len(sg)]["id"] for ii in sg_num_range]
 
     return {
         "id": port_uuid,
@@ -892,11 +895,7 @@ def generate_port(i, nets, qos, sg, current_ports=None):
         "mac_address": "02:00:00:%02x:%02x:%02x" % (i % 255, randint(0, 255), randint(0, 255)),
         "admin_state_up": "UP",
         "qos_policy_id": q.get("id"),
-        "security_groups": [
-            sg[(i + 1) % len(sg)]["id"],
-            sg[(i + 2) % len(sg)]["id"],
-            sg[(i + 3) % len(sg)]["id"]
-        ],
+        "security_groups": vary_num_sg,
         "address_bindings": [],
         "vif_details": {
             "segmentation_id": net.get("segmentation_id"),

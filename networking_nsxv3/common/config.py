@@ -57,6 +57,11 @@ agent_opts = [
         default=False,
         help="Force NSX-T Manager API objects to be promoted to Policy API objects."
     ),
+    cfg.BoolOpt(
+        'continue_on_failed_promotions',
+        default=False,
+        help="Continue on failed MP-to-Policy Object Promotions."
+    ),
     cfg.IntOpt(
         'migration_tag_count_trigger',
         default=26,
