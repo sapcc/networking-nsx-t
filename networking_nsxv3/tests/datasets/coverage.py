@@ -884,7 +884,7 @@ def generate_port(i, nets, qos, sg, current_ports=None, sgs_gt_27=False):
     each_nth_2be_child = 5
     net = nets[i % len(nets)]
     q = qos[i % len(qos)]
-    sg_num_range = range(1, randint(25, 28)) if (sgs_gt_27 and len(sg) > 27) else range(1, randint(2, 28))
+    sg_num_range = range(1, randint(26, 29)) if (sgs_gt_27 and len(sg) > 27) else range(1, randint(2, 28))
     vary_num_sg = [sg[(i + ii) % len(sg)]["id"] for ii in sg_num_range]
 
     return {

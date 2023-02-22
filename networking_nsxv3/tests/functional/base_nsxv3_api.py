@@ -1,9 +1,11 @@
+import copy
 import functools
 import os
 import time
 import typing
 import unittest
 import eventlet
+from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, provider_nsx_policy, client_nsx
 
 from oslo_config import cfg
@@ -93,6 +95,9 @@ class NsxPolicyInfraApiProvider(object):
 
 
 class BaseNsxTest(unittest.TestCase):
+    MIGR_INVENTORY: typing.Dict[str, dict] = None
+    TEST_ENV: Environment = None
+
     cleanup_on_teardown = True
     cleanup_on_setup = True
     cleanup_sleep = 30
@@ -143,6 +148,47 @@ class BaseNsxTest(unittest.TestCase):
                 p = env.manager.realizer.mngr_provider
                 if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
                     self.assertEquals(expected=dict(), observed=meta["meta"])
+
+    @classmethod
+    def enable_nsxtside_m2policy_migration(cls):
+        LOG.info(f"Enable Driver Side MP2Policy Migration")
+        cl = client_nsx.Client()
+        mp_service_status = cl.get(path="/api/v1/node/services/migration-coordinator/status").json()
+        if (mp_service_status.get("monitor_runtime_state") == "running") and (
+                mp_service_status.get("runtime_state") == "running"):
+            LOG.info("Migration coordinator is UP and RUNNING.")
+        else:
+            LOG.info("Migration coordinator is NOT running. Enabling ...")
+            cl.post(path="/api/v1/node/services/migration-coordinator?action=start", data={})
+            eventlet.sleep(240)
+
+    @classmethod
+    def _start_agent_with_migration(cls):
+        LOG.info("Starting MP-to-Policy Migration Hapy Path Scenario functional test ...")
+        eventlet.sleep(10)
+        cls.TEST_ENV = Environment(inventory=copy.deepcopy(cls.MIGR_INVENTORY))
+        deleted_ports = []
+        with cls.TEST_ENV:
+            i = cls.TEST_ENV.openstack_inventory
+            eventlet.sleep(10)
+            delete_count = 3
+            update_count = 3
+            for k, v in cls.MIGR_INVENTORY.get("port").items():
+                delete_count -= 1
+                if delete_count > 0:
+                    # Delete some port(s)
+                    # i.port_delete(k)
+                    # deleted_ports.append((k, v))
+                    continue
+                update_count -= 1
+                if update_count > 0:
+                    # Update some port(s)
+                    # i.port_update(k, v)
+                    continue
+                break
+            eventlet.sleep(30)
+
+        LOG.info("Finished MP-to-Policy Migration Hapy Path Scenario functional test.")
 
     @staticmethod
     def get_transport_zone_id():
@@ -289,3 +335,88 @@ class BaseNsxTest(unittest.TestCase):
                 o["marked_for_delete"] = True
                 obj_to_update.append(o)
         return obj_to_update
+
+    @staticmethod
+    def _polute_environment(num_nets=500, num_ports_per_net=5, num_groups=3000, num_qos=100, sg_gt_27=False) -> dict:
+        """Polutes the environment with the given number of networks, ports and security groups.
+        """
+        os_inventory = coverage.generate_os_inventory(num_nets, num_ports_per_net, num_groups, num_qos, sg_gt_27)
+        BaseNsxTest._polute_nsx(os_inventory)
+
+        return os_inventory
+
+    @staticmethod
+    def _polute_nsx(os_inventory: dict):
+        cl = client_nsx.Client()
+        mngr_payload = provider_nsx_mgmt.Payload()
+        plcy_payload = provider_nsx_policy.Payload()
+        mngr_api = provider_nsx_mgmt.API
+        plcy_api = provider_nsx_policy.API
+        zone_id = BaseNsxTest.get_transport_zone_id()
+
+        nets = os_inventory.get("network", {})
+        grps = os_inventory.get("security-group", {})
+        rules = os_inventory.get("security-group-rule", {})
+        qos = os_inventory.get("qos", {})
+        ports = os_inventory.get("port", {})
+
+        LOG.info(f"Poluting with {len(nets)} Logical Switches ...")
+        for k in nets:
+            seg_id = nets[k].get("segmentation_id")
+            _id = f"{cfg.CONF.NSXV3.nsxv3_transport_zone_name}-{seg_id}"
+            net_payload = mngr_payload.network(os_net={"id": _id, "segmentation_id": seg_id},
+                                        provider_net={"transport_zone_id": zone_id})
+            net_payload["_revision"] = 0
+            sw = cl.post(path=mngr_api.SWITCHES, data=net_payload).json()
+            nets[k]["nsx_id"] = sw["id"]
+
+        n = 0
+        LOG.info(f"Poluting with {len(grps)} Security Groups ...")
+        for k in grps:
+            n += 1
+            grp_payload = plcy_payload.sg_members_container(os_sg=grps[k], provider_sg={})
+            cl.put(path=plcy_api.GROUP.format(k), data=grp_payload)
+            if n % 1000 == 0:
+                LOG.info(f"Security Group {n} of {len(grps)}")
+
+        # Await Group Creation
+        secs = min(len(grps), 60)
+        LOG.info(f"Sleeping {secs} secs. to allow Security Groups to be created ...")
+        eventlet.sleep(secs)
+
+        n = 0
+        LOG.info(f"Poluting with {len(rules)} Security Rules ...")
+        for k in rules:
+            n += 1
+            r = rules[k]
+            rules_payload = plcy_payload.sg_rule(os_rule=r,
+                                                 provider_rule={"_revision": None},
+                                                 sp_id=r.get("security_group_id"),
+                                                 logged=r.get("logged")
+                                                 )
+            secp_payload = plcy_payload.sg_rules_container(
+                os_sg={"id": r.get("security_group_id")},
+                provider_sg={"scope": r.get("security_group_id"), "rules": [rules_payload], "_revision": None}
+            )
+            r = cl.put(path=plcy_api.POLICY.format(r.get("security_group_id")), data=secp_payload)
+            r.raise_for_status()
+            if n % 1000 == 0:
+                LOG.info(f"Security Rule {n} of {len(rules)}")
+
+        LOG.info(f"Poluting with {len(qos)} QOS Profiles ...")
+        for k in qos:
+            qos_payload = mngr_payload.qos(os_qos=qos[k], provider_qos={})
+            q = cl.post(path=mngr_api.PROFILES, data=qos_payload).json()
+            qos[k]["nsx_id"] = q.get("id")
+
+        LOG.info(f"Poluting with {len(ports)} Logical Ports ...")
+        for k in ports:
+            p = ports[k]
+            p["vif_details"]["nsx-logical-switch-id"] = nets[p.get("network_id")]["nsx_id"]
+            port_payload = mngr_payload.port(os_port=p, provider_port={
+                    "switching_profile_ids": [],
+                    "qos_policy_id": qos[p.get("qos_policy_id")]["nsx_id"],
+                    "parent_id": p.get("parent_id"),
+                    })
+            p = cl.post(path=mngr_api.PORTS, data=port_payload).json()
+            p["nsx_id"] = p.get("id")

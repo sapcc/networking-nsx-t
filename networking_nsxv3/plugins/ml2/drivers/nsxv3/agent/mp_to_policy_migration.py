@@ -15,6 +15,8 @@ class API(object):
     MIGR_BASE = "/api/v1/migration"
     MIGR_PLAN = f"{MIGR_BASE}/plan"
     MIGR_SERVICE_STATUS = "/api/v1/node/services/migration-coordinator/status"
+    # TODO: Implement logic to check if migration is in progress or failed
+    MIGR_STATE = f"{MIGR_BASE}/mp-policy-promotion/state"
 
     MIGR_UNIT = "MP_TO_POLICY_MIGRATION"
     SERVICE_STATUS = f"{MIGR_BASE}/migration-unit-groups/{MIGR_UNIT}?summary=true"
@@ -364,7 +366,7 @@ class Provider(object):
     def _set_generic_migration(self):
         LOG.info("Setting Generic migration data ...")
         skip_failed = cfg.CONF.AGENT.continue_on_failed_promotions
-        self.client.post(path=API.MP_TO_POLICY, data=PayloadBuilder.generic(skip_failed=skip_failed))
+        self.client.post(path=API.MP_TO_POLICY, data=PayloadBuilder.generic())
 
     @rollback
     def _set_migration(self, migr_data: dict):
@@ -395,7 +397,7 @@ class Provider(object):
         return self.client.get(path=API.MIGR_STATUS_POS).json()
 
     @cancel
-    @await_status(timeout=1200, interval=10, title_msg="Generic migration.")
+    @await_status(timeout=1200, interval=5, title_msg="Generic migration.")
     def _await_generic_migration(self, migr_data: dict = None):
         return self.client.get(path=API.MIGR_STATUS_SUM).json()
 
@@ -420,7 +422,9 @@ class Provider(object):
         LOG.info("Canceling Generic migration ...")
         try:
             self.client.post(path=API.MIGRATION_CANCEL, data=None)
+            LOG.info("Migration canceled.")
         except Exception as e:
+            LOG.warning(f"Failed to cancel migration: {e}")
             pass
 
     def _display_last_migr_feedback(self, migr_feedback):
@@ -441,4 +445,4 @@ class Provider(object):
             for res in migr_feedback.get("results", []):
                 if res.get('type') == 'LOGICAL_PORT' or res.get('type') == 'SEGMENT_PORT':
                     raise RuntimeError(
-                        f"Migration failed for port: display_name: '{res.get('mp_display_name')}', id: '{res.get('mp_id')}':")
+                        f"Migration failed for port: display_name: '{res.get('mp_display_name')}', id: '{res.get('mp_id')}'")
