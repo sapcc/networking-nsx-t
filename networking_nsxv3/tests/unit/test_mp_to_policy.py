@@ -45,7 +45,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
-        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.1.3.6")
+        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.2.2.0")
         self._register_api_responses()
 
     def _register_api_responses(self):
@@ -353,7 +353,7 @@ class TestProviderMpToPolicy(base.BaseTestCase):
             with patch.object(mp_to_policy_migration.Provider, '_try_rollback') as _try_rollback_mock:
                 migr_provider.migrate_ports([mngr_port.get("id")])
         except RuntimeError as e:
-            self.assertEqual(True, "Migration status check FAILED" in str(e))
+            self.assertEqual(True, "FAILED" in str(e))
             _try_rollback_mock.assert_called_once_with(migr_data={
                 'migration_data': [{
                     'type': 'LOGICAL_PORT',

@@ -34,9 +34,9 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cfg.CONF.set_override("polling_interval", 20, "AGENT")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
-            num_nets=1,  # 100
+            num_nets=10,  # 100
             num_ports_per_net=5,  # 20
-            num_groups=10,  # 1000
+            num_groups=30,  # 1000
             num_qos=1,  # 100
             sg_gt_27=False)
 

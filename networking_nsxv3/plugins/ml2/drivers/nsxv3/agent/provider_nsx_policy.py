@@ -284,8 +284,8 @@ class Payload(provider_nsx_mgmt.Payload):
             },
             "address_bindings": os_port.get("address_bindings"),
             "tags": self.tags(os_port, more=sgs),
-            "parent_path": API.SEGMENT_PATH.format(provider_port["nsx_segment_id"]),
-            "path": API.SEGMENT_PORT_PATH.format(provider_port["nsx_segment_id"], port_id),
+            "parent_path": API.SEGMENT_PATH.format(provider_port["nsx_segment_real_id"]),
+            "path": API.SEGMENT_PORT_PATH.format(provider_port["nsx_segment_real_id"], port_id),
             "_revision": provider_port.get("_revision")
         }
 
@@ -706,15 +706,12 @@ class Provider(base.Provider):
             # QoS policy attached on creation by the Manager API
             pass
 
-        nsx_segment_id = os_port.get("vif_details").get("external-id")
+        segment_meta = self.metadata(Provider.SEGMENT, os_port.get("vif_details").get("segmentation_id"))
+        if not segment_meta:
+            raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
 
-        if not nsx_segment_id:
-            segment_meta = self.metadata(Provider.SEGMENT, os_port.get("vif_details").get("segmentation_id"))
-            if not segment_meta:
-                raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
-            nsx_segment_id = segment_meta.real_id
-
-        provider_port["nsx_segment_id"] = nsx_segment_id
+        provider_port["nsx_segment_id"] = segment_meta.unique_id
+        provider_port["nsx_segment_real_id"] = segment_meta.real_id
 
         port_sgs = os_port.get("security_groups")
         if len(port_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port:
@@ -737,7 +734,7 @@ class Provider(base.Provider):
                     self.sg_members_realize({"id": sg_id,
                                              "cidrs": sg_meta.sg_cidrs,
                                              "member_paths": sg_meta.sg_members,
-                                             "revision_number": "0"})
+                                             "revision_number": sg_meta.revision or 0})
 
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
@@ -757,7 +754,12 @@ class Provider(base.Provider):
 
     # overrides
     def network_realize(self, segmentation_id: int) -> PolicyResourceMeta:
-        return self.metadata(Provider.SEGMENT, segmentation_id)
+        segment = self.metadata(Provider.SEGMENT, segmentation_id)
+        if not segment or segment.real_id is None:
+            os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}
+            provider_net = {"transport_zone_id": self.zone_id}
+            segment = self._realize(Provider.SEGMENT, False, self.payload.segment, os_net, provider_net)
+        return segment
 
     def get_non_default_switching_profiles(self) -> list:
         prfls = self.client.get_all(path=API.SEARCH_QUERY, params=API.SEARCH_Q_ALL_SEG_PROFILES)

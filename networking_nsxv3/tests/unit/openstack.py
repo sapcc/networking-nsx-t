@@ -259,7 +259,7 @@ class NeutronMock(object):
 
         vif = self.notifier.rpc.realizer.network(segmentation_id)
 
-        if not vif.get("external-id"):
+        if not vif or not vif.get("external-id"):
             raise Exception("Unable to bind Port:{} VIF:{}".format(name, vif))
 
         client = self.notifier.rpc.realizer.mngr_provider.client

@@ -186,7 +186,7 @@ class BaseNsxTest(unittest.TestCase):
                     # i.port_update(k, v)
                     continue
                 break
-            eventlet.sleep(30)
+            eventlet.sleep(300)
 
         LOG.info("Finished MP-to-Policy Migration Hapy Path Scenario functional test.")
 

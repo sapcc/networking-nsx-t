@@ -193,7 +193,7 @@ class Inventory(object):
                         inventory[id] = o
                         return self.resp(417, "SG with ID:{} cannot be deleted as either it has children or it is being referenced.".format(id))
             return self.resp(200) if o else self.resp(404)
-
+# TODO: Add support for creation of Segments and SegmentPorts
     def api(self, request: Request):
         policy_status = self._policy_status(request)
         version = self._version(request)
@@ -341,6 +341,9 @@ class Inventory(object):
                     if not data:
                         return self.resp(200)
                     else:
+                        if data.get("mode") == "GENERIC":
+                            self._mp_to_policy_promote_all()
+                            return self.resp(200)
                         self._check_migration_data(data)
                         return self._mp_to_policy_prepare(data.get("migration_data"))
 
@@ -365,8 +368,49 @@ class Inventory(object):
                     return self.resp(200, self._migration_status_response())
                 if "?component_type=MP_TO_POLICY_MIGRATION" in request.url:
                     return self.resp(200, self._migration_status_response())
+                return self.resp(200, self._migration_status_response())
+
+            if "/mp-to-policy/stats?pre_promotion" in request.url and request.method == "GET":
+                return self.resp(200, self._get_objects_for_migrations())
+
+            if "/mp-to-policy/feedback" in request.url and request.method == "GET":
+                return self.resp(200, {
+                    "result_count": 0
+                })
 
             return self._not_implemented_err_resp(request)
+
+    def _get_objects_for_migrations(self):
+        qos_profiles_count = len(self.inv[Inventory.PROFILES])
+        switch_count = len(self.inv[Inventory.SWITCHES])
+        port_count = len(self.inv[Inventory.PORTS])
+        return {
+            "current_resource_type_in_promotion": "NONE",
+            "migration_stats": [
+                {
+                    "resource_type": "QOS_PROFILES",
+                    "promotion_status": "NOT_STARTED",
+                    "total_count": qos_profiles_count,
+                    "promoted_objects_count": 0,
+                    "failed_objects_count": 0
+                },
+                {
+                    "resource_type": "LOGICAL_PORT",
+                    "promotion_status": "NOT_STARTED",
+                    "total_count": port_count,
+                    "promoted_objects_count": 0,
+                    "failed_objects_count": 0
+                },
+                {
+                    "resource_type": "LOGICAL_SWITCH",
+                    "promotion_status": "NOT_STARTED",
+                    "total_count": switch_count,
+                    "promoted_objects_count": 0,
+                    "failed_objects_count": 0
+                }
+            ],
+            "total_count": qos_profiles_count + port_count + switch_count,
+        }
 
     def _migration_status_response(self):
         return {
@@ -379,7 +423,7 @@ class Inventory(object):
 
     def _check_migration_data(self, data: dict):
         migr_data = data.get("migration_data")
-        if not migr_data:
+        if migr_data is None:
             raise Exception("No migration data provided 'migration_data'!")
         for d in migr_data:
             res_type = d.get("type")
@@ -436,18 +480,30 @@ class Inventory(object):
             resource = self.prepared_migration.get((os_id, plcy_res_type, plcy_inv_path, mngr_inv_path))
             plcy_inv = self.inv.get(plcy_inv_path)
             mngr_inv = self.inv.get(mngr_inv_path)
+            self._migrate(mngr_inv, plcy_inv, plcy_res_type)
+        return self.resp(200)
 
+    def _mp_to_policy_promote_all(self):
+        self._migrate(mngr_inv=self.inv.get(Inventory.PROFILES), plcy_inv=self.inv.get(
+            Inventory.SEGMENT_PROFILES_QOS), resource_type=Inventory.POLICY_RESOURCE_TYPES.QOS_PROFILE)
+        self._migrate(mngr_inv=self.inv.get(Inventory.SWITCHES), plcy_inv=self.inv.get(
+            Inventory.SEGMENTS), resource_type=Inventory.POLICY_RESOURCE_TYPES.SEGMENT)
+        self._migrate(mngr_inv=self.inv.get(Inventory.PORTS), plcy_inv=self.inv.get(
+            Inventory.SEGMENT_PORTS), resource_type=Inventory.POLICY_RESOURCE_TYPES.SEGMENT_PORT)
+
+    def _migrate(self, mngr_inv, plcy_inv, resource_type):
+        for os_id, mngr_inv_item in mngr_inv.items():
             now = int(time.time() * 1000)
-            tags: list = mngr_inv[os_id].get("tags", [])
-            attachment: dict = mngr_inv[os_id].get("attachment")
-            vlan = mngr_inv[os_id].get("vlan")
-            path, parent_path = self._get_paths_for_promoted(mngr_inv[os_id])
+            tags: list = mngr_inv_item.get("tags", [])
+            attachment: dict = mngr_inv_item.get("attachment")
+            vlan = mngr_inv_item.get("vlan")
+            path, parent_path = self._get_paths_for_promoted(mngr_inv_item)
             tags.append({"scope": "policyPath", "tag": path})
 
             plcy_inv[os_id] = {
-                "id": resource.get("id"),
-                "display_name": mngr_inv[os_id]["display_name"],
-                "resource_type": plcy_res_type,
+                "id": "default:" + mngr_inv_item["id"],
+                "display_name": mngr_inv.get("display_name") or os_id,
+                "resource_type": resource_type,
                 "tags": tags,
                 "path": path,
                 "parent_path": parent_path,
@@ -466,11 +522,9 @@ class Inventory(object):
                     str(vlan)
                 ]
 
-            mngr_inv[os_id]["_create_user"] = "nsx_policy"
-            mngr_inv[os_id]["_last_modified_time"] = now
-            mngr_inv[os_id]["_revision"] = mngr_inv.get(os_id).get("_revision", 0) + 1
-
-        return self.resp(200)
+            mngr_inv_item["_create_user"] = "nsx_policy"
+            mngr_inv_item["_last_modified_time"] = now
+            mngr_inv_item["_revision"] = mngr_inv_item.get("_revision", 0) + 1
 
     def _get_paths_for_promoted(self, mngr_resource: dict) -> Tuple[str, str]:
         """

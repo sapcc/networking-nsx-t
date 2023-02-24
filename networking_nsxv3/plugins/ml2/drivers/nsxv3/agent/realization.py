@@ -22,6 +22,7 @@ LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 class AgentRealizer(object):
 
     MIGR_IN_PROG = False
+    AGE = int(time.time())
 
     def __init__(
         self,
@@ -47,9 +48,7 @@ class AgentRealizer(object):
         if self.mp2policy:
             self._start_migration()
         else:
-            self.age = int(time.time())
-            # Initializing metadata
-            self.all(dryrun=True)
+            self._dryrun()
 
     @staticmethod
     def _os_meta(query: Callable):
@@ -197,7 +196,7 @@ class AgentRealizer(object):
         current += pp.age(pp.SEGM_QOS, seg_qos_current)
 
         # Sanitize when there are no elements or the eldest age > current age
-        aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.age]
+        aged = [entry for entry in current if entry[2] and int(entry[2]) <= AgentRealizer.AGE]
         LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
         if aged:
             aged = set(itertools.islice(aged, _slice))
@@ -214,7 +213,7 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
-            self.age = int(time.time())
+            AgentRealizer.AGE = int(time.time())
 
     def security_group_members(self, os_id: str, reference=False):
         """
@@ -230,7 +229,7 @@ class AgentRealizer(object):
         with LockManager.get_lock("member-{}".format(os_id)):
             pp = self.plcy_provider
             meta = pp.metadata(pp.SG_MEMBERS, os_id)
-            if not (reference and meta):
+            if not reference and not meta:
                 if self.rpc.has_security_group_used_by_host(os_id):
                     cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
                     port_ids = set(self.rpc.get_security_group_port_ids(os_id))
@@ -239,7 +238,7 @@ class AgentRealizer(object):
                     paths = [p.path for p in segment_ports]
 
                     # SG Members are not revisionable, use default "0"
-                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": "0", "member_paths": paths})
+                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": 0, "member_paths": paths})
                 else:
                     pp.sg_members_realize({"id": os_id}, delete=True)
 
@@ -324,7 +323,7 @@ class AgentRealizer(object):
         with LockManager.get_lock("qos-{}".format(os_id)):
             plcy_meta = self.plcy_provider.metadata(self.plcy_provider.SEGM_QOS, os_id)
             mgr_meta = self.mngr_provider.metadata(self.mngr_provider.QOS, os_id)
-            if not (reference and mgr_meta):
+            if not reference and not mgr_meta:
                 qos = self.rpc.get_qos(os_id)
                 if qos:
                     self._qos_realize(os_qos=qos, is_plcy=bool(plcy_meta), is_mngr=bool(mgr_meta))
@@ -343,7 +342,7 @@ class AgentRealizer(object):
             return
         with LockManager.get_lock("network-{}".format(os_seg_id)):
             meta = self._network_realize(os_seg_id)
-            return {"nsx-logical-switch-id": meta.id, "external-id": meta.id, "segmentation_id": os_seg_id}
+            return {"nsx-logical-switch-id": meta.unique_id, "external-id": meta.id, "segmentation_id": os_seg_id}
 
     def enable_policy_logging(self, log_obj: dict):
         """
@@ -408,9 +407,8 @@ class AgentRealizer(object):
         return mp.port_realize(os_port, delete)
 
     def _network_realize(self, segmentation_id: int):
-        segment_meta = self.plcy_provider.network_realize(segmentation_id)
-        if segment_meta:
-            return segment_meta
+        if self.mp2policy:
+            return self.plcy_provider.network_realize(segmentation_id)
         return self.mngr_provider.network_realize(segmentation_id)
 
     def _check_mp2policy_support(self):
@@ -424,6 +422,9 @@ class AgentRealizer(object):
         try:
             self.migr_provider = mi_prvdr.Provider()
             # Check if migration is needed
+            migr_state = self.migr_provider.get_migration_state()
+            if not migr_state or "FAIL" in migr_state or "PROGRESS" in migr_state:
+                raise RuntimeWarning("MP-to-Policy migration is in progress or failed.")
             migr_pre = self.migr_provider.get_migration_stats(pre=True)
             LOG.info(f"MP-to-Policy migration pre-check:\n{json.dumps(migr_pre, indent=4)}")
             if migr_pre and migr_pre.get("total_count", 0) > 0:
@@ -434,16 +435,19 @@ class AgentRealizer(object):
         except Exception as e:
             AgentRealizer.MIGR_IN_PROG = False
             LOG.error(f"Error while starting MP-to-Policy migration: {str(e)}")
+            self._dryrun()
 
     def _migration_handler(self, gt: eventlet.greenthread.GreenThread):
         try:
             gt.wait()
-            AgentRealizer.MIGR_IN_PROG = False
             LOG.info("MP-to-Policy Migration finished successfully.")
         except Exception as e:
-            AgentRealizer.MIGR_IN_PROG = False
             LOG.error(str(e))
         finally:
-            self.age = int(time.time())
-            # Initializing metadata
-            self.all(dryrun=True)
+            AgentRealizer.MIGR_IN_PROG = False
+            self._dryrun()
+
+    def _dryrun(self):
+        AgentRealizer.AGE = int(time.time())
+        # Initializing metadata
+        self.all(dryrun=True)

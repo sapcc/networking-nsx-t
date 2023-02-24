@@ -15,7 +15,6 @@ class API(object):
     MIGR_BASE = "/api/v1/migration"
     MIGR_PLAN = f"{MIGR_BASE}/plan"
     MIGR_SERVICE_STATUS = "/api/v1/node/services/migration-coordinator/status"
-    # TODO: Implement logic to check if migration is in progress or failed
     MIGR_STATE = f"{MIGR_BASE}/mp-policy-promotion/state"
 
     MIGR_UNIT = "MP_TO_POLICY_MIGRATION"
@@ -215,14 +214,15 @@ class Provider(object):
                     res = status_func(self, *args, **kwargs)
                     overal_status = res.get("overall_migration_status", "")
                     results = res.get("component_status", [])
+                    failed_statuses = ["FAIL", "FAILED"]
 
-                    if len(results) < 1 and overal_status == "FAILED":
+                    if len(results) < 1 and overal_status in failed_statuses:
                         raise RuntimeError(f"{title_msg} Status: FAILED! Result: {res}")
 
                     LOG.info(f"Overall migration status: {overal_status}")
                     migr_incomplete = False
                     for r in results:
-                        if r.get("status") == "FAILED":
+                        if r.get("status") in failed_statuses:
                             fdbk = self.get_migration_feedback()
                             if overal_status == "PAUSING":
                                 LOG.warning(r.get("details"))
@@ -362,6 +362,10 @@ class Provider(object):
         except Exception as e:
             LOG.warning(f"Failed to get migration stats: {e}")
             return {}
+
+    def get_migration_state(self) -> str or None:
+        state = self.client.get(path=API.MIGR_STATE).json()
+        return state.get("mp_policy_promotion") if state else None
 
     def _set_generic_migration(self):
         LOG.info("Setting Generic migration data ...")
