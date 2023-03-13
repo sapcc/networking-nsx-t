@@ -24,14 +24,6 @@ from neutron.services.logapi.drivers import manager
 LOG = log.getLogger(__name__)
 
 
-class TrunkPayload(events.EventPayload):
-    def __init__(self, context, trunk_id, current_trunk, subports):
-        super(TrunkPayload, self).__init__(context)
-        self.current_trunk = current_trunk
-        self.trunk_id = trunk_id
-        self.subports = subports
-
-
 class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     """Attach to networks using vmware nsx-t agent.
 
@@ -198,7 +190,11 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                         segmentation_type=p['segmentation_type'])
                 for p in sub_ports]
         trunk = trunk_objects.Trunk.get_object(context=admin_ctx, id=truk_id)
-        payload = TrunkPayload(admin_ctx, trunk.id, trunk, subports)
+        payload = events.DBEventPayload(admin_ctx, resource_id=trunk.id,
+                                        states=(trunk, trunk,),
+                                        metadata={
+                                            'subports': subports
+                                        })
 
         if delete:
             registry.publish(resources.SUBPORTS, events.AFTER_DELETE, self, payload=payload)

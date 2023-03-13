@@ -222,16 +222,17 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.current_trunk = SimpleObject()
-                par_payload.current_trunk.sub_ports = 'MyCurrentTrunkSubPorts'
+                par_payload.states = []
+                par_payload.states[0] = SimpleObject()
+                par_payload.states[0].sub_ports = 'MyCurrentTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
-                par_payload.current_trunk.update = mocked_current_trunk_update
+                par_payload.states[0].update = mocked_current_trunk_update
 
                 # Initialize/Prepare the call tracker for test call number 1
                 self.call_tracker.init_track('trunk_create')
 
                 # Make test call number 1
-                par_payload.current_trunk.port_id = None
+                par_payload.states[0].port_id = None
                 nsx_trunc_driver.trunk_create(par_resource, None, None, par_payload)
 
                 # No activity is expected
@@ -241,7 +242,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 self.call_tracker.init_track('trunk_create')
 
                 # Make test call number 2
-                par_payload.current_trunk.port_id = 'MyCurrentTrunkPortID'
+                par_payload.states[0].port_id = 'MyCurrentTrunkPortID'
                 nsx_trunc_driver.trunk_create(par_resource, None, None, par_payload)
 
                 # Activity is expected
@@ -251,10 +252,10 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                         'trunk_create',
                         [
                             'mocked__bind_subports'
-                            + ':ctx:' + 'context_for_' + str(par_payload.current_trunk.port_id)
-                            + ':parent:' + 'parent_for_' + str(par_payload.current_trunk.port_id)
-                            + ':trunk:' + str(par_payload.current_trunk)
-                            + ':subports:' + str(par_payload.current_trunk.sub_ports)
+                            + ':ctx:' + 'context_for_' + str(par_payload.states[0].port_id)
+                            + ':parent:' + 'parent_for_' + str(par_payload.states[0].port_id)
+                            + ':trunk:' + str(par_payload.states[0])
+                            + ':subports:' + str(par_payload.states[0].sub_ports)
                             + ':delete:' + str(False),
                             'mocked_current_trunk_update:status:' + trunk_consts.TRUNK_ACTIVE_STATUS
                         ]
@@ -288,15 +289,16 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.original_trunk = SimpleObject()
-                par_payload.original_trunk.sub_ports = 'MyOriginalTrunkSubPorts'
+                par_payload.states = []
+                par_payload.states[0] = SimpleObject()
+                par_payload.states[0].sub_ports = 'MyOriginalTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
 
                 # Initialize/Prepare the call tracker for test call number 1
                 self.call_tracker.init_track('trunk_delete')
 
                 # Make test call number 1
-                par_payload.original_trunk.port_id = None
+                par_payload.states[0].port_id = None
                 nsx_trunc_driver.trunk_delete(par_resource, None, None, par_payload)
 
                 # No activity is expected
@@ -306,7 +308,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 self.call_tracker.init_track('trunk_delete')
 
                 # Make test call number 2
-                par_payload.original_trunk.port_id = 'MyCurrentTrunkPortID'
+                par_payload.states[0].port_id = 'MyCurrentTrunkPortID'
                 nsx_trunc_driver.trunk_delete(par_resource, None, None, par_payload)
 
                 # Activity is expected
@@ -316,10 +318,10 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                         'trunk_delete',
                         [
                             'mocked__bind_subports'
-                            + ':ctx:' + 'context_for_' + str(par_payload.original_trunk.port_id)
-                            + ':parent:' + 'parent_for_' + str(par_payload.original_trunk.port_id)
-                            + ':trunk:' + str(par_payload.original_trunk)
-                            + ':subports:' + str(par_payload.original_trunk.sub_ports)
+                            + ':ctx:' + 'context_for_' + str(par_payload.states[0].port_id)
+                            + ':parent:' + 'parent_for_' + str(par_payload.states[0].port_id)
+                            + ':trunk:' + str(par_payload.states[0])
+                            + ':subports:' + str(par_payload.states[0].sub_ports)
                             + ':delete:' + str(True)
                         ]
                     ),
@@ -352,7 +354,8 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.current_trunk = SimpleObject()
+                par_payload.states = []
+                par_payload.states[0] = SimpleObject()
                 par_payload.subports = 'MyTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
 
@@ -360,7 +363,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 self.call_tracker.init_track('subport_create')
 
                 # Make test call number 1
-                par_payload.current_trunk.port_id = None
+                par_payload.states[0].port_id = None
                 nsx_trunc_driver.subport_create(par_resource, None, None, par_payload)
 
                 # No activity is expected
@@ -370,7 +373,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 self.call_tracker.init_track('subport_create')
 
                 # Make test call number 2
-                par_payload.current_trunk.port_id = 'MyCurrentTrunkPortID'
+                par_payload.states[0].port_id = 'MyCurrentTrunkPortID'
                 nsx_trunc_driver.subport_create(par_resource, None, None, par_payload)
 
                 # Activity is expected
@@ -380,9 +383,9 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                         'subport_create',
                         [
                             'mocked__bind_subports'
-                            + ':ctx:' + 'context_for_' + str(par_payload.current_trunk.port_id)
-                            + ':parent:' + 'parent_for_' + str(par_payload.current_trunk.port_id)
-                            + ':trunk:' + str(par_payload.current_trunk)
+                            + ':ctx:' + 'context_for_' + str(par_payload.states[0].port_id)
+                            + ':parent:' + 'parent_for_' + str(par_payload.states[0].port_id)
+                            + ':trunk:' + str(par_payload.states[0])
                             + ':subports:' + str(par_payload.subports)
                             + ':delete:' + str(False)
                         ]
@@ -416,7 +419,8 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.current_trunk = SimpleObject()
+                par_payload.states = []
+                par_payload.states[0] = SimpleObject()
                 par_payload.subports = 'MyTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
                 par_payload.context = None
@@ -425,7 +429,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 self.call_tracker.init_track('subport_delete')
 
                 # Make test call number 1
-                par_payload.current_trunk.port_id = None
+                par_payload.states[0].port_id = None
                 nsx_trunc_driver.subport_delete(par_resource, None, None, par_payload)
 
                 # Activity is expected
@@ -435,7 +439,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 self.call_tracker.init_track('subport_delete')
 
                 # Make test call number 2
-                par_payload.current_trunk.port_id = 'MyCurrentTrunkPortID'
+                par_payload.states[0].port_id = 'MyCurrentTrunkPortID'
                 nsx_trunc_driver.subport_delete(par_resource, None, None, par_payload)
 
                 # Activity is expected
@@ -445,9 +449,9 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                         'subport_delete',
                         [
                             'mocked__bind_subports'
-                            + ':ctx:' + 'context_for_' + str(par_payload.current_trunk.port_id)
-                            + ':parent:' + 'parent_for_' + str(par_payload.current_trunk.port_id)
-                            + ':trunk:' + str(par_payload.current_trunk)
+                            + ':ctx:' + 'context_for_' + str(par_payload.states[0].port_id)
+                            + ':parent:' + 'parent_for_' + str(par_payload.states[0].port_id)
+                            + ':trunk:' + str(par_payload.states[0])
                             + ':subports:' + str(par_payload.subports)
                             + ':delete:' + str(True)
                         ]
