@@ -229,7 +229,7 @@ class AgentRealizer(object):
         with LockManager.get_lock("member-{}".format(os_id)):
             pp = self.plcy_provider
             meta = pp.metadata(pp.SG_MEMBERS, os_id)
-            if not reference and not meta:
+            if not (reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
                     cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
                     port_ids = set(self.rpc.get_security_group_port_ids(os_id))
@@ -323,7 +323,7 @@ class AgentRealizer(object):
         with LockManager.get_lock("qos-{}".format(os_id)):
             plcy_meta = self.plcy_provider.metadata(self.plcy_provider.SEGM_QOS, os_id)
             mgr_meta = self.mngr_provider.metadata(self.mngr_provider.QOS, os_id)
-            if not reference and not mgr_meta:
+            if not (reference and mgr_meta):
                 qos = self.rpc.get_qos(os_id)
                 if qos:
                     self._qos_realize(os_qos=qos, is_plcy=bool(plcy_meta), is_mngr=bool(mgr_meta))

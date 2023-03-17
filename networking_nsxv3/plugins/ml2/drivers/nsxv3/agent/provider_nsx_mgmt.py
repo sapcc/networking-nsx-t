@@ -330,7 +330,7 @@ class Payload(object):
             "display_name": id,
             "services": services,
             "action": "ALLOW",
-            "logged": False,  # TODO selective logging
+            "logged": False,
             "rule_tag": id.replace("-", ""),
             "_revision": provider_rule["_revision"],
         }

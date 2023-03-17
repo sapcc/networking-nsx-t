@@ -4,6 +4,7 @@ import json
 import re
 import time
 from typing import Dict, List, Tuple
+import uuid
 from wsgiref.util import request_uri
 from requests.models import PreparedRequest as Request
 from urllib.parse import parse_qs, urlparse
@@ -92,8 +93,9 @@ class Inventory(object):
                     "_create_user": "system"
                 },
                 "default-layer3-logged-drop-section": {
-                    # "logging_enabled": True,
+                    "logging_enabled": True,
                     "id": "default-layer3-logged-drop-section",
+                    "rules": [{"action": "DROP"}],
                     "_create_user": "admin"
                 }
             },
@@ -116,11 +118,11 @@ class Inventory(object):
         return code, dict(), json.dumps(data)  # (code, headers, body)
 
     @staticmethod
-    def identifier(inventory, content):
+    def identifier(inventory, content) -> str:
         """
         Generate predictable IDs based on inventory keys and content
         """
-        return hashlib.md5("{}{}".format(str(inventory.keys()), str(content)).encode("utf-8")).hexdigest()
+        return f'{uuid.UUID(hashlib.md5("{}{}".format(str(inventory.keys()), str(content)).encode("utf-8")).digest().hex())}'
 
     def type(self, request: Request, inventory, resource):
         if request.method == "GET":
@@ -148,7 +150,7 @@ class Inventory(object):
     def id(self, request: Request, inventory: dict, id: str, resource: dict):
         o = inventory.get(id)
         if request.method == "GET":
-            return self.resp(200, o) if o else self.resp(404)
+            return self.resp(200, o) if o else self.resp(404, {"id": id, "request_url": request.url, "message": "Not found"})
         if request.method == "PUT":
             if "policy" in request.url:
                 if o and o.get("_revision") != resource.get("_revision"):
@@ -194,6 +196,7 @@ class Inventory(object):
                         return self.resp(417, "SG with ID:{} cannot be deleted as either it has children or it is being referenced.".format(id))
             return self.resp(200) if o else self.resp(404)
 # TODO: Add support for creation of Segments and SegmentPorts
+
     def api(self, request: Request):
         policy_status = self._policy_status(request)
         version = self._version(request)
@@ -216,6 +219,7 @@ class Inventory(object):
         if url.scheme != self.url.scheme or url.netloc != self.url.netloc:
             return self.resp(404)
 
+        LOG.info(f"Requested Path: {url.path}")
         paths = url.path.lstrip("/").split("/")
         if len(paths) == 0:
             return self.resp(404)
@@ -237,7 +241,7 @@ class Inventory(object):
 
         if obj_id:
             LOG.info(f"Using Test obj_id: {obj_id}, {request.method}")
-            return self.id(request, inventory, obj_id, resource)
+            return self.id(request, inventory, obj_id.replace("default:", ""), resource)
         if obj_type:
             LOG.info(f"Using Test obj_type: {obj_type}, {request.method}")
             return self.type(request, inventory, resource)
@@ -284,6 +288,8 @@ class Inventory(object):
                     resources.append(o)
 
             if len(resources):
+                LOG.debug(f"Search query: {q} found {len(resources)} resources")
+                LOG.debug(f"Resources: {resources}")
                 return self.resp(
                     200, {"results": resources, "result_count": len(resources), "cursor": f"{len(resources)}"})
 
@@ -378,6 +384,11 @@ class Inventory(object):
                     "result_count": 0
                 })
 
+            if "/mp-policy-promotion/state" in request.url and request.method == "GET":
+                return self.resp(200, {
+                    "mp_policy_promotion": "NOT_STARTED"
+                })
+
             return self._not_implemented_err_resp(request)
 
     def _get_objects_for_migrations(self):
@@ -417,6 +428,7 @@ class Inventory(object):
             "overall_migration_status": "SUCCESS",
             "component_status": [
                 {
+                    "component_type": "MP_TEST_MOCK",
                     "status": "SUCCESS", "percent_complete": 100
                 }
             ]}
@@ -500,9 +512,16 @@ class Inventory(object):
             path, parent_path = self._get_paths_for_promoted(mngr_inv_item)
             tags.append({"scope": "policyPath", "tag": path})
 
+            r_id = "default:" + mngr_inv_item["id"]
+            r_display_name = mngr_inv_item.get("display_name")
+
+            if Inventory.POLICY_RESOURCE_TYPES.SEGMENT == resource_type:
+                r_id = mngr_inv_item.get("display_name")
+
             plcy_inv[os_id] = {
-                "id": "default:" + mngr_inv_item["id"],
-                "display_name": mngr_inv.get("display_name") or os_id,
+                "id": r_id,
+                "unique_id": mngr_inv_item["id"],
+                "display_name": r_display_name,
                 "resource_type": resource_type,
                 "tags": tags,
                 "path": path,
@@ -525,6 +544,7 @@ class Inventory(object):
             mngr_inv_item["_create_user"] = "nsx_policy"
             mngr_inv_item["_last_modified_time"] = now
             mngr_inv_item["_revision"] = mngr_inv_item.get("_revision", 0) + 1
+            mngr_inv_item["tags"] = tags
 
     def _get_paths_for_promoted(self, mngr_resource: dict) -> Tuple[str, str]:
         """
@@ -532,13 +552,22 @@ class Inventory(object):
             Tuple[str, str]: (path, parent_path)
         """
         path, parent_path = "TODO", "TODO"
+        LOG.debug("mngr_resource id, type: %s, '%s'", mngr_resource.get("id"), mngr_resource.get("resource_type"))
         if mngr_resource.get("resource_type") == "LogicalPort":
             vlan = mngr_resource.get("attachment", {}).get("context", {}).get("traffic_tag")
             switch = list(filter(lambda v: v.get("vlan") == vlan, self.inv[self.SWITCHES].values()))
             if switch:
-                parent_path = f"/infra/segments/{switch[0].get('id')}"
-                path = f"{parent_path}/ports/{mngr_resource.get('id')}"
-        # TODO: handle more resource types
+                parent_path = f"/infra/segments/{switch[0].get('display_name')}"
+                path = f"{parent_path}/ports/default:{mngr_resource.get('id')}"
+        elif mngr_resource.get("resource_type") == "LogicalSwitch":
+            parent_path = "/infra"
+            path = f"{parent_path}/segments/{mngr_resource.get('display_name')}"
+        elif mngr_resource.get("resource_type") == "QosSwitchingProfile":
+            parent_path = "/infra/qos-profiles"
+            path = f"{parent_path}/default:{mngr_resource.get('id')}"
+        elif "Profile" in mngr_resource.get("resource_type"):
+            parent_path = "/infra/profiles"
+            path = f"{parent_path}/default:{mngr_resource.get('id')}"
         return path, parent_path
 
     def _get_child_resource(self, inventory, obj_id, child_id, child_type, request, resource):

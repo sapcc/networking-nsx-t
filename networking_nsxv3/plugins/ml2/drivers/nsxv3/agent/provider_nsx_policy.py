@@ -366,7 +366,7 @@ class Payload(provider_nsx_mgmt.Payload):
         direction = os_rule["direction"]
 
         def group_ref(group_id):
-            return group_id if group_id == "ANY" else "/infra/domains/default/groups/" + group_id
+            return "ANY" if (not group_id or group_id == "ANY") else "/infra/domains/default/groups/" + group_id
 
         current = ["ANY"]
         if os_rule.get("remote_group_id"):
