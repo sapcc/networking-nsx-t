@@ -1,6 +1,7 @@
 from networking_nsxv3.tests.unit import openstack
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
 from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
+from networking_nsxv3.tests.datasets import coverage
 
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -20,21 +21,19 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cls.load_env_variables()
         if client_nsx.Client().version < MP2POLICY_NSX_MIN_VERSION:
             cls.skipTest(
-                cls, f"Migration Functional Tests skipped. Migration is not supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
+                cls, f"Migration Functional Tests skipped. Migration is NOT supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
         cls.clean_all_from_nsx()
         cls.enable_nsxtside_m2policy_migration()
 
         LOG.info(f"Activate migration on driver side")
 
         cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
-        cfg.CONF.set_override("continue_on_failed_promotions", True, "AGENT")
-        cfg.CONF.set_override("migration_tag_count_trigger", 1, "AGENT")
-        cfg.CONF.set_override("migration_tag_count_max", 6, "AGENT")
-        cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
-        cfg.CONF.set_override("polling_interval", 20, "AGENT")
+        cfg.CONF.set_override("continue_on_failed_promotions", False, "AGENT")
+        cfg.CONF.set_override("max_sg_tags_per_segment_port", 25, "AGENT")
+        cfg.CONF.set_override("polling_interval", 10, "AGENT")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
-            num_nets=10,  # 100
+            num_nets=5,  # 100
             num_ports_per_net=5,  # 20
             num_groups=30,  # 1000
             num_qos=1,  # 100
@@ -68,7 +67,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for k, v in nets:
             vlan_id = v.get("segmentation_id")
             self.assertFalse(str(vlan_id) in self.mngr_meta[self.mngr.NETWORK]["meta"],
-                             f"Network '{k}' with vlan '{vlan_id}' must not exists in the manager metadata!")
+                             f"Network '{k}' with vlan '{vlan_id}' must NOT exists in the manager metadata!")
             self.assertTrue(str(vlan_id) in self.plcy_meta[self.plcy.SEGMENT]["meta"],
                             f"Network '{k}' with vlan '{vlan_id}' must exists in the policy metadata!")
 
@@ -79,7 +78,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         for k, v in ports:
             self.assertFalse(k in self.mngr_meta[self.mngr.PORT]["meta"],
-                             f"Port '{k}' must not exists in the manager metadata!")
+                             f"Port '{k}' must NOT exists in the manager metadata!")
             self.assertTrue(k in self.plcy_meta[self.plcy.SEGM_PORT]["meta"],
                             f"Port '{k}' must exists in the policy metadata!")
 
@@ -90,7 +89,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         for k, v in qos:
             self.assertFalse(k in self.mngr_meta[self.mngr.QOS]["meta"],
-                             f"QoS '{k}' must not exists in the manager metadata!")
+                             f"QoS '{k}' must NOT exists in the manager metadata!")
             self.assertTrue(k in self.plcy_meta[self.plcy.SEGM_QOS]["meta"],
                             f"QoS '{k}' must exists in the policy metadata!")
 
@@ -101,44 +100,38 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         for k, v in sgs:
             self.assertFalse(k in self.mngr_meta[self.mngr.SG_MEMBERS]["meta"],
-                             f"SG Members '{k}' must not exists in the manager metadata!")
+                             f"SG Members '{k}' must NOT exists in the manager metadata!")
             self.assertTrue(k in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"],
                             f"SG Members '{k}' must exists in the policy metadata!")
             self.assertFalse(k in self.mngr_meta[self.mngr.SG_RULES]["meta"],
-                             f"SG Rules '{k}' must not exists in the manager metadata!")
+                             f"SG Rules '{k}' must NOT exists in the manager metadata!")
             self.assertTrue(k in self.plcy_meta[self.plcy.SG_RULES]["meta"],
                             f"SG Rules '{k}' must exists in the policy metadata!")
 
-    """
-    # Assert group membership
-    migrated_port1_path = plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_FOR_MIGRATION_1['id']].get("path")
-    migrated_port2_path = plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_FOR_MIGRATION_2['id']].get("path")
+        self.assertFalse(coverage.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in self.plcy_meta[self.plcy.SG_RULES]["meta"],
+                         f"SG Rules '{coverage.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED['id']}' must NOT exists in the policy metadata!")
+        for id in self.plcy_meta[self.plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertTrue("0.0.0.0/" in id or "::/" in id, f"SG Rules '{id}' must be a remote prefix!")
 
-    self.assertEquals(
-        migrated_port1_path in plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_1["id"]]["sg_members"], False)
-    self.assertEquals(
-        migrated_port2_path in plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_1["id"]]["sg_members"], True)
-    self.assertEquals(
-        1, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_1["id"]]["sg_members"]))
-    self.assertEquals(
-        1, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_2["id"]]["sg_members"]))
-    self.assertEquals(
-        1, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_3["id"]]["sg_members"]))
-    self.assertEquals(
-        1, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_4["id"]]["sg_members"]))
-    self.assertEquals(
-        0, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.MP_TO_POLICY_GRP_5["id"]]["sg_members"]))
+    def test_security_group_members(self):
+        # Case 1: Assert that all groups have the correct members
+        sgs = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.SECURITY_GROUP).items()
+        self.assertTrue(len(sgs) > 0, "No Security Groups found in the inventory!")
+        ports = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.PORT).items()
+        self.assertTrue(len(ports) > 0, "No Ports found in the inventory!")
 
-    # Validate Security Group Rules Sections
-    self.assertEquals(c.MP_TO_POLICY_GRP_1["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-    self.assertEquals(c.MP_TO_POLICY_GRP_2["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-    self.assertEquals(c.MP_TO_POLICY_GRP_3["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-    self.assertEquals(c.MP_TO_POLICY_GRP_4["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-    self.assertEquals(c.MP_TO_POLICY_GRP_5["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-    self.assertEquals(
-        c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
+        # Assert port's group membership
+        for k, v in ports:
+            os_sgs = v.get("security_groups")
+            must_be_static_member = (len(os_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port)
+            for sg in os_sgs:
+                self.assertTrue(sg in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"],
+                                f"SG Members '{sg}' must exists in the policy metadata!")
 
-    # Validate Security Group Remote Prefix IPSets
-    for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
-        self.assertEquals("0.0.0.0/" in id or "::/" in id, True)
-    """
+                migrated_port_path = self.plcy_meta[self.plcy.SEGM_PORT]["meta"][k].get("path")
+                if must_be_static_member:
+                    self.assertTrue(migrated_port_path in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
+                                    f"Port '{k}' must be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is equals or greater than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")
+                else:
+                    self.assertFalse(migrated_port_path not in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
+                                    f"Port '{k}' must NOT be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is less than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")

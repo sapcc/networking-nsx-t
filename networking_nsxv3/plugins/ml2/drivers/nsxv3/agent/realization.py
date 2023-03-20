@@ -1,17 +1,13 @@
 import itertools
 import json
 import time
-import traceback
 import eventlet
 from typing import Callable, List, Set, Tuple
 
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES
 from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import ResourceMeta
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import\
     provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.mp_to_policy_migration import\
-    PayloadBuilder, Payload as MigrationPayload
 from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -27,7 +23,7 @@ class AgentRealizer(object):
     def __init__(
         self,
         rpc: NSXv3ServerRpcApi,
-        callback: Callable[[list or str, Callable[[str], None]], None],
+        callback: Callable[[List or str, Callable[[str], None]], None],
         kpi: Callable[[], dict],
         mngr_provider: m_prvdr.Provider,
         plcy_provider: p_prvdr.Provider,
@@ -423,19 +419,34 @@ class AgentRealizer(object):
             self.migr_provider = mi_prvdr.Provider()
             # Check if migration is needed
             migr_state = self.migr_provider.get_migration_state()
-            if not migr_state or "FAIL" in migr_state or "PROGRESS" in migr_state:
-                raise RuntimeWarning("MP-to-Policy migration is in progress or failed.")
-            migr_pre = self.migr_provider.get_migration_stats(pre=True)
-            LOG.info(f"MP-to-Policy migration pre-check:\n{json.dumps(migr_pre, indent=4)}")
-            if migr_pre and migr_pre.get("total_count", 0) > 0:
-                AgentRealizer.MIGR_IN_PROG = True
-                eventlet.greenthread.spawn(self.migr_provider.migrate_generic).link(self._migration_handler)
-            else:
-                LOG.info("MP-to-Policy migration not needed. No MP objects found.")
+            if not migr_state:
+                raise RuntimeWarning("MP-to-Policy migration state is unknown.")
+            if "FAIL" in migr_state:
+                raise RuntimeWarning(f"MP-to-Policy migration state is failed: '{migr_state}'.")
+            if MP2POLICY_STATES.PROMOTION_NOT_IN_PROGRESS.value == migr_state:
+                LOG.info("MP-to-Policy migration is not in progress. Starting migration ...")
+                return self._trigger_new_migration()
+            if MP2POLICY_STATES.PROMOTION_IN_PROGRESS.value == migr_state:
+                LOG.info("MP-to-Policy migration is in progress. Skipping migration start ...")
+                return self._await_running_migration()
+            raise RuntimeWarning(f"MP-to-Policy migration is in not supported by the agent state '{migr_state}'.")
         except Exception as e:
             AgentRealizer.MIGR_IN_PROG = False
             LOG.error(f"Error while starting MP-to-Policy migration: {str(e)}")
             self._dryrun()
+
+    def _await_running_migration(self):
+        AgentRealizer.MIGR_IN_PROG = True
+        eventlet.greenthread.spawn(self.migr_provider.migrate_generic, only_await=True).link(self._migration_handler)
+
+    def _trigger_new_migration(self):
+        migr_pre = self.migr_provider.get_migration_stats(pre=True)
+        LOG.info(f"MP-to-Policy migration pre-check:\n{json.dumps(migr_pre, indent=4)}")
+        if migr_pre and migr_pre.get("total_count", 0) > 0:
+            AgentRealizer.MIGR_IN_PROG = True
+            eventlet.greenthread.spawn(self.migr_provider.migrate_generic).link(self._migration_handler)
+        else:
+            LOG.info("MP-to-Policy migration not needed. No MP objects found.")
 
     def _migration_handler(self, gt: eventlet.greenthread.GreenThread):
         try:

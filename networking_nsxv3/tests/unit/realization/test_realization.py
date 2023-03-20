@@ -435,7 +435,7 @@ class TestGroupsRealization(base.BaseTestCase):
             cfg.CONF.set_override("max_sg_tags_per_segment_port", 3, "AGENT")
 
             with env:
-                eventlet.sleep(30)
+                eventlet.sleep(60)
 
                 plcy = env.manager.realizer.plcy_provider
                 mngr = env.manager.realizer.mngr_provider

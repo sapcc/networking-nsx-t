@@ -63,16 +63,6 @@ agent_opts = [
         help="Continue on failed MP-to-Policy Object Promotions."
     ),
     cfg.IntOpt(
-        'migration_tag_count_trigger',
-        default=26,
-        help="The count of the tags per LogicalPort, above which an MP-to-Policy Promotion will be trigered for the port."
-    ),
-    cfg.IntOpt(
-        'migration_tag_count_max',
-        default=29,
-        help="The maximum count of the tags per LogicalPort, above which MP-to-Policy Promotion is impossible."
-    ),
-    cfg.IntOpt(
         'max_sg_tags_per_segment_port',
         default=27,
         help="The maximum count of the tags per SegmentPort serving as a SecurityGroup Membership Criteria. Above that count standard NSX-T Group Membership will be used instead."

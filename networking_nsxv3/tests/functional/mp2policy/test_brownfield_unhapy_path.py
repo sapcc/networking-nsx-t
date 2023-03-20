@@ -1,3 +1,5 @@
+from networking_nsxv3.tests.unit import openstack
+from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
 from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
 
@@ -19,7 +21,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cls.load_env_variables()
         if client_nsx.Client().version < MP2POLICY_NSX_MIN_VERSION:
             cls.skipTest(
-                cls, f"Migration Functional Tests skipped. Migration is not supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
+                cls, f"Migration Functional Tests skipped. Migration is NOT supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
         cls.clean_all_from_nsx()
         cls.enable_nsxtside_m2policy_migration()
 
@@ -27,8 +29,6 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
         cfg.CONF.set_override("continue_on_failed_promotions", False, "AGENT")
-        cfg.CONF.set_override("migration_tag_count_trigger", 1, "AGENT")
-        cfg.CONF.set_override("migration_tag_count_max", 6, "AGENT")
         cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
         cfg.CONF.set_override("polling_interval", 20, "AGENT")
 
@@ -59,14 +59,70 @@ class TestMp2PolicyMigr(BaseNsxTest):
         LOG.info(f"Teardown after running test")
         LOG.info("NO cleanup on tearDown")
 
-    def test_netowrk(self):
-        pass
+    def test_network(self):
+        # Case 1: Assert that all objects are migrated as expected
+        nets = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.NETWORK).items()
+        self.assertTrue(len(nets) > 0, "No Networks found in the inventory!")
+
+        for k, v in nets:
+            vlan_id = v.get("segmentation_id")
+            self.assertTrue(str(vlan_id) in self.mngr_meta[self.mngr.NETWORK]["meta"],
+                            f"Network '{k}' with vlan '{vlan_id}' must exists in the manager metadata!")
+            self.assertFalse(str(vlan_id) in self.plcy_meta[self.plcy.SEGMENT]["meta"],
+                            f"Network '{k}' with vlan '{vlan_id}' must NOT exists in the policy metadata!")
 
     def test_port(self):
-        pass
+        # Case 1: Assert that all objects are migrated as expected
+        ports = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.PORT).items()
+        self.assertTrue(len(ports) > 0, "No Ports found in the inventory!")
+
+        for k, v in ports:
+            self.assertTrue(k in self.mngr_meta[self.mngr.PORT]["meta"],
+                            f"Port '{k}' must exists in the manager metadata!")
+            self.assertFalse(k in self.plcy_meta[self.plcy.SEGM_PORT]["meta"],
+                            f"Port '{k}' must NOT exists in the policy metadata!")
 
     def test_qos(self):
-        pass
+        # Case 1: Assert that all objects are migrated as expected
+        qos = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.QOS).items()
+        self.assertTrue(len(qos) > 0, "No QoS found in the inventory!")
+
+        for k, v in qos:
+            self.assertTrue(k in self.mngr_meta[self.mngr.QOS]["meta"],
+                            f"QoS '{k}' must exists in the manager metadata!")
+            self.assertFalse(k in self.plcy_meta[self.plcy.SEGM_QOS]["meta"],
+                            f"QoS '{k}' must NOT exists in the policy metadata!")
 
     def test_security_group(self):
-        pass
+        # Case 1: Assert that all objects are migrated as expected
+        sgs = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.SECURITY_GROUP).items()
+        self.assertTrue(len(sgs) > 0, "No Security Groups found in the inventory!")
+
+        for k, v in sgs:
+            self.assertFalse(k in self.mngr_meta[self.mngr.SG_MEMBERS]["meta"],
+                             f"SG Members '{k}' must NOT exists in the manager metadata!")
+            self.assertTrue(k in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"],
+                            f"SG Members '{k}' must exists in the policy metadata!")
+            self.assertFalse(k in self.mngr_meta[self.mngr.SG_RULES]["meta"],
+                             f"SG Rules '{k}' must NOT exists in the manager metadata!")
+            self.assertTrue(k in self.plcy_meta[self.plcy.SG_RULES]["meta"],
+                            f"SG Rules '{k}' must exists in the policy metadata!")
+
+        self.assertFalse(coverage.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in self.plcy_meta[self.plcy.SG_RULES]["meta"],
+                         f"SG Rules '{coverage.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED['id']}' must NOT exists in the policy metadata!")
+        for id in self.plcy_meta[self.plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
+            self.assertTrue("0.0.0.0/" in id or "::/" in id, f"SG Rules '{id}' must be a remote prefix!")
+
+    def test_security_group_members(self):
+        # Case 1: Assert that all groups have the correct members
+        ports = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.PORT).items()
+        self.assertTrue(len(ports) > 0, "No Ports found in the inventory!")
+
+        # Assert port's group membership
+        for k, v in ports:
+            os_sgs = v.get("security_groups")
+            for sg in os_sgs:
+                self.assertTrue(sg in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"],
+                                f"SG Members '{sg}' must exists in the policy metadata!")
+                self.assertEqual(0, len(self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"]),
+                                 f"SG '{sg}' must have no static members in the policy metadata!")

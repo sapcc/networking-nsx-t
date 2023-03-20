@@ -387,7 +387,7 @@ class Inventory(object):
 
             if "/mp-policy-promotion/state" in request.url and request.method == "GET":
                 return self.resp(200, {
-                    "mp_policy_promotion": "NOT_STARTED"
+                    "mp_policy_promotion": "PROMOTION_NOT_IN_PROGRESS"
                 })
 
             return self._not_implemented_err_resp(request)

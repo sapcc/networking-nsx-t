@@ -1,3 +1,4 @@
+from enum import Enum
 from neutron_lib import constants as neutron_constants
 
 # Driver
@@ -43,3 +44,8 @@ RPC_VERSION = '1.5'
 NSXV3_SERVER_RPC_VERSION = '1.0'
 NSXV3_SERVER_RPC_TOPIC = "nsxv3"
 MP2POLICY_NSX_MIN_VERSION = (3, 2, 2)
+
+
+class MP2POLICY_STATES(Enum):  # NOSONAR
+    PROMOTION_NOT_IN_PROGRESS = "PROMOTION_NOT_IN_PROGRESS"
+    PROMOTION_IN_PROGRESS = "PROMOTION_IN_PROGRESS"

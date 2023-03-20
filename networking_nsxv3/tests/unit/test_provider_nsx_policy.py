@@ -45,11 +45,15 @@ class TestProviderPolicy(base.BaseTestCase):
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
-        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.1.4")
+        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.2.2")
         r = responses
 
         for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
+
+    def tearDown(self):
+        super(TestProviderPolicy, self).tearDown()
+        responses.reset()
 
     @responses.activate
     def test_security_group_members_creation_diverse_cidrs(self):
