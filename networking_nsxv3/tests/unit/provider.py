@@ -148,7 +148,8 @@ class Inventory(object):
             return self.resp(200, resource)
 
     def id(self, request: Request, inventory: dict, id: str, resource: dict):
-        o = inventory.get(id)
+        real_id = id.replace("default:", "")
+        o = inventory.get(real_id)
         if request.method == "GET":
             return self.resp(200, o) if o else self.resp(404, {"id": id, "request_url": request.url, "message": "Not found"})
         if request.method == "PUT":
@@ -159,10 +160,10 @@ class Inventory(object):
                                            .format(o.get("_revision"), resource.get("_revision"))})
                 resource["_revision"] = int(resource["_revision"]) + 1 if resource.get("_revision") else 1
                 resource["id"] = id
-                resource["unique_id"] = id
+                resource["unique_id"] = real_id
                 resource["_create_user"] = "admin"
                 resource["_last_modified_time"] = int(time.time() * 1000)
-                inventory[id] = resource
+                inventory[real_id] = resource
                 return self.resp(200, resource)
             if o:
                 if resource.get("id") and resource.get("id") != id:
@@ -173,27 +174,27 @@ class Inventory(object):
                 return self.resp(404)
         if request.method == "PATCH":
             if o:
-                inventory[id] = resource
+                inventory[real_id] = resource
                 return self.resp(200, o)
             else:
                 if "policy" in request.url:
-                    inventory[id] = resource
+                    inventory[real_id] = resource
                     resource["path"] = request.path_url.split("?")[0]
                     return self.resp(200, resource)
                 else:
                     return self.resp(404)
         if request.method == "DELETE":
             if o:
-                del inventory[id]
+                del inventory[real_id]
                 if "SegmentPort" in str(inventory):
-                    del self.inv[Inventory.PORTS][id]
+                    del self.inv[Inventory.PORTS][real_id]
                 if o.get("category") == "Application" or o.get("resource_type") == "Group":
                     inventory_dump = json.dumps(self.inv[Inventory.GROUPS], indent=2)
                     inventory_dump1 = json.dumps(self.inv[Inventory.POLICIES], indent=2)
                     inventory_dump2 = json.dumps(self.inv[Inventory.PORTS], indent=2)
-                    if (id in inventory_dump) or (id in inventory_dump1) or (id in inventory_dump2):
-                        inventory[id] = o
-                        return self.resp(417, "SG with ID:{} cannot be deleted as either it has children or it is being referenced.".format(id))
+                    if (real_id in inventory_dump) or (real_id in inventory_dump1) or (real_id in inventory_dump2):
+                        inventory[real_id] = o
+                        return self.resp(417, "SG with ID:{} cannot be deleted as either it has children or it is being referenced.".format(real_id))
             return self.resp(200) if o else self.resp(404)
 # TODO: Add support for creation of Segments and SegmentPorts
 
@@ -241,7 +242,7 @@ class Inventory(object):
 
         if obj_id:
             LOG.info(f"Using Test obj_id: {obj_id}, {request.method}")
-            return self.id(request, inventory, obj_id.replace("default:", ""), resource)
+            return self.id(request, inventory, obj_id, resource)
         if obj_type:
             LOG.info(f"Using Test obj_type: {obj_type}, {request.method}")
             return self.type(request, inventory, resource)
