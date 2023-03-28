@@ -201,11 +201,13 @@ class Provider(abc.ABC):
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
 
-    def _load_zone(self):
-        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
-        for zone in self.client.get_all(path="/api/v1/transport-zones"):
-            if zone.get("display_name") == self.zone_name:
-                return zone.get("id")
+    @abc.abstractmethod
+    def _load_zone(self) -> str:
+        """Load Transport Zone ID
+
+        Returns:
+            str: Transport Zone ID
+        """
 
     def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
         provider_rule = dict()

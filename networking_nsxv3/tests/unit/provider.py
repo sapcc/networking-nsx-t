@@ -38,6 +38,7 @@ class Inventory(object):
     SEGMENT_PROFILES_SPOOF = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.SPOOF_PROFILE}"
     SEGMENT_PROFILES_SEC = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.SEC_PROFILE}"
     SEGMENT_PROFILES_MIRR = f"policy/api/v1/search/query/{POLICY_RESOURCE_TYPES.MIRRONRING_PROFILE}"
+    POLICY_TRANSPORT_ZONES = "policy/api/v1/search/query/PolicyTransportZone"
     IPSETS = "api/v1/ip-sets"
     NSGROUPS = "api/v1/ns-groups"
     SECTIONS = "api/v1/firewall/sections"
@@ -64,6 +65,14 @@ class Inventory(object):
         qos_inv = dict()
         self.inv: Dict[str, Dict[str, dict]] = {
             Inventory.ZONES: {
+                "97C47802-2781-4CBF-825B-08689269B077": {
+                    "id": "97C47802-2781-4CBF-825B-08689269B077",
+                    "resource_type": "TransportZone",
+                    "display_name": "openstack-tz",
+                    "_create_user": "admin"
+                }
+            },
+            Inventory.POLICY_TRANSPORT_ZONES: {
                 "97C47802-2781-4CBF-825B-08689269B077": {
                     "id": "97C47802-2781-4CBF-825B-08689269B077",
                     "resource_type": "TransportZone",

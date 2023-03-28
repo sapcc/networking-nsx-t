@@ -65,6 +65,7 @@ class API(provider_nsx_mgmt.API):
     RULES_CREATE = RULES + "/{}"
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
+    SEARCH_Q_TRANSPORT_ZONES = {"query": "resource_type:PolicyTransportZone AND display_name:bb095-vlan"}
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
     SEARCH_Q_QOS_PROFILES = {
@@ -435,6 +436,12 @@ class Provider(base.Provider):
         if self.client.version >= (3, 0):
             self._ensure_default_l3_policy()
         self._setup_default_app_drop_logged_section()
+
+    def _load_zone(self):
+        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
+        for zone in self.client.get_all(path=API.SEARCH_QUERY, params=API.SEARCH_Q_TRANSPORT_ZONES):
+            if zone.get("display_name") == self.zone_name:
+                return zone.get("id")
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(path=API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))

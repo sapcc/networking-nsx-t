@@ -439,6 +439,12 @@ class Provider(base.Provider):
 
         self._setup_default_switching_profiles()
 
+    def _load_zone(self):
+        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
+        for zone in self.client.get_all(path="/api/v1/transport-zones"):
+            if zone.get("display_name") == self.zone_name:
+                return zone.get("id")
+
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
         ip = self.payload.ip_discovery()

@@ -139,7 +139,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         super(NSXv3Manager, self).__init__()
 
         self.mngr_provider = provider_nsx_mgmt.Provider()
-        self.plcy_provider = provider_nsx_policy.Provider(zone_id=self.mngr_provider.zone_id)
+        self.plcy_provider = provider_nsx_policy.Provider()
 
         self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
