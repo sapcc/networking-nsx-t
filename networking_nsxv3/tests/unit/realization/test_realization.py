@@ -40,7 +40,6 @@ def set_logging_levels():
         'oslo_policy=WARNING',
     ])
 
-
 class TestAgentRealizer(base.BaseTestCase):
     def setUp(self):
         super(TestAgentRealizer, self).setUp()
@@ -63,7 +62,7 @@ class TestAgentRealizer(base.BaseTestCase):
         self.url = "https://{}:{}".format(hostname, port)
 
     def _mock(self, r):
-        self.inventory = provider.Inventory(base_url=self.url, version="3.0.0")
+        self.inventory = provider.Inventory(base_url=self.url, version="3.2.2")
         for m in [r.GET, r.POST, r.PUT, r.DELETE, r.PATCH]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
