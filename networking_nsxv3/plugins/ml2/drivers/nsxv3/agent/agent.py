@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 from typing import Callable
 
@@ -175,8 +176,9 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         return {"active": self.runner.active(), "passive": self.runner.passive()}
 
     def reload(self):
+        initial_delay = int(random.random() * nsxv3_constants.NSXV3_AGENT_SYNC_SKEW)
         if self.synchronization:
-            self.synchronizer.start(interval=cfg.CONF.AGENT.polling_interval)
+            self.synchronizer.start(interval=cfg.CONF.AGENT.polling_interval, initial_delay=initial_delay)
 
     def shutdown(self):
         self.synchronizer.stop()
