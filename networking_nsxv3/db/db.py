@@ -27,6 +27,7 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id.asc()
     ).filter(
         StandardAttribute.id == Port.standard_attr_id,
+        StandardAttribute.resource_type == 'ports',
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         Port.standard_attr_id > cursor,
@@ -50,6 +51,7 @@ def get_qos_policies_with_revisions(context, host, limit, cursor):
         QosPolicy.standard_attr_id.asc()
     ).filter(
         StandardAttribute.id == QosPolicy.standard_attr_id,
+        StandardAttribute.resource_type == 'qos_policies',
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         QosPolicy.standard_attr_id > cursor
@@ -72,11 +74,12 @@ def get_security_groups_with_revisions(context, host, limit, cursor):
         sg_db.SecurityGroup.standard_attr_id.asc()
     ).filter(
         StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id,
+        StandardAttribute.resource_type == 'securitygroups',
         PortBindingLevel.host == host,
         PortBindingLevel.level == 1,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         sg_db.SecurityGroup.standard_attr_id > cursor
-    ).limit(
+    ).distinct().limit(
         limit
     ).all()
 
