@@ -389,7 +389,7 @@ class Payload(provider_nsx_mgmt.Payload):
 
         service, err = self._sg_rule_service(os_rule, provider_rule, subtype="ServiceEntry")
         if err:
-            LOG.error("Not supported service for Rule:%s. Error:%s", os_id, err)
+            LOG.warning("Not supported service for Rule:%s. Error:%s", os_id, err)
             return None
 
         service_entries = [service] if service else []
