@@ -17,7 +17,7 @@ from neutron_lib.db.standard_attr import StandardAttribute
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
-    return set(context.session.query(
+    return context.session.query(
         Port.id,
         StandardAttribute.revision_number,
         Port.standard_attr_id
@@ -33,7 +33,7 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id > cursor,
     ).limit(
         limit
-    ).all())
+    ).all()
 
 
 def get_qos_policies_with_revisions(context, host, limit, cursor):
