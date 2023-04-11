@@ -65,7 +65,7 @@ class API(provider_nsx_mgmt.API):
     RULES_CREATE = RULES + "/{}"
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
-    SEARCH_Q_TRANSPORT_ZONES = {"query": "resource_type:PolicyTransportZone AND display_name:bb095-vlan"}
+    SEARCH_Q_TRANSPORT_ZONES = "resource_type:PolicyTransportZone AND display_name:{}"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
     SEARCH_Q_QOS_PROFILES = {
@@ -367,7 +367,7 @@ class Payload(provider_nsx_mgmt.Payload):
         direction = os_rule["direction"]
 
         def group_ref(group_id):
-            return "ANY" if (not group_id or group_id == "ANY") else "/infra/domains/default/groups/" + group_id
+            return "ANY" if (not group_id or group_id == "ANY") else API.GROUP_PATH.format(group_id)
 
         current = ["ANY"]
         if os_rule.get("remote_group_id"):
@@ -439,7 +439,7 @@ class Provider(base.Provider):
 
     def _load_zone(self):
         LOG.info("Looking for TransportZone with name %s.", self.zone_name)
-        for zone in self.client.get_all(path=API.SEARCH_QUERY, params=API.SEARCH_Q_TRANSPORT_ZONES):
+        for zone in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.zone_name)}):
             if zone.get("display_name") == self.zone_name:
                 return zone.get("id")
 
@@ -943,14 +943,6 @@ class Provider(base.Provider):
             for service in [sv for sv in services if not sv.get("is_default")]:
                 sanitize.append((service.get("id"), remove_orphan_service))
         return sanitize
-
-    # def await_network_after_promotion(self, metadata: base.ResourceMeta) -> PolicyResourceMeta or None:
-    #     try:
-    #         o = self.client.get_unique_with_retry(path=API.SEGMENT.format(metadata.id))
-    #         return self.metadata_update(Provider.SEGMENT, o)
-    #     except Exception as e:
-    #         LOG.error(e)
-    #         return None
 
     def set_policy_logging(self, log_obj, enable_logging):
         LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")

@@ -1,37 +1,50 @@
 import os
 import threading
+from networking_nsxv3.common.constants import MP2POLICY_PROMOTION_STATUS
 
 from oslo_config import cfg
-from prometheus_client import CollectorRegistry, Gauge, MetricsHandler, Counter
+from prometheus_client import CollectorRegistry, Gauge, MetricsHandler, Counter, Enum
 
 # Prometheus Metrics
 
 REGISTRY = CollectorRegistry()
 
 ACTIVE_QUEUE_SIZE = Gauge(
-    'nsxv3_agent_active_queue_size', 
-    'Active synchronization queue size', 
+    'nsxv3_agent_active_queue_size',
+    'Active synchronization queue size',
     registry=REGISTRY
-    )
+)
 PASSIVE_QUEUE_SIZE = Gauge(
-    'nsxv3_agent_passive_queue_size', 
-    'Passive synchronization queue size', 
+    'nsxv3_agent_passive_queue_size',
+    'Passive synchronization queue size',
     registry=REGISTRY
-    )
+)
 JOB_SIZE = Gauge(
     'nsxv3_agent_job_size',
     'Current job size',
     registry=REGISTRY
-    )
+)
 IN_REALIZATION = Gauge(
     'nsxv3_agent_in_realization',
     'Policies currently in realization',
     registry=REGISTRY
-    )
+)
 REALIZED = Counter(
     'nsxv3_agent_realized',
     'Policies realized',
     ['resource_type', 'status'],
+    registry=REGISTRY
+)
+MP2POLICY_PROM_STATUS = Enum(
+    'nsxv3_agent_mp2policy_prom_status',
+    'MP-to-Policy promotion status',
+    states=[
+        MP2POLICY_PROMOTION_STATUS.SUCCESSFUL.value,
+        MP2POLICY_PROMOTION_STATUS.CANCELED.value,
+        MP2POLICY_PROMOTION_STATUS.IN_PROGRESS.value,
+        MP2POLICY_PROMOTION_STATUS.NOT_POSSIBLE.value,
+        MP2POLICY_PROMOTION_STATUS.NOT_STARTED.value
+    ],
     registry=REGISTRY
 )
 

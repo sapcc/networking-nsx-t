@@ -60,7 +60,7 @@ agent_opts = [
     cfg.BoolOpt(
         'continue_on_failed_promotions',
         default=False,
-        help="Continue on failed MP-to-Policy Object Promotions."
+        help="Continue on failed MP-to-Policy Object Promotions. Used for testing purposes. Not recomended for production use."
     ),
     cfg.IntOpt(
         'max_sg_tags_per_segment_port',

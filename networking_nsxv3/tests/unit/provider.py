@@ -213,6 +213,7 @@ class Inventory(object):
         search = self._search_query(request)
         migration = self._migration(request)
         infra = self._infra(request)
+        migr_coord_stat = self._check_migr_coordinator_service(request)
 
         if search:
             return search
@@ -224,6 +225,8 @@ class Inventory(object):
             return migration
         if infra:
             return infra
+        if migr_coord_stat:
+            return migr_coord_stat
 
         url = urlparse(request.url)
         if url.scheme != self.url.scheme or url.netloc != self.url.netloc:
@@ -637,6 +640,11 @@ class Inventory(object):
 
     def _active_migr_err_resp(self):
         self.resp(500, "Previous migration not cleared! Please abort or finish current migration")
+
+    def _check_migr_coordinator_service(self, request: Request):
+        path_url = request.path_url.split("?")[0]
+        if "/api/v1/node/services/migration-coordinator/status" == path_url and request.method == "GET":
+            return self.resp(200, {"monitor_runtime_state": "running", "runtime_state": "running"})
 
     def lookup(self, resource_type, name):
         for _, o in self.inv[resource_type].items():
