@@ -38,13 +38,7 @@ REALIZED = Counter(
 MP2POLICY_PROM_STATUS = Enum(
     'nsxv3_agent_mp2policy_prom_status',
     'MP-to-Policy promotion status',
-    states=[
-        MP2POLICY_PROMOTION_STATUS.SUCCESSFUL.value,
-        MP2POLICY_PROMOTION_STATUS.CANCELED.value,
-        MP2POLICY_PROMOTION_STATUS.IN_PROGRESS.value,
-        MP2POLICY_PROMOTION_STATUS.NOT_POSSIBLE.value,
-        MP2POLICY_PROMOTION_STATUS.NOT_STARTED.value
-    ],
+    states=[e.value for e in MP2POLICY_PROMOTION_STATUS],
     registry=REGISTRY
 )
 

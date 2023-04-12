@@ -11,6 +11,8 @@ LOG = logging.getLogger(__name__)
 
 
 class TestMp2PolicyMigr(BaseNsxTest):
+    """ TODO: Describe the scenario
+    """
 
     MIGR_INVENTORY = None
     TEST_ENV = None

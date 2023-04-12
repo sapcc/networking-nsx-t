@@ -720,6 +720,9 @@ class Provider(base.Provider):
         provider_port["nsx_segment_id"] = segment_meta.unique_id
         provider_port["nsx_segment_real_id"] = segment_meta.real_id
 
+        # If the port has more than the maximum number of security groups allowed as tags,
+        # we need to realize the port with empty security groups first,
+        # and then add the port to the security groups as a static member.
         port_sgs = os_port.get("security_groups")
         if len(port_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port:
             os_port["security_groups"] = None

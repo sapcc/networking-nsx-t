@@ -17,7 +17,7 @@ LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 class AgentRealizer(object):
 
-    MIGR_IN_PROG = False
+    PAUSE_REALIZATION = False
     AGE = int(time.time())
 
     def __init__(
@@ -39,10 +39,12 @@ class AgentRealizer(object):
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
 
         # Enable MP-to-Policy migration if force_mp_to_policy=True
-        self.mp2policy = self._check_mp2policy_support()
+        # TODO: Thish variable to be used as a flag for using Policy API completely or not
+        #      (not only for migration) in case migration canceled or failed this flag should be False
+        self.use_policy_api = self._check_mp2policy_support()
 
-        if self.mp2policy:
-            self._start_migration()
+        if self.use_policy_api:
+            self._try_start_migration()
         else:
             self._dryrun()
 
@@ -79,7 +81,7 @@ class AgentRealizer(object):
 
         :force: bool -- if True concider all objects as outdated
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping synchronization ...")
             return
         with LockManager.get_lock("all"):
@@ -219,7 +221,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Security Group
         :reference: -- if True will create the group if unknown by the provider
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping security_group_members realization ...")
             return
         with LockManager.get_lock("member-{}".format(os_id)):
@@ -244,7 +246,7 @@ class AgentRealizer(object):
         Realization will happen only if the group has active ports on the host.
         :os_id: -- OpenStack ID of the Security Group
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping security_group_rules realization ...")
             return
         with LockManager.get_lock("rules-{}".format(os_id)):
@@ -275,7 +277,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Port
         :network_meta: -- NSX Switch metadata
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping precreate_port realization...")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
@@ -294,7 +296,7 @@ class AgentRealizer(object):
         Realize port state.
         :os_id: -- OpenStack ID of the Port
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping port realization ...")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
@@ -313,7 +315,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the QoS Policy
         :reference: -- If True will create policy if unknown by the provider
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping qos realization ...")
             return
         with LockManager.get_lock("qos-{}".format(os_id)):
@@ -333,7 +335,7 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Network Segmentation ID
         :return: -- provider ID for the network
         """
-        if AgentRealizer.MIGR_IN_PROG:
+        if AgentRealizer.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping network realization ...")
             return
         with LockManager.get_lock("network-{}".format(os_seg_id)):
@@ -368,6 +370,7 @@ class AgentRealizer(object):
             self.plcy_provider.update_policy_logging(log_obj)
 
     def _qos_realize(self, os_qos: dict, is_plcy: bool, is_mngr: bool, delete=False):
+        # TODO: Refactor this method like the port realization
 
         pp = self.plcy_provider
         mp = self.mngr_provider
@@ -396,25 +399,32 @@ class AgentRealizer(object):
         # Realize using Policy API
         if plcy_port_meta and plcy_port_meta[0]:
             return pp.port_realize(os_port, delete)
-        if self.mp2policy and not mp.get_port(os_id=os_port.get("id")):
+        if self.use_policy_api and not mp.get_port(os_id=os_port.get("id")):  # TODO: refactor this
             # Realize using Policy API
             return pp.port_realize(os_port, delete)
         # Realize using Manager API
-        return mp.port_realize(os_port, delete)
+        return mp.port_realize(os_port, delete)  # TODO: This have to be removed after POLICY is fully supported
 
     def _network_realize(self, segmentation_id: int):
-        if self.mp2policy:
+        if self.use_policy_api:
             return self.plcy_provider.network_realize(segmentation_id)
+        # TODO: This have to be removed after POLICY is fully supported
         return self.mngr_provider.network_realize(segmentation_id)
 
     def _check_mp2policy_support(self):
-        if cfg.CONF.AGENT.force_mp_to_policy and self.mngr_provider.client.version < MP2POLICY_NSX_MIN_VERSION:
+        """Check if MP-to-Policy is forced, check if NSX-T version is supported
+
+        Returns:
+            bool: True if MP-to-Policy is supported, False otherwise
+        """
+        if cfg.CONF.AGENT.force_mp_to_policy:
+            if self.mngr_provider.client.version >= MP2POLICY_NSX_MIN_VERSION:
+                return True
             LOG.warning(
                 f"MP-TO-POLICY API is supported from NSX-T ver. {'.'.join([str(n) for n in MP2POLICY_NSX_MIN_VERSION])} onward.")
-            return False
-        return cfg.CONF.AGENT.force_mp_to_policy
+        return False
 
-    def _start_migration(self):
+    def _try_start_migration(self):
         try:
             self.migr_provider = mi_prvdr.Provider()
             # Check if migration is needed
@@ -431,19 +441,19 @@ class AgentRealizer(object):
                 return self._await_running_migration()
             raise RuntimeWarning(f"MP-to-Policy migration is in not supported by the agent state '{migr_state}'.")
         except Exception as e:
-            AgentRealizer.MIGR_IN_PROG = False
+            AgentRealizer.PAUSE_REALIZATION = False
             LOG.error(f"Error while starting MP-to-Policy migration: {str(e)}")
             self._dryrun()
 
     def _await_running_migration(self):
-        AgentRealizer.MIGR_IN_PROG = True
+        AgentRealizer.PAUSE_REALIZATION = True
         eventlet.greenthread.spawn(self.migr_provider.migrate_generic, only_await=True).link(self._migration_handler)
 
     def _trigger_new_migration(self):
         migr_pre = self.migr_provider.get_migration_stats(pre=True)
         LOG.info(f"MP-to-Policy migration pre-check:\n{json.dumps(migr_pre, indent=4)}")
         if migr_pre and migr_pre.get("total_count", 0) > 0:
-            AgentRealizer.MIGR_IN_PROG = True
+            AgentRealizer.PAUSE_REALIZATION = True
             eventlet.greenthread.spawn(self.migr_provider.migrate_generic).link(self._migration_handler)
         else:
             LOG.info("MP-to-Policy migration not needed. No MP objects found.")
@@ -455,7 +465,7 @@ class AgentRealizer(object):
         except Exception as e:
             LOG.error(str(e))
         finally:
-            AgentRealizer.MIGR_IN_PROG = False
+            AgentRealizer.PAUSE_REALIZATION = False
             self._dryrun()
 
     def _dryrun(self):
