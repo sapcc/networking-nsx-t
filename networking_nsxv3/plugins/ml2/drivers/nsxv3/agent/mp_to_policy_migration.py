@@ -98,7 +98,7 @@ class Provider(object):
             return wrapper
         return decorator
 
-    def migrate_generic(self) -> Tuple[bool, dict, dict]:
+    def migrate_generic(self, only_await=False) -> Tuple[bool, dict, dict]:
         """Start generic migration
         Returns:
             Tuple[bool, dict, dict]: Migration status, stats, errors
@@ -109,8 +109,9 @@ class Provider(object):
         with LockManager.get_lock(API.MIGR_UNIT):
             try:
                 exporter.MP2POLICY_PROM_STATUS.state(MP2POLICY_PROMOTION_STATUS.IN_PROGRESS.value)
-                LOG.info("Starting Generic migration ...")
-                self._set_generic_migration()
+                if not only_await:
+                    LOG.info("Starting Generic migration ...")
+                    self._set_generic_migration()
                 self._await_generic_migration()
                 LOG.info("Migration completed.")
             except Exception as e:

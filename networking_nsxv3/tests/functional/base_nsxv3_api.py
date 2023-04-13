@@ -142,7 +142,7 @@ class BaseNsxTest(unittest.TestCase):
             mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
             for type, meta in plcy_meta.items():
                 p = env.manager.realizer.plcy_provider
-                if type != p.SEGMENT and type != p.SG_RULES_REMOTE_PREFIX:
+                if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
                     self.assertEquals(expected=dict(), observed=meta["meta"])
             for type, meta in mngr_meta.items():
                 p = env.manager.realizer.mngr_provider
@@ -186,7 +186,7 @@ class BaseNsxTest(unittest.TestCase):
                     # i.port_update(k, v)
                     continue
                 break
-            eventlet.sleep(600)
+            eventlet.sleep(60)
 
         LOG.info("Finished MP-to-Policy Migration Hapy Path Scenario functional test.")
 

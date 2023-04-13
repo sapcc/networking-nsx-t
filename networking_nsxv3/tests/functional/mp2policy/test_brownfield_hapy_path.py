@@ -70,7 +70,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
             vlan_id = v.get("segmentation_id")
             self.assertFalse(str(vlan_id) in self.mngr_meta[self.mngr.NETWORK]["meta"],
                              f"Network '{k}' with vlan '{vlan_id}' must NOT exists in the manager metadata!")
-            self.assertTrue(str(vlan_id) in self.plcy_meta[self.plcy.SEGMENT]["meta"],
+            self.assertTrue(str(vlan_id) in self.plcy_meta[self.plcy.NETWORK]["meta"],
                             f"Network '{k}' with vlan '{vlan_id}' must exists in the policy metadata!")
 
     def test_port(self):
@@ -81,7 +81,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for k, v in ports:
             self.assertFalse(k in self.mngr_meta[self.mngr.PORT]["meta"],
                              f"Port '{k}' must NOT exists in the manager metadata!")
-            self.assertTrue(k in self.plcy_meta[self.plcy.SEGM_PORT]["meta"],
+            self.assertTrue(k in self.plcy_meta[self.plcy.PORT]["meta"],
                             f"Port '{k}' must exists in the policy metadata!")
 
     def test_qos(self):
@@ -92,7 +92,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for k, v in qos:
             self.assertFalse(k in self.mngr_meta[self.mngr.QOS]["meta"],
                              f"QoS '{k}' must NOT exists in the manager metadata!")
-            self.assertTrue(k in self.plcy_meta[self.plcy.SEGM_QOS]["meta"],
+            self.assertTrue(k in self.plcy_meta[self.plcy.QOS]["meta"],
                             f"QoS '{k}' must exists in the policy metadata!")
 
     def test_security_group(self):
@@ -130,10 +130,10 @@ class TestMp2PolicyMigr(BaseNsxTest):
                 self.assertTrue(sg in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"],
                                 f"SG Members '{sg}' must exists in the policy metadata!")
 
-                migrated_port_path = self.plcy_meta[self.plcy.SEGM_PORT]["meta"][k].get("path")
+                migrated_port_path = self.plcy_meta[self.plcy.PORT]["meta"][k].get("path")
                 if must_be_static_member:
                     self.assertTrue(migrated_port_path in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
-                                    f"Port '{k}' must be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is equals or greater than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")
+                                    f"Port '{k}' with path '{migrated_port_path}' must be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is equals or greater than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")
                 else:
-                    self.assertFalse(migrated_port_path not in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
-                                    f"Port '{k}' must NOT be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is less than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")
+                    self.assertTrue(migrated_port_path not in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
+                                    f"Port '{k}' with path '{migrated_port_path}' must NOT be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is less than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")

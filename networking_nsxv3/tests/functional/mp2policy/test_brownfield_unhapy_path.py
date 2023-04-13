@@ -70,7 +70,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
             vlan_id = v.get("segmentation_id")
             self.assertTrue(str(vlan_id) in self.mngr_meta[self.mngr.NETWORK]["meta"],
                             f"Network '{k}' with vlan '{vlan_id}' must exists in the manager metadata!")
-            self.assertFalse(str(vlan_id) in self.plcy_meta[self.plcy.SEGMENT]["meta"],
+            self.assertFalse(str(vlan_id) in self.plcy_meta[self.plcy.NETWORK]["meta"],
                             f"Network '{k}' with vlan '{vlan_id}' must NOT exists in the policy metadata!")
 
     def test_port(self):
@@ -81,7 +81,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for k, v in ports:
             self.assertTrue(k in self.mngr_meta[self.mngr.PORT]["meta"],
                             f"Port '{k}' must exists in the manager metadata!")
-            self.assertFalse(k in self.plcy_meta[self.plcy.SEGM_PORT]["meta"],
+            self.assertFalse(k in self.plcy_meta[self.plcy.PORT]["meta"],
                             f"Port '{k}' must NOT exists in the policy metadata!")
 
     def test_qos(self):
@@ -92,7 +92,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         for k, v in qos:
             self.assertTrue(k in self.mngr_meta[self.mngr.QOS]["meta"],
                             f"QoS '{k}' must exists in the manager metadata!")
-            self.assertFalse(k in self.plcy_meta[self.plcy.SEGM_QOS]["meta"],
+            self.assertFalse(k in self.plcy_meta[self.plcy.QOS]["meta"],
                             f"QoS '{k}' must NOT exists in the policy metadata!")
 
     def test_security_group(self):

@@ -95,8 +95,8 @@ class TestAgentRealizer(base.BaseTestCase):
         # Validate network creation
         self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
         self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
-        self.assertEquals(plcy_meta[plcy.SEGMENT]["meta"], {})
-        self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"], {})
+        self.assertEquals(plcy_meta[plcy.NETWORK]["meta"], {})
+        self.assertEquals(plcy_meta[plcy.PORT]["meta"], {})
 
         # Validate QoS State
         self.assertEquals(c.QOS_INTERNAL["id"] in mngr_meta[mngr.QOS]["meta"], True)
@@ -294,18 +294,18 @@ class TestMigrationRealization(base.BaseTestCase):
             # Validate Networks
             self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], False)
             self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], False)
-            self.assertEquals("1000" in plcy_meta[plcy.SEGMENT]["meta"], True)
-            self.assertEquals("3200" in plcy_meta[plcy.SEGMENT]["meta"], True)
+            self.assertEquals("1000" in plcy_meta[plcy.NETWORK]["meta"], True)
+            self.assertEquals("3200" in plcy_meta[plcy.NETWORK]["meta"], True)
 
             # Validate Ports
             self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], False)
             self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], False)
             self.assertEquals(c.PORT_BACKEND["id"] in mngr_meta[mngr.PORT]["meta"], False)
             self.assertEquals(c.PORT_DB["id"] in mngr_meta[mngr.PORT]["meta"], False)
-            self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
-            self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
-            self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
-            self.assertEquals(c.PORT_DB["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+            self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[plcy.PORT]["meta"], True)
+            self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[plcy.PORT]["meta"], True)
+            self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[plcy.PORT]["meta"], True)
+            self.assertEquals(c.PORT_DB["id"] in plcy_meta[plcy.PORT]["meta"], True)
 
             # Validate Security Groups Members
             self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
@@ -351,18 +351,18 @@ class TestMigrationRealization(base.BaseTestCase):
             # Validate network creation
             self.assertEquals("1000" in mngr_meta[mp.NETWORK]["meta"], False)
             self.assertEquals("3200" in mngr_meta[mp.NETWORK]["meta"], False)
-            self.assertEquals("1000" in plcy_meta[pp.SEGMENT]["meta"], True)
-            self.assertEquals("3200" in plcy_meta[pp.SEGMENT]["meta"], True)
+            self.assertEquals("1000" in plcy_meta[pp.NETWORK]["meta"], True)
+            self.assertEquals("3200" in plcy_meta[pp.NETWORK]["meta"], True)
 
             # Validate Ports
             self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
             self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
             self.assertEquals(c.PORT_BACKEND["id"] in mngr_meta[mp.PORT]["meta"], False)
             self.assertEquals(c.PORT_DB["id"] in mngr_meta[mp.PORT]["meta"], False)
-            self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[pp.SEGM_PORT]["meta"], False)
-            self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[pp.SEGM_PORT]["meta"], False)
-            self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[pp.SEGM_PORT]["meta"], True)
-            self.assertEquals(c.PORT_DB["id"] in plcy_meta[pp.SEGM_PORT]["meta"], True)
+            self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[pp.PORT]["meta"], False)
+            self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[pp.PORT]["meta"], False)
+            self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[pp.PORT]["meta"], True)
+            self.assertEquals(c.PORT_DB["id"] in plcy_meta[pp.PORT]["meta"], True)
 
             # Validate Security Groups Members
             self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
@@ -446,7 +446,7 @@ class TestGroupsRealization(base.BaseTestCase):
 
                 # Validate Ports
                 self.assertEquals(c.PORT_WITH_3_SG["id"] in mngr_meta[mngr.PORT]["meta"], False)
-                self.assertEquals(c.PORT_WITH_3_SG["id"] in plcy_meta[plcy.SEGM_PORT]["meta"], True)
+                self.assertEquals(c.PORT_WITH_3_SG["id"] in plcy_meta[plcy.PORT]["meta"], True)
 
                 # Validate Security Groups Members
                 self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
@@ -454,11 +454,11 @@ class TestGroupsRealization(base.BaseTestCase):
                 self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
 
                 # Assert the new static membership is used
-                self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
                                 in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"], True)
-                self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
                                 in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"], True)
-                self.assertEquals(plcy_meta[plcy.SEGM_PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
                                 in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_members"], True)
 
                 self.assertEquals(3, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
