@@ -69,9 +69,9 @@ class AgentRealizer(object):
                 self.callback(o[1], self.port)
             elif o[0] == provider.QOS:
                 self.callback(o[1], self.qos)
-            elif o[0] == provider.SG_RULES:
+            elif o[0] == self.plcy_provider.SG_RULES:
                 self.callback(o[1], self.security_group_rules)
-            elif o[0] == provider.SG_MEMBERS:
+            elif o[0] == self.plcy_provider.SG_MEMBERS:
                 self.callback(o[1], self.security_group_members)
 
     def all(self, dryrun=False):
@@ -105,11 +105,11 @@ class AgentRealizer(object):
             provider.metadata_refresh(provider.NETWORK)
 
             port_outdated, port_current = provider.outdated(provider.PORT, port_meta)
-            sgr_outdated, sgr_current = provider.outdated(provider.SG_RULES, sg_meta)
+            sgr_outdated, sgr_current = self.plcy_provider.outdated(provider.SG_RULES, sg_meta)
             qos_outdated, qos_current = provider.outdated(provider.QOS, qos_meta)
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, sgm_maybe_orphans = provider.outdated(provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:
@@ -154,8 +154,8 @@ class AgentRealizer(object):
         provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
         current = provider.age(provider.PORT, port_current)
-        current += provider.age(provider.SG_RULES, sgr_current)
-        current += provider.age(provider.SG_MEMBERS, sgm_maybe_orphans)
+        current += self.plcy_provider.age(provider.SG_RULES, sgr_current)
+        current += self.plcy_provider.age(provider.SG_MEMBERS, sgm_maybe_orphans)
         current += provider.age(provider.QOS, qos_current)
 
         # Sanitize when there are no elements or the eldest age > current age

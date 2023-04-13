@@ -62,7 +62,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         LOG.info("NO cleanup on tearDown")
 
     def test_network(self):
-        # Case 1: Assert that all objects are migrated as expected
+        # Case 1: Assert that all objects are rolled-back as before the migration
         nets = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.NETWORK).items()
         self.assertTrue(len(nets) > 0, "No Networks found in the inventory!")
 
@@ -74,7 +74,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
                             f"Network '{k}' with vlan '{vlan_id}' must NOT exists in the policy metadata!")
 
     def test_port(self):
-        # Case 1: Assert that all objects are migrated as expected
+        # Case 1: Assert that all objects are rolled-back as before the migration
         ports = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.PORT).items()
         self.assertTrue(len(ports) > 0, "No Ports found in the inventory!")
 
@@ -85,7 +85,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
                             f"Port '{k}' must NOT exists in the policy metadata!")
 
     def test_qos(self):
-        # Case 1: Assert that all objects are migrated as expected
+        # Case 1: Assert that all objects are rolled-back as before the migration
         qos = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.QOS).items()
         self.assertTrue(len(qos) > 0, "No QoS found in the inventory!")
 
@@ -96,7 +96,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
                             f"QoS '{k}' must NOT exists in the policy metadata!")
 
     def test_security_group(self):
-        # Case 1: Assert that all objects are migrated as expected
+        # Case 1: Assert that all objects are rolled-back as before the migration
         sgs = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.SECURITY_GROUP).items()
         self.assertTrue(len(sgs) > 0, "No Security Groups found in the inventory!")
 
@@ -116,7 +116,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
             self.assertTrue("0.0.0.0/" in id or "::/" in id, f"SG Rules '{id}' must be a remote prefix!")
 
     def test_security_group_members(self):
-        # Case 1: Assert that all groups have the correct members
+        # Case 1: Assert that all objects are rolled-back as before the migration
         ports = TestMp2PolicyMigr.MIGR_INVENTORY.get(openstack.NeutronMock.PORT).items()
         self.assertTrue(len(ports) > 0, "No Ports found in the inventory!")
 

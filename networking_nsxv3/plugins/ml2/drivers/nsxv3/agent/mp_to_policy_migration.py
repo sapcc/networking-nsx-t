@@ -175,7 +175,6 @@ class Provider(object):
     def _cancel_migration(self):
         LOG.info("Canceling Generic migration ...")
         self.client.post(path=API.MIGRATION_CANCEL, data=None)
-        LOG.info("Migration canceled.")
 
     def _handle_migr_status(self, args, kwargs, status_func) -> Tuple[dict, bool]:
         status_msg = lambda r: f" - Status for component '{r.get('component_type')}': {r.get('status')}, {r.get('percent_complete')}%"
