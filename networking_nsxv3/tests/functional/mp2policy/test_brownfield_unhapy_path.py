@@ -1,11 +1,11 @@
-from networking_nsxv3.tests.unit import openstack
-from networking_nsxv3.tests.datasets import coverage
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
-
-from oslo_config import cfg
-from oslo_log import log as logging
 from networking_nsxv3.tests.functional.base_nsxv3_api import BaseNsxTest
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
+from networking_nsxv3.tests.datasets import coverage
+from networking_nsxv3.tests.unit import openstack
+
 
 LOG = logging.getLogger(__name__)
 

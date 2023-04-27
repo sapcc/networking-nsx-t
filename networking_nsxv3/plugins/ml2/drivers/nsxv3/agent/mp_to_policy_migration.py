@@ -1,5 +1,7 @@
-from typing import List, Set, Tuple
 import eventlet
+eventlet.monkey_patch()
+
+from typing import Set, Tuple
 import json
 
 from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_PROMOTION_STATUS, MIGR_COORD_STATE, RUNNING_MIGR_STATUS

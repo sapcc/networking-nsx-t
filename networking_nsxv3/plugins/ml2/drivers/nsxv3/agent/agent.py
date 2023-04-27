@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import sys
 from typing import Callable
@@ -25,12 +28,6 @@ try:
 except ImportError:
     from neutron.agent.common import agent_config
 
-# Eventlet Best Practices
-# https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
-if not os.environ.get("DISABLE_EVENTLET_PATCHING"):
-    import eventlet
-
-    eventlet.monkey_patch()
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 

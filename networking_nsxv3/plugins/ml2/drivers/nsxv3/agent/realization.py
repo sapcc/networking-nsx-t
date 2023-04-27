@@ -1,16 +1,18 @@
+import eventlet
+eventlet.monkey_patch()
+
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import\
+    provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES
+from typing import Callable, List, Set, Tuple
 import itertools
 import json
 import time
-import eventlet
-from typing import Callable, List, Set, Tuple
 
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import\
-    provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
-from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
-from oslo_config import cfg
-from oslo_log import log as logging
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -109,7 +111,8 @@ class AgentRealizer(object):
             qos_outdated, qos_current = provider.outdated(provider.QOS, qos_meta)
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(
+                provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:

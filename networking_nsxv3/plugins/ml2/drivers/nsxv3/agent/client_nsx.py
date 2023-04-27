@@ -1,9 +1,9 @@
-import logging
+import eventlet
+eventlet.monkey_patch()
+
 import re
 import time
 import uuid
-
-import eventlet
 import requests
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.common.synchronization import Scheduler
@@ -12,6 +12,7 @@ from oslo_log import log as logging
 from oslo_utils import versionutils
 from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
 from requests import Response
+
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 

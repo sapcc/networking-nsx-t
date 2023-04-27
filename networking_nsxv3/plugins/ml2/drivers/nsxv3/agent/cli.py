@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import argparse
 import json
 import os
@@ -18,11 +21,6 @@ from neutron_lib import context as neutron_context
 from oslo_config import cfg
 from oslo_log import log as logging
 
-# Eventlet Best Practices
-# https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
-if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
-    import eventlet
-    eventlet.monkey_patch()
 
 LOG = logging.getLogger(__name__)
 

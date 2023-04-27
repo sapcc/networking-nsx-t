@@ -1,22 +1,19 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
-import collections
-import functools
-import heapq
-import json
-import os
-import time
-from enum import Enum
-
-from oslo_config import cfg
-from oslo_log import log as logging
+import eventlet
+eventlet.monkey_patch()
 
 import networking_nsxv3.prometheus.exporter as EXPORTER
+from oslo_log import log as logging
+from oslo_config import cfg
+from enum import Enum
+import time
+import json
+import heapq
+import functools
+import collections
 
-if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
-    import eventlet
-    eventlet.monkey_patch()
 
 LOG = logging.getLogger(__name__)
 

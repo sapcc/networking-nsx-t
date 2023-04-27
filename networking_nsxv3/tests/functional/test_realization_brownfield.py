@@ -1,16 +1,15 @@
+import eventlet
+eventlet.monkey_patch()
+
+from oslo_log import log as logging
+from oslo_config import cfg
+from neutron.tests import base
+from networking_nsxv3.tests.environment import Environment
+from networking_nsxv3.tests.datasets import coverage
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
 import copy
-import json
 import os
 import re
-
-import eventlet
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    agent, provider_nsx_mgmt, client_nsx, provider_nsx_policy)
-from networking_nsxv3.tests.datasets import coverage
-from networking_nsxv3.tests.environment import Environment
-from neutron.tests import base
-from oslo_config import cfg
-from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 

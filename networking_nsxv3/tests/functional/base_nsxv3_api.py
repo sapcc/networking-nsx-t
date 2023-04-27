@@ -1,16 +1,19 @@
+import eventlet
+eventlet.monkey_patch()
+
+from networking_nsxv3.tests.environment import Environment
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
+from networking_nsxv3.tests.datasets import coverage
 import copy
 import functools
 import os
 import time
 import typing
-import unittest
-import eventlet
-from networking_nsxv3.tests.datasets import coverage
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, provider_nsx_policy, client_nsx
+from neutron.tests import base
 
-from oslo_config import cfg
-from oslo_log import log as logging
-from networking_nsxv3.tests.environment import Environment
+
 
 LOG = logging.getLogger(__name__)
 
@@ -94,7 +97,7 @@ class NsxPolicyInfraApiProvider(object):
             return len(children)
 
 
-class BaseNsxTest(unittest.TestCase):
+class BaseNsxTest(base.BaseTestCase):
     MIGR_INVENTORY: typing.Dict[str, dict] = None
     TEST_ENV: Environment = None
 

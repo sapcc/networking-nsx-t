@@ -1,15 +1,17 @@
+import eventlet
+eventlet.monkey_patch()
+
+from oslo_log import log as logging
+from oslo_config import cfg
+from neutron.tests import base
+from networking_nsxv3.tests.unit import provider
+from networking_nsxv3.tests.environment import Environment
+from networking_nsxv3.tests.datasets import coverage
+import responses
 import copy
 import os
 import re
 
-import eventlet
-import responses
-from networking_nsxv3.tests.datasets import coverage
-from networking_nsxv3.tests.environment import Environment
-from networking_nsxv3.tests.unit import provider
-from neutron.tests import base
-from oslo_config import cfg
-from oslo_log import log as logging
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -39,6 +41,7 @@ def set_logging_levels():
         'oslo.cache=WARNING',
         'oslo_policy=WARNING',
     ])
+
 
 class TestAgentRealizer(base.BaseTestCase):
     def setUp(self):

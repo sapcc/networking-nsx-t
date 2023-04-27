@@ -1,3 +1,17 @@
+import eventlet
+eventlet.monkey_patch()
+
+import ipaddress
+from networking_nsxv3.prometheus import exporter
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.common.constants import *
+from oslo_utils import excutils
+from oslo_log import log as logging
+from oslo_config import cfg
 import functools
 import json
 import re
@@ -6,19 +20,7 @@ import uuid
 import functools
 from typing import Callable, Dict, List, Set
 
-import eventlet
-from oslo_config import cfg
-from oslo_log import log as logging
-from oslo_utils import excutils
 
-from networking_nsxv3.common.constants import *
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
-from networking_nsxv3.prometheus import exporter
-import ipaddress
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 

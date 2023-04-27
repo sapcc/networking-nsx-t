@@ -1,4 +1,8 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
+from eventlet.green.http.server import HTTPServer
 import threading
 from networking_nsxv3.common.constants import MP2POLICY_PROMOTION_STATUS
 
@@ -46,7 +50,6 @@ MP2POLICY_PROM_STATUS = Enum(
 def nsxv3_agent_exporter():
     os.environ['PATH_INFO'] = "/metrics"
     CustomMetricsHandler = MetricsHandler.factory(REGISTRY)
-    from eventlet.green.http.server import HTTPServer
     server = HTTPServer(('', cfg.CONF.AGENT.agent_prometheus_exporter_port), CustomMetricsHandler)
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
