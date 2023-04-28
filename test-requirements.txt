@@ -24,8 +24,10 @@ testscenarios>=0.4 # Apache-2.0/BSD
 testtools>=2.2.0 # MIT
 testrepository>=0.0.18
 responses>=0.10.15
-requests>=2.23.0
 pudb>=2020.1
 pytest-pudb>=0.7.0
 pytest>=5.4.1
-redis
+neutron
+neutron-lib
+eventlet
+pyopenssl

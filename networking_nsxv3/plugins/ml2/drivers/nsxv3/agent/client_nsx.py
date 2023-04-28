@@ -1,17 +1,17 @@
 import eventlet
 eventlet.monkey_patch()
 
-import re
-import time
-import uuid
-import requests
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.common.synchronization import Scheduler
-from oslo_config import cfg
-from oslo_log import log as logging
-from oslo_utils import versionutils
-from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
 from requests import Response
+from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
+from oslo_utils import versionutils
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.common.synchronization import Scheduler
+from networking_nsxv3.common.locking import LockManager
+import requests
+import uuid
+import time
+import re
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
@@ -184,6 +184,9 @@ class Client(metaclass=Singleton):
             requests.packages.urllib3.disable_warnings()
 
         self._version = None
+
+    def __del__() -> None:
+        self._session.close()
 
     @property
     def version(self, refresh=False):
