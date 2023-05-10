@@ -2,6 +2,7 @@
 # of appearance. Changing the order has an impact on the overall integration
 # process, which may cause wedges in the gate later.
 
+neutron>=20.0.0, <21.0.0 # Apache-2.0
 hacking!=0.13.0,<0.14,>=0.12.0 # Apache-2.0
 coverage!=4.4,>=4.0 # Apache-2.0
 ddt>=1.0.1 # MIT
@@ -27,7 +28,6 @@ responses>=0.10.15
 pudb>=2020.1
 pytest-pudb>=0.7.0
 pytest>=5.4.1
-neutron
 neutron-lib
 eventlet
 pyopenssl

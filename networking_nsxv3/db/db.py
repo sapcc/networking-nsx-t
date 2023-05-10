@@ -9,15 +9,15 @@ from neutron.db.models.allowed_address_pair import AllowedAddressPair
 from neutron.db.models_v2 import IPAllocation, Port
 from neutron.db.qos.models import (QosBandwidthLimitRule, QosDscpMarkingRule,
                                    QosPolicy, QosPortPolicyBinding)
-from neutron_lib.db.standard_attr import StandardAttribute
 from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.db.standard_attr import StandardAttribute
 # from sqlalchemy.orm.session import Session
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
-    return set(context.session.query(
+    return context.session.query(
         Port.id,
         StandardAttribute.revision_number,
         Port.standard_attr_id
@@ -27,12 +27,13 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id.asc()
     ).filter(
         StandardAttribute.id == Port.standard_attr_id,
+        StandardAttribute.resource_type == 'ports',
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         Port.standard_attr_id > cursor,
     ).limit(
         limit
-    ).all())
+    ).all()
 
 
 def get_qos_policies_with_revisions(context, host, limit, cursor):
@@ -50,6 +51,7 @@ def get_qos_policies_with_revisions(context, host, limit, cursor):
         QosPolicy.standard_attr_id.asc()
     ).filter(
         StandardAttribute.id == QosPolicy.standard_attr_id,
+        StandardAttribute.resource_type == 'qos_policies',
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         QosPolicy.standard_attr_id > cursor
@@ -72,11 +74,12 @@ def get_security_groups_with_revisions(context, host, limit, cursor):
         sg_db.SecurityGroup.standard_attr_id.asc()
     ).filter(
         StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id,
+        StandardAttribute.resource_type == 'securitygroups',
         PortBindingLevel.host == host,
         PortBindingLevel.level == 1,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
         sg_db.SecurityGroup.standard_attr_id > cursor
-    ).limit(
+    ).distinct().limit(
         limit
     ).all()
 
