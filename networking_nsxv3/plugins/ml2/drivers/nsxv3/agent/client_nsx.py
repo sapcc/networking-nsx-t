@@ -185,7 +185,7 @@ class Client(metaclass=Singleton):
 
         self._version = None
 
-    def __del__() -> None:
+    def __del__(self) -> None:
         self._session.close()
 
     @property
