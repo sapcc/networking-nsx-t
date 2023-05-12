@@ -16,7 +16,13 @@ LOG = logging.getLogger(__name__)
 
 
 class SimpleObject(object):
-    pass
+    def __init__(self) -> None:
+        self.context = None
+        self.resource_id = None
+        self.subports = None
+        self.states = None
+        self.trunk_id = None
+        self.metadata = {'subports': self.subports}
 
 
 class TestNSXv3TrunkDriver(base.BaseTestCase):
@@ -222,8 +228,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.states = []
-                par_payload.states[0] = SimpleObject()
+                par_payload.states = [SimpleObject()]
                 par_payload.states[0].sub_ports = 'MyCurrentTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
                 par_payload.states[0].update = mocked_current_trunk_update
@@ -289,8 +294,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.states = []
-                par_payload.states[0] = SimpleObject()
+                par_payload.states = [SimpleObject()]
                 par_payload.states[0].sub_ports = 'MyOriginalTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
 
@@ -354,8 +358,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.states = []
-                par_payload.states[0] = SimpleObject()
+                par_payload.states = [SimpleObject()]
                 par_payload.subports = 'MyTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
 
@@ -386,7 +389,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                             + ':ctx:' + 'context_for_' + str(par_payload.states[0].port_id)
                             + ':parent:' + 'parent_for_' + str(par_payload.states[0].port_id)
                             + ':trunk:' + str(par_payload.states[0])
-                            + ':subports:' + str(par_payload.subports)
+                            + ':subports:' + str(par_payload.states[0].subports)
                             + ':delete:' + str(False)
                         ]
                     ),
@@ -419,8 +422,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 # Prepare parameters
                 par_resource = 'MyResource'
                 par_payload = SimpleObject()
-                par_payload.states = []
-                par_payload.states[0] = SimpleObject()
+                par_payload.states = [SimpleObject()]
                 par_payload.subports = 'MyTrunkSubPorts'
                 par_payload.trunk_id = 'MyTrunkID'
                 par_payload.context = None
@@ -452,7 +454,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                             + ':ctx:' + 'context_for_' + str(par_payload.states[0].port_id)
                             + ':parent:' + 'parent_for_' + str(par_payload.states[0].port_id)
                             + ':trunk:' + str(par_payload.states[0])
-                            + ':subports:' + str(par_payload.subports)
+                            + ':subports:' + str(par_payload.states[0].subports)
                             + ':delete:' + str(True)
                         ]
                     ),
