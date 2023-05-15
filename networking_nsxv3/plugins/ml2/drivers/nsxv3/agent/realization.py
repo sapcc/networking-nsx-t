@@ -306,7 +306,7 @@ class AgentRealizer(object):
         """
         if self.PAUSE_REALIZATION:
             LOG.info(f"MP-to-Policy Migration is in progress. Skipping network realization ...")
-            return
+            return {}
         with LockManager.get_lock("network-{}".format(os_seg_id)):
             # TODO: mngr has to be removed after POLICY is fully supported
             provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
