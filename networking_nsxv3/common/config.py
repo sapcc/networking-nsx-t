@@ -76,6 +76,11 @@ agent_opts = [
         'logging_expire',
         default=1,
         help="Redis key expiration time in days"
+    ),
+    cfg.IntOpt(
+        'sync_skew',
+        default=60,
+        help="Interval for random sync skew during agent sync start."
     )
 ]
 
