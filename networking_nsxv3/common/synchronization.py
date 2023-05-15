@@ -1,6 +1,8 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
+import enum
+
 import eventlet
 eventlet.monkey_patch()
 
@@ -22,7 +24,7 @@ INFINITY = -1
 TIMEOUT = 5
 
 
-class Priority(Enum):
+class Priority(enum.IntEnum):
     """ The acceptable by the Runner.class priorities """
     HIGHEST = 0
     HIGHER = 1
