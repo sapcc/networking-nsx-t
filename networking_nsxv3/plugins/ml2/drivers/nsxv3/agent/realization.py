@@ -269,6 +269,7 @@ class AgentRealizer(object):
             return
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
+            print(f"port {os_id}: {port}")
             if port:
                 os_qid = port.get("qos_policy_id")
                 if os_qid:

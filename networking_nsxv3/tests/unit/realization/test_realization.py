@@ -85,8 +85,7 @@ class TestAgentRealizer(base.BaseTestCase):
                 i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
                 i.port_bind(c.PORT_BACKEND["name"], "3200")
                 i.port_bind(c.PORT_DB["name"], "3200")
-
-                eventlet.sleep(10)
+                env.manager.runner.wait_all_workers()
 
                 # LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
@@ -137,7 +136,7 @@ class TestAgentRealizer(base.BaseTestCase):
             with env:
                 i = env.openstack_inventory
                 i.test_synchronous_port_create(c.PORT_FRONTEND_EXTERNAL["name"], "1001")
-                eventlet.sleep(10)
+                env.manager.runner.wait_all_workers()
 
         pp = env.manager.realizer.plcy_provider
         mp = env.manager.realizer.mngr_provider
@@ -173,8 +172,7 @@ class TestAgentRealizer(base.BaseTestCase):
                 i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
                 i.port_bind(c.PORT_BACKEND["name"], "3200")
                 i.port_bind(c.PORT_DB["name"], "3200")
-
-                eventlet.sleep(10)
+                eventlet.sleep(0)
 
                 # LOG.info("Begin - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 # LOG.info("Begin - NSX-T Inventory: %s", env.dump_provider_inventory())
@@ -184,9 +182,9 @@ class TestAgentRealizer(base.BaseTestCase):
                 # pp.client.post(path="/api/v1/ip-sets", data=pp.payload.sg_rule_remote("::ffff/64"))
 
                 i.port_delete(c.PORT_FRONTEND_INTERNAL["name"])
-                eventlet.sleep(1)
                 i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
-                eventlet.sleep(10)
+                eventlet.sleep(0)
+                env.manager.runner.wait_all_workers()
 
                 # LOG.info("End - OpenStack Inventory: %s", env.dump_openstack_inventory())
                 # LOG.info("End - NSX-T Inventory: %s", env.dump_provider_inventory())
@@ -259,6 +257,7 @@ class TestMigrationRealization(base.BaseTestCase):
         o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
 
         o("force_mp_to_policy", False, "AGENT")
+        o("sync_skew", 0, "AGENT")
 
         self.url = "https://{}:{}".format(hostname, port)
 
@@ -280,7 +279,7 @@ class TestMigrationRealization(base.BaseTestCase):
                 i.port_bind(c.PORT_FRONTEND_INTERNAL["name"], "3200")
                 i.port_bind(c.PORT_BACKEND["name"], "3200")
                 i.port_bind(c.PORT_DB["name"], "3200")
-                eventlet.sleep(10)
+                env.manager.runner.wait_all_workers()
 
             # Enable the migration and re-run
             cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
@@ -288,7 +287,7 @@ class TestMigrationRealization(base.BaseTestCase):
 
             with env:
                 # Should migrate the ports
-                eventlet.sleep(10)
+                env.manager.runner.wait_all_workers()
 
             plcy = env.manager.realizer.plcy_provider
             mngr = env.manager.realizer.mngr_provider
@@ -411,6 +410,7 @@ class TestGroupsRealization(base.BaseTestCase):
 
         o("force_mp_to_policy", False, "AGENT")
         o("max_sg_tags_per_segment_port", 30, "AGENT")
+        o("sync_skew", 0, "AGENT")
 
         self.url = "https://{}:{}".format(hostname, port)
 
