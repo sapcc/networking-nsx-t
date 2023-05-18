@@ -133,11 +133,19 @@ class Resource(provider_nsx_mgmt.Resource):
 
     @property
     def is_managed(self):
-        if not self.resource.get("locked"):
-            user = self.resource.get("_create_user")
-            if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
-                return True
-        return False
+        if self.resource.get("_system_owned", False):
+            return False
+        if self.resource.get("_protection", "NOT_PROTECTED") != "NOT_PROTECTED":
+            return False
+        if self.type in ["SecurityPolicy", Provider.PORT]:
+            # rule name is a uuid
+            if not self.has_valid_os_uuid:
+                return False
+        if self.type == Provider.NETWORK:
+            # os_id of a segment is expected to be a number
+            if not self.os_id.isnumeric():
+                return False
+        return True
 
     @property
     def os_id(self):
@@ -854,8 +862,6 @@ class Provider(base.Provider):
                 for o in resources:
                     res = Resource(o)
                     if not res.is_managed:
-                        continue
-                    if resource_type == Provider.SG_RULES and not res.has_valid_os_uuid:
                         continue
                     if resource_type == Provider.SG_MEMBERS and NSXV3_REVISION_SCOPE not in res.tags:
                         continue
