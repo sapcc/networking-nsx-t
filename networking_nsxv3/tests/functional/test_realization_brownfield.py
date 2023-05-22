@@ -40,6 +40,7 @@ class TestAgentRealizer(base.BaseTestCase):
         o("nsxv3_transport_zone_name", g("NSXV3_TRANSPORT_ZONE_NAME"), "NSXV3")
         o("nsxv3_connection_retry_count", "3", "NSXV3")
         o("nsxv3_remove_orphan_ports_after", "0", "NSXV3")
+        o("sync_skew", 0, "AGENT")
 
         TestAgentRealizer.instance = self
 
@@ -216,7 +217,8 @@ class TestAgentRealizer(base.BaseTestCase):
             LOG.info("Deleting port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
 
-            eventlet.sleep(120)
+            eventlet.sleep(260)
+            env.manager.runner.wait_all_workers()
             # Test split point
             yield 10
 
@@ -338,7 +340,7 @@ class TestAgentRealizer(base.BaseTestCase):
     @staticmethod
     def _pollute(env, index):
         p = env.manager.realizer.mngr_provider
-        id = "00000000-0000-0000-0000-00000000000{}".format(index)
+        _id = "00000000-0000-0000-0000-00000000000{}".format(index)
 
         ipv4 = "192.168.0.0/{}".format(index)
         ipv6 = "::ffff/{}".format(index)
@@ -352,9 +354,9 @@ class TestAgentRealizer(base.BaseTestCase):
         p.client.put(path=api.GROUP.format(ipv4_id), data=pp.sg_rule_remote(ipv4))
         p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
 
-        p.client.put(path=api.GROUP.format(id), data=pp.sg_members_container({"id": id}, dict()))
-        data = pp.sg_rules_container({"id": id}, {"rules": [], "scope": id})
-        p.client.put(path=api.POLICY.format(id), data=data)
+        p.client.put(path=api.GROUP.format(_id), data=pp.sg_members_container({"id": _id}, dict()))
+        data = pp.sg_rules_container({"id": _id}, {"rules": [], "scope": _id})
+        p.client.put(path=api.POLICY.format(_id), data=data)
 
 
 # Initialize end to end tests generator

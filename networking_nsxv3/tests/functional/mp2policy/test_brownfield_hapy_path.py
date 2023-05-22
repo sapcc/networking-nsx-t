@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from networking_nsxv3.tests.unit import openstack
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
 from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
@@ -33,6 +36,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cfg.CONF.set_override("continue_on_failed_promotions", False, "AGENT")
         cfg.CONF.set_override("max_sg_tags_per_segment_port", 25, "AGENT")
         cfg.CONF.set_override("polling_interval", 10, "AGENT")
+        cfg.CONF.set_override("sync_skew", 0, "AGENT")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
             num_nets=5,  # 100

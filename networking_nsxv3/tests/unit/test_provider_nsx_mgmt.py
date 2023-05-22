@@ -24,9 +24,6 @@ def get_url(path):
     return "https://nsxm-l-01a.corp.local:443{}".format(path)
 
 
-# TODO - replace intest mock data with the content from the dataset
-
-
 class TestProviderMgmt(base.BaseTestCase):
 
     def get_result_by_name(self, payload, display_name):
