@@ -753,7 +753,8 @@ class Provider(base.Provider):
             with LockManager.get_lock("member-{}".format(sg_id)):
                 sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
                 if not sg_meta:
-                    raise RuntimeError(f"Not found SG Metadata for security_group: {sg_id}")
+                    # Realize the Security Group if it does not exist with empty members
+                    sg_meta = self.sg_members_realize({"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
                 if not port_meta.path:
                     raise RuntimeError(f"Not found path in Metadata for port: {port_meta.real_id}")
                 if port_meta.path not in sg_meta.sg_members:
