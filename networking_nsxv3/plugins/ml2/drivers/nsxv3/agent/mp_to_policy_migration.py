@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 from typing import Set, Tuple
 import json
 
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_PROMOTION_STATUS, MIGR_COORD_STATE, RUNNING_MIGR_STATUS
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_PROMOTION_STATUS, MIGR_COORD_STATE, NSXV3_REVISION_SCOPE, RUNNING_MIGR_STATUS
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -36,6 +36,8 @@ class API(object):
 
     MIGRATED_RESOURCES = f"{MIGR_BASE}/migrated-resources"
     MIGRATED_QOS_PROFILES = f"{MIGRATED_RESOURCES}?resource_type=QOS_PROFILES"
+    
+    LOGICAL_PORTS = "/api/v1/logical-ports"
 
 
 class PayloadBuilder(object):
@@ -66,6 +68,7 @@ class Provider(object):
     def check_service_availability(self):
         with LockManager.get_lock(API.MIGR_UNIT):
             try:
+                exporter.MP2POLICY_PROM_STATUS.state(MP2POLICY_PROMOTION_STATUS.UNINITIALIZED.value)
                 if self.client.version < MP2POLICY_NSX_MIN_VERSION:
                     raise MpPolicyException(f"MP-TO-POLICY API not supported for NSX version {self.client.version}.")
                 mp_service_status = self.client.get(path=API.MIGR_SERVICE_STATUS).json()
@@ -113,6 +116,7 @@ class Provider(object):
                 exporter.MP2POLICY_PROM_STATUS.state(MP2POLICY_PROMOTION_STATUS.IN_PROGRESS.value)
                 if not only_await:
                     LOG.info("Starting Generic migration ...")
+                    self.find_and_update_ports_having_more_than_29_tags()
                     self._set_generic_migration()
                 self._await_generic_migration()
                 LOG.info("Migration completed.")
@@ -137,6 +141,26 @@ class Provider(object):
                 migr_stats = self.get_migration_stats(pre=False)
         return success, migr_stats, fdbk
 
+    def find_and_update_ports_having_more_than_29_tags(self):
+        """ Get all ports from NSX-T, filter ports having more than 29 tags
+            and remove the tag 'revision_number' from them in order to be able to migrate them.
+        """
+        ports = self.client.get_all(path=API.LOGICAL_PORTS)
+        filtered_ports = [port for port in ports if len(port.get("tags", [])) > 29]
+        LOG.warning(f"Found {len(filtered_ports)} ports having more than 29 tags.")
+        
+        if len(filtered_ports) > 0:
+            LOG.info(f"Removing tag '{NSXV3_REVISION_SCOPE}' from ports having more than 29 tags.")
+            for port in filtered_ports:
+                tags = port.get("tags", [])
+                tags = [tag for tag in tags if tag.get("scope") != NSXV3_REVISION_SCOPE]
+                port["tags"] = tags
+                self.client.put(path=f"{API.LOGICAL_PORTS}/{port.get('id')}", data=port)
+            LOG.info(f"Removed tag '{NSXV3_REVISION_SCOPE}' from ports having more than 29 tags.")
+        else:
+            LOG.info(f"No need to remove tag '{NSXV3_REVISION_SCOPE}' from ports.")
+        
+    
     def get_migration_feedback(self) -> dict:
         """Get migration feedback
 
