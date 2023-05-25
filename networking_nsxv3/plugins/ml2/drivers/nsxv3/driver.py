@@ -1,3 +1,5 @@
+import networking_nsxv3.common.config
+
 from neutron import service
 from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
@@ -8,6 +10,7 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources, registry, events
 from neutron_lib.plugins.ml2 import api
 from oslo_log import log
+from oslo_config import cfg
 
 from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.common import constants as nsxv3_constants
@@ -23,7 +26,8 @@ from neutron.services.logapi.drivers import manager
 
 LOG = log.getLogger(__name__)
 
-
+class MaxSecurityGroupsPerPortExceeded(Exception):
+    """Not more than 28 security groups per port can be assigned"""
 class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
     """Attach to networks using vmware nsx-t agent.
 
@@ -232,3 +236,15 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def trigger_sync(self, id, type):
         self.rpc.trigger_manual_update(id=id, type=type)
+
+    def _enforce_max_sg_per_segment_port(self, port):
+        if len(port['security_groups'] >= cfg.CONF.AGENT.max_sg_tags_per_segment_port):
+            raise MaxSecurityGroupsPerPortExceeded
+    def create_port_precommit(self, context):
+        """Enforce max number of security groups per port """
+        super().create_port_precommit(context)
+        self._enforce_max_sg_per_segment_port(context.current)
+    def update_port_precommit(self, context):
+        """Enforce max number of security groups per port during update"""
+        super().update_port_precommit(context)
+        self._enforce_max_sg_per_segment_port(context.current)
