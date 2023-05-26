@@ -238,7 +238,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.rpc.trigger_manual_update(id=id, type=type)
 
     def _enforce_max_sg_per_segment_port(self, port):
-        if len(port['security_groups'] >= cfg.CONF.AGENT.max_sg_tags_per_segment_port):
+        if len(port['security_groups']) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port:
             raise MaxSecurityGroupsPerPortExceeded
     def create_port_precommit(self, context):
         """Enforce max number of security groups per port """
