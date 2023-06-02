@@ -111,8 +111,7 @@ class AgentRealizer(object):
             qos_outdated, qos_current = provider.outdated(provider.QOS, qos_meta)
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(
-                provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:
@@ -170,7 +169,7 @@ class AgentRealizer(object):
             self.refresh(aged)
         else:
             LOG.info("Sanitizing provider based on age cycles")
-            sanitize = provider.sanitize(_slice)
+            sanitize = self.plcy_provider.sanitize(_slice)
 
             for id, callback in sanitize:
                 self.callback(id, callback)

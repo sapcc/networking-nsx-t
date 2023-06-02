@@ -136,9 +136,14 @@ class Meta(object):
 
     def add(self, resource: Resource) -> ResourceMeta:
         old_meta = self.meta.get(resource.os_id)
+        if resource.type == "LogicalSwitch" and old_meta:
+            LOG.critical("Resource type: %s, OS_ID: %s, ID: %s, Meta: %s", resource.type, resource.os_id, resource.id, resource.meta)
+            # self.meta[resource.os_id] = resource.meta
+            # return resource.meta
+        
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
-            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
+            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.id)
         elif not resource.os_id:
             LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
         else:
