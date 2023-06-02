@@ -38,8 +38,8 @@ class TestAgentRealizer(base.BaseTestCase):
         o("nsxv3_login_user", g("NSXV3_LOGIN_USER"), "NSXV3")
         o("nsxv3_login_password", g("NSXV3_LOGIN_PASSWORD"), "NSXV3")
         o("nsxv3_transport_zone_name", g("NSXV3_TRANSPORT_ZONE_NAME"), "NSXV3")
-        o("nsxv3_connection_retry_count", "3", "NSXV3")
-        o("nsxv3_remove_orphan_ports_after", "0", "NSXV3")
+        o("nsxv3_connection_retry_count", 3, "NSXV3")
+        o("nsxv3_remove_orphan_ports_after", 0, "NSXV3")
         o("sync_skew", 0, "AGENT")
 
         TestAgentRealizer.instance = self
@@ -217,11 +217,10 @@ class TestAgentRealizer(base.BaseTestCase):
             LOG.info("Deleting port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
 
-            eventlet.sleep(260)
-            env.manager.runner.wait_all_workers()
+            eventlet.sleep(30)
             # Test split point
             yield 10
-
+            
         LOG.info("Checking \"_assert_update\"")
         TestAgentRealizer._assert_update(c, env)
         TestAgentRealizer.cleanup_on_teardown = True
