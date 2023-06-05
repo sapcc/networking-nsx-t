@@ -19,7 +19,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
     MIGR_INVENTORY = None
     TEST_ENV = None
-
+    TEST_CONFIG = cfg.CONF
     @classmethod
     def setUpClass(cls):
         LOG.info(f"Global setup - READ Enviroment Variables, Activate Migration")
@@ -32,11 +32,11 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         LOG.info(f"Activate migration on driver side")
 
-        cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
-        cfg.CONF.set_override("continue_on_failed_promotions", False, "AGENT")
-        cfg.CONF.set_override("max_sg_tags_per_segment_port", 25, "AGENT")
-        cfg.CONF.set_override("polling_interval", 10, "AGENT")
-        cfg.CONF.set_override("sync_skew", 0, "AGENT")
+        cls.TEST_CONFIG.set_override("force_mp_to_policy", True, "AGENT")
+        cls.TEST_CONFIG.set_override("continue_on_failed_promotions", False, "AGENT")
+        cls.TEST_CONFIG.set_override("max_sg_tags_per_segment_port", 25, "AGENT")
+        cls.TEST_CONFIG.set_override("polling_interval", 10, "AGENT")
+        cls.TEST_CONFIG.set_override("sync_skew", 0, "AGENT")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
             num_nets=5,  # 100
@@ -55,7 +55,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         super().setUp()
         LOG.info(f"Setup before running test")
         self.cleanup_on_setup = False
-
+        self.TEST_CONFIG.set_override("max_sg_tags_per_segment_port", 25, "AGENT")
         self.mngr_meta, self.plcy_meta = TestMp2PolicyMigr.TEST_ENV.dump_provider_inventory(printable=False)
         self.mngr: provider_nsx_mgmt.Provider = TestMp2PolicyMigr.TEST_ENV.manager.realizer.mngr_provider
         self.plcy: provider_nsx_policy.Provider = TestMp2PolicyMigr.TEST_ENV.manager.realizer.plcy_provider
@@ -129,7 +129,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         # Assert port's group membership
         for k, v in ports:
             os_sgs = v.get("security_groups")
-            must_be_static_member = (len(os_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port)
+            must_be_static_member = (len(os_sgs) >= self.TEST_CONFIG.AGENT.max_sg_tags_per_segment_port)
             for sg in os_sgs:
                 self.assertTrue(sg in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"],
                                 f"SG Members '{sg}' must exists in the policy metadata!")
@@ -137,7 +137,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
                 migrated_port_path = self.plcy_meta[self.plcy.PORT]["meta"][k].get("path")
                 if must_be_static_member:
                     self.assertTrue(migrated_port_path in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
-                                    f"Port '{k}' with path '{migrated_port_path}' must be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is equals or greater than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")
+                                    f"Port '{k}' with path '{migrated_port_path}' must be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is equals or greater than {self.TEST_CONFIG.AGENT.max_sg_tags_per_segment_port}!")
                 else:
                     self.assertTrue(migrated_port_path not in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
-                                    f"Port '{k}' with path '{migrated_port_path}' must NOT be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is less than {cfg.CONF.AGENT.max_sg_tags_per_segment_port}!")
+                                    f"Port '{k}' with path '{migrated_port_path}' must NOT be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is less than {self.TEST_CONFIG.AGENT.max_sg_tags_per_segment_port}!")
