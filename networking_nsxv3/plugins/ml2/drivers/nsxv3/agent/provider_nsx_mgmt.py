@@ -1,6 +1,6 @@
 import copy
 import time
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 import uuid
 
 import netaddr
@@ -55,19 +55,12 @@ class Resource(base.Resource):
 
     @property
     def is_managed(self):
-        if self.type == "LogicalSwitch" or self.type == "QosSwitchingProfile":
-            return True
-        if "policyPath" in self.tags and "/default:" not in self.tags.get("policyPath"):
-            return False
         if not self.resource.get("locked"):
+            if "policyPath" in self.tags:
+                return False
             user = self.resource.get("_create_user")
             if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
                 return True
-
-            if self.type == "LogicalPort":
-                att_id = self.resource.get("attachment", {}).get("id")
-                if user != "nsx_policy" and att_id:
-                    return True
         return False
 
     @property
@@ -337,7 +330,7 @@ class Payload(object):
             "display_name": id,
             "services": services,
             "action": "ALLOW",
-            "logged": False,  # TODO selective logging
+            "logged": False,
             "rule_tag": id.replace("-", ""),
             "_revision": provider_rule["_revision"],
         }
@@ -446,6 +439,12 @@ class Provider(base.Provider):
 
         self._setup_default_switching_profiles()
 
+    def _load_zone(self):
+        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
+        for zone in self.client.get_all(path="/api/v1/transport-zones"):
+            if zone.get("display_name") == self.zone_name:
+                return zone.get("id")
+
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
         ip = self.payload.ip_discovery()
@@ -489,8 +488,18 @@ class Provider(base.Provider):
             Provider.NETWORK: mp(API.SWITCHES),
         }
 
+    def filter_nsx_policy(func):
+        def wrapper(*args, **kwargs):
+            return filter(lambda s: s.get("_create_user") != "nsx_policy", func(*args, **kwargs))
+        return wrapper
+
+    @filter_nsx_policy
     def get_all_switching_profiles(self):
         return self.client.get_all(path=API.PROFILES, params=API.PARAMS_ALL_PROFILES)
+
+    @filter_nsx_policy
+    def get_all_switches(self):
+        return self.client.get_all(path=API.SWITCHES, params={"transport_zone_id": self.zone_id})
 
     def metadata_refresh(self, resource_type, params=dict()):
 
@@ -618,7 +627,7 @@ class Provider(base.Provider):
                 return self.metadata_update(resource_type, o.json())
             LOG.info(end_report, "already deleted")
 
-    def outdated(self, resource_type: str, os_meta: dict):
+    def outdated(self, resource_type: str, os_meta):
         self.metadata_refresh(resource_type)
 
         if resource_type == Provider.SG_RULES:

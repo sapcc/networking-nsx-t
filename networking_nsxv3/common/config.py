@@ -57,15 +57,15 @@ agent_opts = [
         default=False,
         help="Force NSX-T Manager API objects to be promoted to Policy API objects."
     ),
-    cfg.IntOpt(
-        'migration_tag_count_trigger',
-        default=26,
-        help="The count of the tags per LogicalPort, above which an MP-to-Policy Promotion will be trigered for the port."
+    cfg.BoolOpt(
+        'ports_tag_number_decrease_workaround',
+        default=True,
+        help="Workaround for NSX-T MP-to-Policy API bug. Decrease the number of tags on the SwitchPorts with 1 prior to promotion."
     ),
-    cfg.IntOpt(
-        'migration_tag_count_max',
-        default=29,
-        help="The maximum count of the tags per LogicalPort, above which MP-to-Policy Promotion is impossible."
+    cfg.BoolOpt(
+        'continue_on_failed_promotions',
+        default=False,
+        help="Continue on failed MP-to-Policy Object Promotions. Used for testing purposes. Not recomended for production use."
     ),
     cfg.IntOpt(
         'max_sg_tags_per_segment_port',
@@ -81,6 +81,11 @@ agent_opts = [
         'logging_expire',
         default=1,
         help="Redis key expiration time in days"
+    ),
+    cfg.IntOpt(
+        'sync_skew',
+        default=60,
+        help="Interval for random sync skew during agent sync start."
     )
 ]
 
@@ -195,7 +200,7 @@ nsxv3_opts = [
         default=1000,
         help="NSXv3 Managed maximum records per query request."
     ),
-    cfg.IntOpt(
+    cfg.FloatOpt(
         'nsxv3_remove_orphan_ports_after',
         default=12,
         help="Remove NSX-T orphan ports not before configured hours."

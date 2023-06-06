@@ -1,25 +1,28 @@
-import itertools
-import time
-import traceback
-from typing import Callable, List, Set, Tuple
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import ResourceMeta
+import eventlet
+eventlet.monkey_patch()
+
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import\
     provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.mp_to_policy_migration import\
-    PayloadBuilder, Payload as MigrationPayload
-from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
-from oslo_config import cfg
-from oslo_log import log as logging
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES
+from typing import Callable, List, Set, Tuple
+import itertools
+import json
+import time
+
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class AgentRealizer(object):
+
     def __init__(
         self,
         rpc: NSXv3ServerRpcApi,
-        callback: Callable[[list or str, Callable[[str], None]], None],
+        callback: Callable[[List or str, Callable[[str], None]], None],
         kpi: Callable[[], dict],
         mngr_provider: m_prvdr.Provider,
         plcy_provider: p_prvdr.Provider,
@@ -32,32 +35,21 @@ class AgentRealizer(object):
         self.mngr_provider = mngr_provider
         self.plcy_provider = plcy_provider
 
+        self.PAUSE_REALIZATION = False
+        self.AGE = int(time.time())
+
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
 
         # Enable MP-to-Policy migration if force_mp_to_policy=True
-        self.force_mp_to_policy = cfg.CONF.AGENT.force_mp_to_policy
-        if self.mngr_provider.client.version < (3, 1):
-            self.force_mp_to_policy = False
-            LOG.warning("MP-TO-POLICY API is supported from NSX-T ver. 3.1.x onward.")
+        # It is used as a flag for using Policy API completely or not
+        # in case migration canceled or failed this flag will be False
+        # TODO: After completing the transition to NSX Policy API (ONLY if successful!), deprecate this flag
+        self.USE_POLICY_API = self._check_mp2policy_support()
 
-        if self.force_mp_to_policy:
-            try:
-                self.force_mp_to_policy = False
-                self.migr_provider = mi_prvdr.Provider()
-                self.force_mp_to_policy = True
-            except Exception as e:
-                LOG.error(str(e))
-                self.force_mp_to_policy = False
-                LOG.critical("MP-to-Policy Migration Functionality disabled.")
-            else:
-                try:
-                    self._promote_switching_profiles()
-                except Exception as e:
-                    LOG.warning(str(e))
-
-        self.age = int(time.time())
-        # Initializing metadata
-        self.all(dryrun=True)
+        if self.USE_POLICY_API:
+            self._try_start_migration()
+        else:
+            self._dryrun()
 
     @staticmethod
     def _os_meta(query: Callable):
@@ -71,18 +63,17 @@ class AgentRealizer(object):
         return meta
 
     def refresh(self, list_aged: Set[Tuple[str, str, int]]):
-        pp = self.plcy_provider
-        mp = self.mngr_provider
+        # TODO: mngr has to be removed after POLICY is fully supported
+        provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
+
         for o in list_aged:
-            if o[0] == pp.SEGM_PORT:
+            if o[0] == provider.PORT:
                 self.callback(o[1], self.port)
-            elif o[0] == mp.PORT:
-                self.callback(o[1], self.port)
-            elif o[0] == mp.QOS:
+            elif o[0] == provider.QOS:
                 self.callback(o[1], self.qos)
-            elif o[0] == pp.SG_RULES:
+            elif o[0] == self.plcy_provider.SG_RULES:
                 self.callback(o[1], self.security_group_rules)
-            elif o[0] == pp.SG_MEMBERS:
+            elif o[0] == self.plcy_provider.SG_MEMBERS:
                 self.callback(o[1], self.security_group_members)
 
     def all(self, dryrun=False):
@@ -92,41 +83,35 @@ class AgentRealizer(object):
 
         :force: bool -- if True concider all objects as outdated
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping synchronization ...")
+            return
         with LockManager.get_lock("all"):
             if self.kpi().get("passive") > 0:
                 return
 
             _slice = cfg.CONF.AGENT.synchronization_queue_size
-            pp = self.plcy_provider
-            mp = self.mngr_provider
             r = self.rpc
+
+            # TODO: mngr has to be removed after POLICY is fully supported
+            provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
             port_meta = self._os_meta(r.get_ports_with_revisions)
             sg_meta = self._os_meta(r.get_security_groups_with_revisions)
             qos_meta = self._os_meta(r.get_qos_policies_with_revisions)
 
-            # Force networks refresh, only
-            mp.metadata_refresh(mp.NETWORK)
-            pp.metadata_refresh(pp.SEGMENT)
-
             # Refresh entire metadata with its latest state
             LOG.info("Inventory metadata is going to be refreshed.")
-            seg_port_outdated, seg_port_current = pp.outdated(pp.SEGM_PORT, port_meta)
-            port_outdated, port_current = mp.outdated(mp.PORT, port_meta)
-            sgr_outdated, sgr_current = pp.outdated(pp.SG_RULES, sg_meta)
-            qos_outdated, qos_current = mp.outdated(mp.QOS, qos_meta)
-            seg_qos_outdated, seg_qos_current = pp.outdated(pp.SEGM_QOS, qos_meta)
 
-            # Remove duplicated policy/manager objects
-            # Only process outdated segment ports which are also in management
-            # if we are in migration mode
-            seg_port_outdated, seg_port_current, port_outdated = self._filter_plcy_mngr_objs(
-                seg_port_outdated, seg_port_current, port_outdated, port_current)
-            seg_qos_outdated, seg_qos_current, qos_outdated = self._filter_plcy_mngr_objs(
-                seg_qos_outdated, seg_qos_current, qos_outdated, qos_current)
+            # Force networks refresh, only
+            provider.metadata_refresh(provider.NETWORK)
+
+            port_outdated, port_current = provider.outdated(provider.PORT, port_meta)
+            sgr_outdated, sgr_current = self.plcy_provider.outdated(provider.SG_RULES, sg_meta)
+            qos_outdated, qos_current = provider.outdated(provider.QOS, qos_meta)
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, sgm_maybe_orphans = pp.outdated(pp.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:
@@ -138,13 +123,6 @@ class AgentRealizer(object):
             outdated = list(itertools.islice(port_outdated, _slice))
             _slice -= len(outdated)
             LOG.info("Realizing %s/%s resources of Type:Ports", len(outdated), len(port_outdated))
-            self.callback(outdated, self.port)
-            if _slice <= 0:
-                return
-
-            outdated = list(itertools.islice(seg_port_outdated, _slice))
-            _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:SegmentPorts", len(outdated), len(seg_port_outdated))
             self.callback(outdated, self.port)
             if _slice <= 0:
                 return
@@ -171,39 +149,19 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
-            outdated = list(itertools.islice(seg_qos_outdated, _slice))
-            _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:SegmentQoS", len(outdated), len(seg_qos_outdated))
-            self.callback(outdated, self.qos)
-            if _slice <= 0:
-                return
+            return self._age_cycle(_slice, port_current, sgr_current, qos_current, sgm_maybe_orphans)
 
-            return self._age_cycle(_slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans)
+    def _age_cycle(self, _slice, port_current, sgr_current, qos_current, sgm_maybe_orphans):
+        # TODO: mngr has to be removed after POLICY is fully supported
+        provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
-    def _filter_plcy_mngr_objs(self, plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated, mngr_obj_current):
-        """This method will filter all duplicated Manager Meta IDs from the Policy Meta IDs.
-           This is needed because NSX-T SwitchPorts and SegmentPorts exist on at the same time with the same IDs
-           in Manager and Policy API respectively.
-        """
-        plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_outdated)
-        plcy_obj_current = plcy_obj_current.difference(mngr_obj_current)
-        plcy_obj_outdated = plcy_obj_outdated.difference(mngr_obj_current)
-        mngr_obj_outdated = mngr_obj_outdated.difference(plcy_obj_current)
-        return plcy_obj_outdated, plcy_obj_current, mngr_obj_outdated
-
-    def _age_cycle(self, _slice, seg_port_current, port_current, sgr_current, seg_qos_current, qos_current, sgm_maybe_orphans):
-        mp = self.mngr_provider
-        pp = self.plcy_provider
-
-        current = mp.age(mp.PORT, port_current)
-        current += pp.age(pp.SEGM_PORT, seg_port_current)
-        current += pp.age(pp.SG_RULES, sgr_current)
-        current += pp.age(pp.SG_MEMBERS, sgm_maybe_orphans)
-        current += mp.age(mp.QOS, qos_current)
-        current += pp.age(pp.SEGM_QOS, seg_qos_current)
+        current = provider.age(provider.PORT, port_current)
+        current += self.plcy_provider.age(provider.SG_RULES, sgr_current)
+        current += self.plcy_provider.age(provider.SG_MEMBERS, sgm_maybe_orphans)
+        current += provider.age(provider.QOS, qos_current)
 
         # Sanitize when there are no elements or the eldest age > current age
-        aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.age]
+        aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.AGE]
         LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
         if aged:
             aged = set(itertools.islice(aged, _slice))
@@ -211,7 +169,7 @@ class AgentRealizer(object):
             self.refresh(aged)
         else:
             LOG.info("Sanitizing provider based on age cycles")
-            sanitize = pp.sanitize(_slice)
+            sanitize = self.plcy_provider.sanitize(_slice)
 
             for id, callback in sanitize:
                 self.callback(id, callback)
@@ -220,7 +178,7 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
-            self.age = int(time.time())
+            self.AGE = int(time.time())
 
     def security_group_members(self, os_id: str, reference=False):
         """
@@ -230,6 +188,9 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Security Group
         :reference: -- if True will create the group if unknown by the provider
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping security_group_members realization ...")
+            return
         with LockManager.get_lock("member-{}".format(os_id)):
             pp = self.plcy_provider
             meta = pp.metadata(pp.SG_MEMBERS, os_id)
@@ -242,7 +203,7 @@ class AgentRealizer(object):
                     paths = [p.path for p in segment_ports]
 
                     # SG Members are not revisionable, use default "0"
-                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": "0", "member_paths": paths})
+                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": 0, "member_paths": paths})
                 else:
                     pp.sg_members_realize({"id": os_id}, delete=True)
 
@@ -252,6 +213,9 @@ class AgentRealizer(object):
         Realization will happen only if the group has active ports on the host.
         :os_id: -- OpenStack ID of the Security Group
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping security_group_rules realization ...")
+            return
         with LockManager.get_lock("rules-{}".format(os_id)):
             os_sg = self.rpc.get_security_group(os_id)
 
@@ -280,6 +244,9 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Port
         :network_meta: -- NSX Switch metadata
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping precreate_port realization...")
+            return
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
             if port:
@@ -296,6 +263,9 @@ class AgentRealizer(object):
         Realize port state.
         :os_id: -- OpenStack ID of the Port
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping port realization ...")
+            return
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
             if port:
@@ -312,16 +282,20 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the QoS Policy
         :reference: -- If True will create policy if unknown by the provider
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping qos realization ...")
+            return
         with LockManager.get_lock("qos-{}".format(os_id)):
-            plcy_meta = self.plcy_provider.metadata(self.plcy_provider.SEGM_QOS, os_id)
-            mgr_meta = self.mngr_provider.metadata(self.mngr_provider.QOS, os_id)
-            if not (reference and mgr_meta):
+            # TODO: mngr has to be removed after POLICY is fully supported
+            provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
+
+            meta = provider.metadata(provider.QOS, os_id)
+            if not (reference and meta):
                 qos = self.rpc.get_qos(os_id)
                 if qos:
-                    self._qos_realize(os_qos=qos, is_plcy=bool(plcy_meta), is_mngr=bool(mgr_meta))
+                    self._qos_realize(os_qos=qos)
                 else:
-                    self._qos_realize(os_qos={"id": os_id}, is_plcy=bool(plcy_meta),
-                                      is_mngr=bool(mgr_meta), delete=True)
+                    self._qos_realize(os_qos={"id": os_id}, delete=True)
 
     def network(self, os_seg_id: str):
         """
@@ -329,9 +303,14 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Network Segmentation ID
         :return: -- provider ID for the network
         """
+        if self.PAUSE_REALIZATION:
+            LOG.info(f"MP-to-Policy Migration is in progress. Skipping network realization ...")
+            return {}
         with LockManager.get_lock("network-{}".format(os_seg_id)):
-            meta = self._network_realize(os_seg_id)
-            return {"nsx-logical-switch-id": meta.id, "external-id": meta.id, "segmentation_id": os_seg_id}
+            # TODO: mngr has to be removed after POLICY is fully supported
+            provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
+            meta = provider.network_realize(os_seg_id)
+            return {"nsx-logical-switch-id": meta.unique_id, "external-id": meta.id, "segmentation_id": os_seg_id}
 
     def enable_policy_logging(self, log_obj: dict):
         """
@@ -360,174 +339,80 @@ class AgentRealizer(object):
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.plcy_provider.update_policy_logging(log_obj)
 
-    def _qos_realize(self, os_qos: dict, is_plcy: bool, is_mngr: bool, delete=False):
+    def _qos_realize(self, os_qos: dict, delete=False):
+        # TODO: mngr has to be removed after POLICY is fully supported
+        provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
-        pp = self.plcy_provider
-        mp = self.mngr_provider
-
-        if delete and not is_plcy and not is_mngr:
-            # Try to delete with both Policy and Manager providers
-            try:
-                pp.qos_realize(os_qos, delete=True)
-            except:
-                try:
-                    mp.qos_realize(os_qos, delete=True)
-                except:
-                    pass
-            return
-
-        if is_plcy:
-            return pp.qos_realize(os_qos, delete)
-
-        mp.qos_realize(os_qos, delete)
-        if self.force_mp_to_policy and not delete:
-            self._promote_switching_profiles()
+        return provider.qos_realize(os_qos, delete)
 
     def _port_realize(self, os_port: dict, delete: bool = False):
-        pp = self.plcy_provider
-        mp = self.mngr_provider
-        plcy_port_meta = pp.get_port(os_id=os_port.get("id"))
-        mngr_port_meta = mp.get_port(os_id=os_port.get("id"))
+        # TODO: mngr has to be removed after POLICY is fully supported
+        provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
-        # Realize using Policy API
-        if plcy_port_meta and plcy_port_meta[0]:
-            self._check_migrate_trunk_parent(os_port)
-            return pp.port_realize(os_port, delete)
+        return provider.port_realize(os_port, delete)
 
-        # Realize using Manager API
-        mp.port_realize(os_port, delete)
+    def _check_mp2policy_support(self):
+        """Check if MP-to-Policy is forced, check if NSX-T version is supported
 
-        # Try to promote port to Policy
-        if self.force_mp_to_policy and mngr_port_meta and mngr_port_meta[0] and not delete:
-            self.try_promote_port(os_port, mngr_port_meta)
+        Returns:
+            bool: True if MP-to-Policy is supported, False otherwise
+        """
+        if cfg.CONF.AGENT.force_mp_to_policy:
+            if self.mngr_provider.client.version >= MP2POLICY_NSX_MIN_VERSION:
+                return True
+            LOG.warning(
+                f"MP-TO-POLICY API is supported from NSX-T ver. {'.'.join([str(n) for n in MP2POLICY_NSX_MIN_VERSION])} onward.")
+        return False
 
-    def _check_migrate_trunk_parent(self, os_port):
-        pp = self.plcy_provider
-        mp = self.mngr_provider
-
-        parent_port_id = os_port.get("parent_id")
-        if parent_port_id:
-            parent_meta, nsx_port = pp.get_port(parent_port_id)
-            # If parent is not migrated, migrate it before continue
-            if not parent_meta and nsx_port:
-                with LockManager.get_lock("port-{}".format(parent_port_id)):
-                    parent_os_port: dict = self.rpc.get_port(parent_port_id)
-                    if parent_os_port:
-                        parent_mngr_port_meta = mp.get_port(os_id=parent_os_port.get("id"))
-                        self.try_promote_port(parent_os_port, parent_mngr_port_meta, force=True)
-
-    def try_promote_port(self, os_port, mngr_port_meta, force=False):
-        pp = self.plcy_provider
-        mp = self.mngr_provider
-        os_id = os_port.get("id")
+    def _try_start_migration(self):
         try:
-            self._check_port_migration_criteria(port=mngr_port_meta[1], force=force)
-            vlan_id = os_port.get("vif_details").get("segmentation_id")
-            segment = pp.metadata(pp.SEGMENT, vlan_id)
-            switch = mp.metadata(mp.NETWORK, vlan_id)
-            if not switch and not segment:
-                raise RuntimeError(f"Neither switch nor segment found in metadata for VLAN {vlan_id}.")
-            net_id = switch.id if not segment else None
-            self._promote_port(net_id=net_id, port=mngr_port_meta[1])
-            # Delete Manager Meta
-            mp.metadata_delete(mp.PORT, os_id)
-            # Update Policy meta
-            pp.get_port(os_id=os_id)
-            return pp.port_realize(os_port)
+            self.migr_provider = mi_prvdr.Provider()
+            # Check if migration is needed
+            migr_state = self.migr_provider.get_migration_state()
+            if not migr_state:
+                raise RuntimeWarning("MP-to-Policy migration state is unknown.")
+            if "FAIL" in migr_state:
+                raise RuntimeWarning(f"MP-to-Policy migration state is failed: '{migr_state}'.")
+            if MP2POLICY_STATES.PROMOTION_NOT_IN_PROGRESS.value == migr_state:
+                LOG.info("MP-to-Policy migration is not in progress. Starting migration ...")
+                return self._trigger_new_migration()
+            if MP2POLICY_STATES.PROMOTION_IN_PROGRESS.value == migr_state:
+                LOG.info("MP-to-Policy migration is in progress. Skipping migration start ...")
+                return self._await_running_migration()
+            raise RuntimeWarning(f"MP-to-Policy migration is in not supported by the agent state '{migr_state}'.")
         except Exception as e:
-            LOG.info(f"Port with ID: {os_id} was not promoted to Policy API. ({e})")
-            LOG.debug(traceback.format_exc())
+            self.PAUSE_REALIZATION = False
+            self.USE_POLICY_API = False
+            LOG.error(f"Error while starting MP-to-Policy migration: {str(e)}")
+            self._dryrun()
 
-    @staticmethod
-    def _check_port_migration_criteria(port: dict, force=False):
-        nsxt_max = 29
-        tag_trigger = cfg.CONF.AGENT.migration_tag_count_trigger
-        tag_max = cfg.CONF.AGENT.migration_tag_count_max
-        tag_count = len(port.get("tags")) if port.get("tags") else 0
-        if not force:
-            if tag_trigger <= tag_count <= tag_max:
-                LOG.info(f"Migration criteria met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max})")
-            else:
-                raise RuntimeError(
-                    f"Migration criteria not met. Tags: {tag_count} (trigger: {tag_trigger}, max: {tag_max}, nsxt_max: {nsxt_max})")
+    def _await_running_migration(self):
+        self.PAUSE_REALIZATION = True
+        eventlet.greenthread.spawn(self.migr_provider.migrate_generic, only_await=True).link(self._migration_handler)
+
+    def _trigger_new_migration(self):
+        migr_pre = self.migr_provider.get_migration_stats(pre=True)
+        LOG.info(f"MP-to-Policy migration pre-check:\n{json.dumps(migr_pre, indent=4)}")
+        if migr_pre and migr_pre.get("total_count", 0) > 0:
+            self.PAUSE_REALIZATION = True
+            eventlet.greenthread.spawn(self.migr_provider.migrate_generic).link(self._migration_handler)
         else:
-            LOG.info(f"Force Migration. Current Tags: {tag_count} (nsxt_max: {nsxt_max})")
-        if tag_count > nsxt_max:
-            raise RuntimeError(f"Migration impossible. Tags: {tag_count} (nsxt_max: {nsxt_max})")
+            LOG.info("MP-to-Policy migration not needed. No MP objects found.")
 
-    def _network_realize(self, segmentation_id: int):
-        segment_meta = self.plcy_provider.network_realize(segmentation_id)
-        switch_meta = self.mngr_provider.network_realize(segmentation_id)
+    def _migration_handler(self, gt: eventlet.greenthread.GreenThread):
+        try:
+            success, migr_stats, fdbk = gt.wait()
+            if not success:
+                raise RuntimeWarning("MP-to-Policy migration failed.")
+            LOG.info("MP-to-Policy Migration finished successfully.")
+        except Exception as e:
+            LOG.error(str(e))
+            self.USE_POLICY_API = False
+        finally:
+            self.PAUSE_REALIZATION = False
+            self._dryrun()
 
-        if self.force_mp_to_policy and not segment_meta:
-            self._promote_switch(switch_meta)
-            self.plcy_provider.network_realize(segmentation_id)
-
-        return switch_meta
-
-    def _get_notmigrated_switching_profiles(self) -> Tuple[list, list]:
-        mgmt_sw_profiles: List[dict] = self.mngr_provider.get_all_switching_profiles()
-        policy_sw_profiles: List[dict] = self.plcy_provider.get_non_default_switching_profiles()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = [], []
-
-        if self.force_mp_to_policy and self.migr_provider:
-            mgmt_profile_ids = [p.get("id") for p in mgmt_sw_profiles if p and p.get("_create_user") != "nsx_policy"]
-            plcy_profile_ids = [p.get("id") for p in policy_sw_profiles if p]
-
-            not_migrated_ids = [p_id for p_id in mgmt_profile_ids if p_id not in plcy_profile_ids]
-
-            if len(not_migrated_ids) > 0:
-                not_migrated = [(p.get("id"), p.get("resource_type"), p.get("_system_owned"))
-                                for p in mgmt_sw_profiles if p and p.get("id") in not_migrated_ids]
-                # system owned profiles
-                not_migrated_sys_owned = [
-                    (p_id, p_type) for p_id, p_type, sys_owned in not_migrated
-                    if sys_owned and p_type in MigrationPayload.SUPPORTED_RESOURCE_TYPES]
-
-                # non system owned profiles
-                not_migrated_not_sys_owned = [(p_id, p_type)
-                                            for p_id, p_type, sys_owned in not_migrated
-                                              if not sys_owned and p_type in MigrationPayload.SUPPORTED_RESOURCE_TYPES]
-
-        return not_migrated_sys_owned, not_migrated_not_sys_owned
-
-    def _promote_switching_profiles(self):
-        self._raise_for_migration_disabled()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
-        LOG.info(f"Not migrated to policy switching profiles: {not_migrated_sys_owned, not_migrated_not_sys_owned}")
-        if len(not_migrated_sys_owned) > 0:
-            self.migr_provider.migrate_sw_profiles(not_migrated_sys_owned)
-        if len(not_migrated_not_sys_owned) > 0:
-            self.migr_provider.migrate_sw_profiles(not_migrated_not_sys_owned)
-
-    def _promote_switch(self, switch_meta: ResourceMeta) -> p_prvdr.PolicyResourceMeta:
-        self._raise_for_migration_disabled()
-        p_builder = PayloadBuilder()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
-
-        p_builder\
-            .sw_profiles(not_migrated_not_sys_owned)\
-            .sw_profiles(not_migrated_sys_owned)\
-            .switch(switch_id=switch_meta.id)
-
-        self.migr_provider.migrate_bulk(payload=p_builder.build())
-        return self.plcy_provider.await_network_after_promotion(metadata=switch_meta)
-
-    def _promote_port(self, net_id: str or None, port: dict):
-        self._raise_for_migration_disabled()
-        port_id = port.get("id")
-        p_builder = PayloadBuilder()
-        not_migrated_sys_owned, not_migrated_not_sys_owned = self._get_notmigrated_switching_profiles()
-
-        p_builder\
-            .sw_profiles(not_migrated_not_sys_owned)\
-            .sw_profiles(not_migrated_sys_owned)\
-            .ports([port_id])
-        if net_id:
-            p_builder.switch(switch_id=net_id)
-
-        self.migr_provider.migrate_bulk(payload=p_builder.build())
-
-    def _raise_for_migration_disabled(self):
-        if not self.force_mp_to_policy:
-            raise Exception("MP-to-Policy migration is disabled.")
+    def _dryrun(self):
+        self.AGE = int(time.time())
+        # Initializing metadata
+        self.all(dryrun=True)

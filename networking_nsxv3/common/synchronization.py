@@ -1,22 +1,21 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
-import collections
-import functools
-import heapq
-import json
-import os
-import time
-from enum import Enum
+import enum
 
-from oslo_config import cfg
-from oslo_log import log as logging
+import eventlet
+eventlet.monkey_patch()
 
 import networking_nsxv3.prometheus.exporter as EXPORTER
+from oslo_log import log as logging
+from oslo_config import cfg
+from enum import Enum
+import time
+import json
+import heapq
+import functools
+import collections
 
-if not os.environ.get('DISABLE_EVENTLET_PATCHING'):
-    import eventlet
-    eventlet.monkey_patch()
 
 LOG = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ INFINITY = -1
 TIMEOUT = 5
 
 
-class Priority(Enum):
+class Priority(enum.IntEnum):
     """ The acceptable by the Runner.class priorities """
     HIGHEST = 0
     HIGHER = 1
@@ -174,9 +173,9 @@ class Runner(object):
                     self._passive.task_done()
                 job = self._active.get(block=True, timeout=TIMEOUT)
                 LOG.info(MESSAGE.format("Processing", job.idn, Priority(job.priority).name, job.fn.__name__))
-                self._workers.spawn(job.fn, job.idn)
+                self._workers.spawn(job.fn, job.idn)#.wait()
                 self._active.task_done()
-            except eventlet.queue.Empty as e:
+            except eventlet.queue.Empty:
                 LOG.info("No activity for the last {} seconds.".format(TIMEOUT))
                 LOG.info("Sizes Queue[Active=%s, Passive=%s], Jobs=%s",
                     self.active(), self.passive(), self._workers.running())
@@ -198,7 +197,8 @@ class Runner(object):
     def start(self):
         """ Initialize the runner instance """
         self._state = "started"
-        eventlet.greenthread.spawn_n(self._start)
+        eventlet.greenthread.spawn(self._start)
+        eventlet.sleep(0)
 
     def stop(self):
         """ Gracefully terminates the runner instance """
@@ -223,6 +223,10 @@ class Runner(object):
 
     def wait_passive_jobs_completion(self):
         self._passive.join()
+
+    def wait_all_workers(self):
+        eventlet.sleep(0)
+        self._workers.waitall()
 
 
 class Scheduler(object):

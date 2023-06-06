@@ -3,7 +3,7 @@ import time
 import netaddr
 from oslo_config import cfg
 from oslo_log import log as logging
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Set, Tuple
 
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
@@ -136,9 +136,14 @@ class Meta(object):
 
     def add(self, resource: Resource) -> ResourceMeta:
         old_meta = self.meta.get(resource.os_id)
+        if resource.type == "LogicalSwitch" and old_meta:
+            LOG.critical("Resource type: %s, OS_ID: %s, ID: %s, Meta: %s", resource.type, resource.os_id, resource.id, resource.meta)
+            # self.meta[resource.os_id] = resource.meta
+            # return resource.meta
+        
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
-            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.os_id)
+            LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.id)
         elif not resource.os_id:
             LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
         else:
@@ -201,11 +206,13 @@ class Provider(abc.ABC):
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
 
-    def _load_zone(self):
-        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
-        for zone in self.client.get_all(path="/api/v1/transport-zones"):
-            if zone.get("display_name") == self.zone_name:
-                return zone.get("id")
+    @abc.abstractmethod
+    def _load_zone(self) -> str:
+        """Load Transport Zone ID
+
+        Returns:
+            str: Transport Zone ID
+        """
 
     def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
         provider_rule = dict()
@@ -282,7 +289,7 @@ class Provider(abc.ABC):
         """
 
     @abc.abstractmethod
-    def outdated(self, resource_type: str, os_meta: dict) -> Tuple[set, set]:
+    def outdated(self, resource_type: str, os_meta: Dict[str, dict]) -> Tuple[Set[str], Set[str]]:
         """
         Get outdated OpenStack IDs for a resource
         :resource_type: str -- One of the RESOURCE types

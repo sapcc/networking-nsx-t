@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import random
 import sys
@@ -26,12 +29,6 @@ try:
 except ImportError:
     from neutron.agent.common import agent_config
 
-# Eventlet Best Practices
-# https://specs.openstack.org/openstack/openstack-specs/specs/eventlet-best-practices.html
-if not os.environ.get("DISABLE_EVENTLET_PATCHING"):
-    import eventlet
-
-    eventlet.monkey_patch()
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -140,7 +137,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         super(NSXv3Manager, self).__init__()
 
         self.mngr_provider = provider_nsx_mgmt.Provider()
-        self.plcy_provider = provider_nsx_policy.Provider(zone_id=self.mngr_provider.zone_id)
+        self.plcy_provider = provider_nsx_policy.Provider()
 
         self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
@@ -176,7 +173,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         return {"active": self.runner.active(), "passive": self.runner.passive()}
 
     def reload(self):
-        initial_delay = int(random.random() * nsxv3_constants.NSXV3_AGENT_SYNC_SKEW)
+        initial_delay = int(random.random() * cfg.CONF.AGENT.sync_skew)
         if self.synchronization:
             self.synchronizer.start(interval=cfg.CONF.AGENT.polling_interval, initial_delay=initial_delay)
 

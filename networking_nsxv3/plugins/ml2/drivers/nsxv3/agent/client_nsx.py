@@ -1,17 +1,18 @@
-import logging
-import re
-import time
-import uuid
-
 import eventlet
-import requests
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.common.synchronization import Scheduler
-from oslo_config import cfg
-from oslo_log import log as logging
-from oslo_utils import versionutils
-from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
+eventlet.monkey_patch()
+
 from requests import Response
+from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
+from oslo_utils import versionutils
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.common.synchronization import Scheduler
+from networking_nsxv3.common.locking import LockManager
+import requests
+import uuid
+import time
+import re
+
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class Singleton(type):
 class RetryPolicy(object):
 
     def _create_sentry_fingerprint(path: str):
-        #check if uuid is part of path -> replace with {}
+        # check if uuid is part of path -> replace with {}
         for sub in path.split("/"):
             try:
                 uuid.UUID(sub)
@@ -74,12 +75,11 @@ class RetryPolicy(object):
             sentry_extra = {
 
             }
-
+            response = None
             for attempt in range(1, until + 1):
                 try:
                     response = func(self, *args, **kwargs)
-                    #LOG.debug("REQUEST: %s STATUS: %s, RESPONSE.CONTENT %s", requestInfo, response.status_code, response.content)
-
+                    # LOG.debug("REQUEST: %s STATUS: %s, RESPONSE.CONTENT %s", requestInfo, response.status_code, response.content)
 
                     if response.status_code in [404]:
                         LOG.warning("Warning Code=%s Message=%s", response.status_code, response.content)
@@ -117,8 +117,8 @@ class RetryPolicy(object):
                         break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
-                    sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs["path"]),
-                                                   response.request.method]
+                    m = response.request.method if response else "UNKNOWN"
+                    sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs["path"]), m]
                     LOG.error("Request={} Response={}".format(request_info, last_err), extra=sentry_extra)
 
                 msg = pattern.format(attempt, until, pause, method)
@@ -184,6 +184,9 @@ class Client(metaclass=Singleton):
             requests.packages.urllib3.disable_warnings()
 
         self._version = None
+
+    def __del__(self) -> None:
+        self._session.close()
 
     @property
     def version(self, refresh=False):

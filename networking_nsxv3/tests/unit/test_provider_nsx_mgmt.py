@@ -24,9 +24,6 @@ def get_url(path):
     return "https://nsxm-l-01a.corp.local:443{}".format(path)
 
 
-# TODO - replace intest mock data with the content from the dataset
-
-
 class TestProviderMgmt(base.BaseTestCase):
 
     def get_result_by_name(self, payload, display_name):
@@ -48,7 +45,7 @@ class TestProviderMgmt(base.BaseTestCase):
         logging.setup(cfg.CONF, "demo")
         logging.set_defaults(default_log_levels=["networking_nsxv3=DEBUG", "root=DEBUG"])
 
-        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.0.0")
+        self.inventory = Inventory("https://nsxm-l-01a.corp.local:443", version="3.2.2")
         r = responses
 
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:

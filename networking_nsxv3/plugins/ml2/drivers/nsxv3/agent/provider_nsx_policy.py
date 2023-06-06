@@ -1,24 +1,26 @@
+import eventlet
+eventlet.monkey_patch()
+
+import ipaddress
+from networking_nsxv3.prometheus import exporter
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.common.constants import *
+from oslo_utils import excutils
+from oslo_log import log as logging
+from oslo_config import cfg
 import functools
 import json
 import re
 from requests.exceptions import HTTPError
 import uuid
 import functools
-from typing import Callable, List, Set
+from typing import Callable, Dict, List, Set
 
-import eventlet
-from oslo_config import cfg
-from oslo_log import log as logging
-from oslo_utils import excutils
 
-from networking_nsxv3.common.constants import *
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
-from networking_nsxv3.prometheus import exporter
-import ipaddress
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -65,6 +67,7 @@ class API(provider_nsx_mgmt.API):
     RULES_CREATE = RULES + "/{}"
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
+    SEARCH_Q_TRANSPORT_ZONES = "resource_type:PolicyTransportZone AND display_name:{}"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
     SEARCH_Q_QOS_PROFILES = {
@@ -104,22 +107,24 @@ class API(provider_nsx_mgmt.API):
 class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
     def __init__(self, id, unique_id, rev, age, revision, last_modified_time,
                  rules,
-                 sg_members,
+                 static_sg_members,
                  sg_cidrs,
                  path,
                  parent_path,
                  resource_type,
-                 marked_for_delete
+                 marked_for_delete,
+                 real_id=None
                  ):
         super(PolicyResourceMeta, self).__init__(id, rev, age, revision, last_modified_time)
         self.rules: list = rules
-        self.sg_members: List[str] = sg_members
+        self.sg_members: List[str] = static_sg_members
         self.sg_cidrs: List[str] = sg_cidrs
         self.path: str = path
         self.unique_id: str = unique_id
         self.parent_path: str = parent_path
         self.resource_type: str = resource_type
         self.marked_for_delete: bool = marked_for_delete
+        self.real_id: str = real_id
 
 
 class Resource(provider_nsx_mgmt.Resource):
@@ -128,19 +133,19 @@ class Resource(provider_nsx_mgmt.Resource):
 
     @property
     def is_managed(self):
-        if self.resource.get("id").startswith(API.POLICY_MNG_PREFIX):
+        if self.resource.get("_system_owned", False):
             return False
-        if not self.resource.get("locked"):
-            user = self.resource.get("_create_user")
-            if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
-                return True
-
-            if self.type == "SegmentPort":
-                att_id = self.resource.get("attachment", {}).get("id")
-                # TODO: more concrete diferentiation
-                if att_id:
-                    return True
-        return False
+        if self.resource.get("_protection", "NOT_PROTECTED") != "NOT_PROTECTED":
+            return False
+        if self.type in ["SecurityPolicy", Provider.PORT]:
+            # rule name is a uuid
+            if not self.has_valid_os_uuid:
+                return False
+        if self.type == Provider.NETWORK:
+            # os_id of a segment is expected to be a number
+            if not self.os_id.isnumeric():
+                return False
+        return True
 
     @property
     def os_id(self):
@@ -170,10 +175,11 @@ class Resource(provider_nsx_mgmt.Resource):
         tags = self.tags
 
         return PolicyResourceMeta(
-            id=self.id,
+            real_id=self.id,
+            id=self.id.split(API.POLICY_MNG_PREFIX)[1] if str(self.id).find(API.POLICY_MNG_PREFIX) == 0 else self.id,
             unique_id=self.resource.get("unique_id"),
-            rev=tags.get(NSXV3_REVISION_SCOPE),
-            age=tags.get(NSXV3_AGE_SCOPE),
+            rev=tags.get(NSXV3_REVISION_SCOPE, 0),
+            age=tags.get(NSXV3_AGE_SCOPE, 0),
             revision=self.resource.get("_revision"),
             last_modified_time=self.resource.get("_last_modified_time"),
             path=self.path,
@@ -183,7 +189,7 @@ class Resource(provider_nsx_mgmt.Resource):
             # Only Firewall Security Policies have the next prop (Provider.SG_RULES)
             rules=sg_rules,
             # Only Groups have the next props (Provider.SG_MEMBERS)
-            sg_members=sg_members,
+            static_sg_members=sg_members,
             sg_cidrs=sg_cidrs
         )
 
@@ -276,6 +282,7 @@ class Payload(provider_nsx_mgmt.Payload):
         p_qid = provider_port.get("qos_policy_id")
         sec_groups = os_port.get("security_groups")
         sgs = {NSXV3_SECURITY_GROUP_SCOPE: sec_groups} if sec_groups else dict()
+        path = provider_port.get("path") or API.SEGMENT_PORT_PATH.format(provider_port["nsx_segment_real_id"], port_id)
 
         segment_port = {
             "id": port_id,
@@ -289,8 +296,8 @@ class Payload(provider_nsx_mgmt.Payload):
             },
             "address_bindings": os_port.get("address_bindings"),
             "tags": self.tags(os_port, more=sgs),
-            "parent_path": API.SEGMENT_PATH.format(provider_port["nsx_segment_id"]),
-            "path": API.SEGMENT_PORT_PATH.format(provider_port["nsx_segment_id"], port_id),
+            "parent_path": API.SEGMENT_PATH.format(provider_port["nsx_segment_real_id"]),
+            "path": path,
             "_revision": provider_port.get("_revision")
         }
 
@@ -371,7 +378,7 @@ class Payload(provider_nsx_mgmt.Payload):
         direction = os_rule["direction"]
 
         def group_ref(group_id):
-            return group_id if group_id == "ANY" else "/infra/domains/default/groups/" + group_id
+            return "ANY" if (not group_id or group_id == "ANY") else API.GROUP_PATH.format(group_id)
 
         current = ["ANY"]
         if os_rule.get("remote_group_id"):
@@ -424,9 +431,9 @@ class Payload(provider_nsx_mgmt.Payload):
 
 class Provider(base.Provider):
 
-    SEGM_QOS = "Segment QoS"
-    SEGMENT = "Segment"
-    SEGM_PORT = "SegmentPort"
+    QOS = "Segment QoS"
+    NETWORK = "Segment"
+    PORT = "SegmentPort"
     RESCHEDULE_WARN_MSG = "Resource:%s with ID:%s deletion is rescheduled due to dependency."
 
     def __init__(self, payload: Payload = Payload(), zone_id: str = ""):
@@ -440,6 +447,12 @@ class Provider(base.Provider):
         if self.client.version >= (3, 0):
             self._ensure_default_l3_policy()
         self._setup_default_app_drop_logged_section()
+
+    def _load_zone(self):
+        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
+        for zone in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.zone_name)}):
+            if zone.get("display_name") == self.zone_name:
+                return zone.get("id")
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(path=API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
@@ -480,9 +493,9 @@ class Provider(base.Provider):
         mp = base.MetaProvider
 
         return {
-            Provider.SEGMENT: mp(API.SEGMENTS),
-            Provider.SEGM_PORT: mp(API.SEGMENT_PORTS),
-            Provider.SEGM_QOS: mp(API.QOS_PROFILES),
+            Provider.NETWORK: mp(API.SEGMENTS),
+            Provider.PORT: mp(API.SEGMENT_PORTS),
+            Provider.QOS: mp(API.QOS_PROFILES),
             Provider.SG_MEMBERS: mp(API.GROUPS),
             Provider.SG_RULES: mp(API.POLICIES),
             Provider.SG_RULES_REMOTE_PREFIX: mp(API.GROUPS)
@@ -503,8 +516,8 @@ class Provider(base.Provider):
         provider_sg = {"scope": os_id, "rules": provider_rules, "_revision": meta.revision if meta else None}
         return provider_sg
 
-    def _fetch_rules_from_nsx(self, meta):
-        rulez = self.client.get_all(path=API.RULES.format(meta.id))
+    def _fetch_rules_from_nsx(self, meta: PolicyResourceMeta):
+        rulez = self.client.get_all(path=API.RULES.format(meta.real_id))
         return {Resource(r).os_id: r for r in rulez}
 
     # overrides
@@ -527,7 +540,7 @@ class Provider(base.Provider):
     def _is_valid_vlan(self, res: Resource) -> bool:
         ls_id: str
         ls: Resource
-        for ls_id, ls in self._metadata[Provider.SEGMENT].meta.meta.items():
+        for ls_id, ls in self._metadata[Provider.NETWORK].meta.meta.items():
             if ls.id in res.resource.get("parent_path") and ls_id.isnumeric():
                 return True
         return False
@@ -590,7 +603,6 @@ class Provider(base.Provider):
                 res = self.client.put(path=path, data=data)
                 res.raise_for_status()
                 data = res.json()
-                data["id"] = os_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
                 self._wait_to_realize(resource_type, os_id)
@@ -604,7 +616,6 @@ class Provider(base.Provider):
                 res = self.client.put(path=path, data=data)
                 res.raise_for_status()
                 data = res.json()
-                data["id"] = os_id
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
                 self._wait_to_realize(resource_type, os_id)
@@ -614,8 +625,8 @@ class Provider(base.Provider):
     def _delete_segment_port(self, os_port: dict, port_meta: PolicyResourceMeta) -> None:
         os_id = os_port.get("id")
         nsx_segment_id = port_meta.parent_path.replace(API.SEGMENT_PATH.format(""), "")
-        target_o = {"id": nsx_segment_id, "resource_type": Provider.SEGMENT}
-        resp = self.client.get(API.SEGMENT_PORT.format(nsx_segment_id, port_meta.id))
+        target_o = {"id": nsx_segment_id, "resource_type": Provider.NETWORK}
+        resp = self.client.get(API.SEGMENT_PORT.format(nsx_segment_id, port_meta.real_id))
         if resp.ok:
             child_o = resp.json()
             child_o["marked_for_delete"] = True
@@ -626,11 +637,11 @@ class Provider(base.Provider):
                 err_msg = str(err_json.get("error_message"))
                 LOG.debug(f"{err_msg}")
                 match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
-                LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SEGM_PORT, os_id)
+                LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.PORT, os_id)
                 if match:
                     self._realize_sg_members_after_port_deletion(child_o, match)
 
-            return self.metadata_delete(Provider.SEGM_PORT, os_id)
+            return self.metadata_delete(Provider.PORT, os_id)
 
     def _realize_sg_members_after_port_deletion(self, child_o, match):
         refs = match.groups()[0].split(",")
@@ -677,12 +688,13 @@ class Provider(base.Provider):
     # overrides
     def port_realize(self, os_port: dict, delete=False):
         port_id = os_port.get("id")
-        sg_meta = self.metadata(Provider.SEGM_PORT, port_id)
-        if not sg_meta:
-            raise RuntimeError("Segment ports must be created with Manager API first.")
+        port_meta = self.metadata(Provider.PORT, port_id)
 
         if delete:
-            return self._delete_segment_port(os_port, sg_meta)
+            if not port_meta:
+                LOG.info("Segment Port:%s already deleted.", port_id)
+                return
+            return self._delete_segment_port(os_port, port_meta)
 
         # Realize the port via the Policy API
         provider_port = dict()
@@ -692,17 +704,17 @@ class Provider(base.Provider):
             # Child port always created internally
             parent_meta, nsx_port = self.get_port(parent_port_id)
             if parent_meta:
-                provider_port["parent_id"] = parent_meta.id
-                provider_port["id"] = sg_meta.id
+                provider_port["parent_id"] = parent_meta.real_id
             else:
                 LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s.", parent_port_id, port_id)
                 return
+
+        if port_meta:
+            provider_port["id"] = port_meta.real_id
+            provider_port["path"] = port_meta.path
+            provider_port["_revision"] = port_meta.revision
         else:
-            if sg_meta:
-                provider_port["id"] = sg_meta.id
-                provider_port["_revision"] = sg_meta.revision
-            else:
-                LOG.warning("Not found. Segment Port: %s", port_id)
+            LOG.warning("Not found. Segment Port: %s", port_id)
 
         os_qos_id = os_port.get("qos_policy_id")
 
@@ -710,58 +722,70 @@ class Provider(base.Provider):
             # QoS policy attached on creation by the Manager API
             pass
 
-        nsx_segment_id = os_port.get("vif_details").get("external-id")
+        segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details").get("segmentation_id"))
+        if not segment_meta:
+            raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
 
-        if not nsx_segment_id:
-            segment_meta = self.metadata(Provider.SEGMENT, os_port.get("vif_details").get("segmentation_id"))
-            if not segment_meta:
-                raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
-            nsx_segment_id = segment_meta.id
+        provider_port["nsx_segment_id"] = segment_meta.unique_id
+        provider_port["nsx_segment_real_id"] = segment_meta.real_id
 
-        provider_port["nsx_segment_id"] = nsx_segment_id
-
+        # If the port has more than the maximum number of security groups allowed as tags,
+        # we need to realize the port with empty security groups first,
+        # and then add the port to the security groups as a static member.
         port_sgs = os_port.get("security_groups")
         if len(port_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port:
             os_port["security_groups"] = None
-            port_meta = self._realize(Provider.SEGM_PORT, False, self.payload.segment_port, os_port, provider_port)
-            return self.realize_sg_members_after_port_realization(port_sgs, port_meta)
 
-        return self._realize(Provider.SEGM_PORT, False, self.payload.segment_port, os_port, provider_port)
+            # In case the port already exists, realize the static group membership before the port is updated
+            if port_meta:
+                self.realize_sg_static_members(port_sgs, port_meta)
 
-    def realize_sg_members_after_port_realization(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
+            # Realize the port with empty security groups tags
+            updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
+
+            # If the port was not existing, realize the static group membership after the port was created
+            return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
+
+        return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
+
+    def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
         for sg_id in port_sgs:
             with LockManager.get_lock("member-{}".format(sg_id)):
                 sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
                 if not sg_meta:
-                    raise RuntimeError(f"Not found SG Metadata for security_group: {sg_id}")
+                    # Realize the Security Group if it does not exist with empty members
+                    sg_meta = self.sg_members_realize({"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
                 if not port_meta.path:
-                    raise RuntimeError(f"Not found path in Metadata for port: {port_meta.id}")
+                    raise RuntimeError(f"Not found path in Metadata for port: {port_meta.real_id}")
                 if port_meta.path not in sg_meta.sg_members:
                     sg_meta.sg_members.append(port_meta.path)
                     self.sg_members_realize({"id": sg_id,
                                              "cidrs": sg_meta.sg_cidrs,
                                              "member_paths": sg_meta.sg_members,
-                                             "revision_number": "0"})
+                                             "revision_number": sg_meta.revision or 0})
 
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
-        if port and not port.get("id").startswith(API.POLICY_MNG_PREFIX):
-            return self.metadata_update(Provider.SEGM_PORT, port), port
-        elif port:
-            return None, port
+        if port:
+            return self.metadata_update(Provider.PORT, port), port
         return None, None
 
     def get_port_meta_by_ids(self, port_ids: Set[str]) -> Set[PolicyResourceMeta]:
         segment_ports = set()
-        with LockManager.get_lock(self.SEGM_PORT):
-            keys = set(self._metadata[self.SEGM_PORT].meta.keys())
-            segment_ports.update([self._metadata[self.SEGM_PORT].meta.meta.get(id)
+        with LockManager.get_lock(self.PORT):
+            keys = set(self._metadata[self.PORT].meta.keys())
+            segment_ports.update([self._metadata[self.PORT].meta.meta.get(id)
                                  for id in keys.intersection(port_ids)])
         return segment_ports
 
     # overrides
     def network_realize(self, segmentation_id: int) -> PolicyResourceMeta:
-        return self.metadata(Provider.SEGMENT, segmentation_id)
+        segment = self.metadata(Provider.NETWORK, segmentation_id)
+        if not segment or segment.real_id is None:
+            os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}
+            provider_net = {"transport_zone_id": self.zone_id}
+            segment = self._realize(Provider.NETWORK, False, self.payload.segment, os_net, provider_net)
+        return segment
 
     def get_non_default_switching_profiles(self) -> list:
         prfls = self.client.get_all(path=API.SEARCH_QUERY, params=API.SEARCH_Q_ALL_SEG_PROFILES)
@@ -783,11 +807,11 @@ class Provider(base.Provider):
 
     def qos_realize(self, qos: dict, delete=False):
         qos_id = qos.get("id")
-        meta = self.metadata(Provider.SEGM_QOS, qos_id)
+        meta = self.metadata(Provider.QOS, qos_id)
         if not meta:
             return None
-        provider_o = {"id": meta.id, "_revision": meta.revision}
-        return self._realize(Provider.SEGM_QOS, delete, self.payload.qos, qos, provider_o)
+        provider_o = {"id": meta.real_id, "_revision": meta.revision}
+        return self._realize(Provider.QOS, delete, self.payload.qos, qos, provider_o)
 
     def sg_members_realize(self, os_sg: dict, delete=False):
         os_id = os_sg.get("id")
@@ -827,10 +851,10 @@ class Provider(base.Provider):
         with provider.meta:
             LOG.info("[%s] Fetching Policy NSX-T metadata for Type:%s.", self.provider, resource_type)
             endpoint = provider.endpoint
-            if resource_type == Provider.SEGM_PORT:
+            if resource_type == Provider.PORT:
                 endpoint = API.SEARCH_QUERY
                 params = API.SEARCH_Q_SEG_PORTS
-            if resource_type == Provider.SEGM_QOS:
+            if resource_type == Provider.QOS:
                 endpoint = API.SEARCH_QUERY
                 params = API.SEARCH_Q_QOS_PROFILES
             resources = self.client.get_all(path=endpoint, params=params)
@@ -840,13 +864,11 @@ class Provider(base.Provider):
                     res = Resource(o)
                     if not res.is_managed:
                         continue
-                    if resource_type == Provider.SG_RULES and not res.has_valid_os_uuid:
-                        continue
                     if resource_type == Provider.SG_MEMBERS and NSXV3_REVISION_SCOPE not in res.tags:
                         continue
                     if resource_type == Provider.SG_RULES_REMOTE_PREFIX and NSXV3_REVISION_SCOPE in res.tags:
                         continue
-                    if resource_type == Provider.SEGM_PORT and not self._is_valid_vlan(res):
+                    if resource_type == Provider.PORT and not self._is_valid_vlan(res):
                         continue
 
                     provider.meta.add(res)
@@ -855,7 +877,7 @@ class Provider(base.Provider):
         with LockManager.get_lock(resource_type):
             self._metadata[resource_type].meta.rm(os_id)
 
-    def outdated(self, resource_type: str, os_meta: dict):
+    def outdated(self, resource_type: str, os_meta: Dict[str, dict]):
         self.metadata_refresh(resource_type)
 
         if resource_type == Provider.SG_RULES:
@@ -863,41 +885,41 @@ class Provider(base.Provider):
 
         meta = self._metadata.get(resource_type).meta
 
-        k1 = set(os_meta.keys())
-        k2 = set(meta.keys())
+        os_meta_ids = set(os_meta.keys())
+        nsx_meta_ids = set(meta.keys())
 
         # Treat both new and orphaned as outdated, but filter out orphaned ports not yet to be deleted
-        outdated = k1.difference(k2)
-        orphaned = k2.difference(k1)
+        outdated = os_meta_ids.difference(nsx_meta_ids)  # for creation
+        orphaned = nsx_meta_ids.difference(os_meta_ids)  # for deletion
 
         # Don't count orphans for members, we don't know yet if they are really orphaned
         if resource_type == Provider.SG_MEMBERS:
-            orphaned = set()
+            orphaned: Set[str] = set()
 
         # Remove Ports not yet exceeding delete timeout
-        if resource_type == Provider.SEGM_PORT:
-            orphaned = [
+        if resource_type == Provider.PORT:
+            orphaned = set([
                 orphan for orphan in orphaned
                 if self.orphan_ports_tmout_passed(meta.get(orphan).last_modified_time / 1000)
-            ]
+            ])
 
         outdated.update(orphaned)
 
         # Add revision outdated
-        for id in k1.intersection(k2):
+        for id in os_meta_ids.intersection(nsx_meta_ids):
             if not meta.get(id).age or str(os_meta[id]) != str(meta.get(id).rev):
                 meta.get(id)
-                outdated.add(id)
+                outdated.add(id)  # for update
 
         LOG.info(
             "[%s] The number of outdated resources for Type:%s Is:%s.", self.provider, resource_type, len(outdated)
         )
         LOG.debug("Outdated resources of Type:%s Are:%s", resource_type, outdated)
 
-        current = k2.difference(outdated)
-        if resource_type == Provider.SEGM_PORT:
+        current = nsx_meta_ids.difference(outdated)
+        if resource_type == Provider.PORT:
             # Ignore ports that are going to be deleted anyway (and therefor not existing in neutron)
-            current = set([_id for _id in current if _id in os_meta])
+            current = set([_id for _id in current if _id in os_meta_ids])
         return outdated, current
 
     def age(self, resource_type: str, os_ids: List[str]):
@@ -938,14 +960,6 @@ class Provider(base.Provider):
             for service in [sv for sv in services if not sv.get("is_default")]:
                 sanitize.append((service.get("id"), remove_orphan_service))
         return sanitize
-
-    def await_network_after_promotion(self, metadata: base.ResourceMeta) -> PolicyResourceMeta or None:
-        try:
-            o = self.client.get_unique_with_retry(path=API.SEGMENT.format(metadata.id))
-            return self.metadata_update(Provider.SEGMENT, o)
-        except Exception as e:
-            LOG.error(e)
-            return None
 
     def set_policy_logging(self, log_obj, enable_logging):
         LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")
