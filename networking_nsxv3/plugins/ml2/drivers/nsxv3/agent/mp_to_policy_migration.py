@@ -145,6 +145,10 @@ class Provider(object):
         """ Get all ports from NSX-T, filter ports having more than 29 tags
             and remove the tag 'revision_number' from them in order to be able to migrate them.
         """
+        if not cfg.CONF.AGENT.ports_tag_number_decrease_workaround:
+            LOG.warning("Skipping workaround for ports having more than 29 tags.")
+            return
+        
         ports = self.client.get_all(path=API.LOGICAL_PORTS)
         filtered_ports = [port for port in ports if len(port.get("tags", [])) > 29]
         LOG.warning(f"Found {len(filtered_ports)} ports having more than 29 tags.")

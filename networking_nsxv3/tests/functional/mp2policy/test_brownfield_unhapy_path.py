@@ -16,6 +16,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
     MIGR_INVENTORY = None
     TEST_ENV = None
+    TEST_CONFIG = cfg.CONF
 
     @classmethod
     def setUpClass(cls):
@@ -29,10 +30,12 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         LOG.info(f"Activate migration on driver side")
 
-        cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
-        cfg.CONF.set_override("continue_on_failed_promotions", False, "AGENT")
-        cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
-        cfg.CONF.set_override("polling_interval", 20, "AGENT")
+        cls.TEST_CONFIG.set_override("force_mp_to_policy", True, "AGENT")
+        cls.TEST_CONFIG.set_override("ports_tag_number_decrease_workaround", False, "AGENT")
+        cls.TEST_CONFIG.set_override("continue_on_failed_promotions", False, "AGENT")
+        cls.TEST_CONFIG.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
+        cls.TEST_CONFIG.set_override("polling_interval", 10, "AGENT")
+        cls.TEST_CONFIG.set_override("sync_skew", 0, "AGENT")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
             num_nets=5,  # 100

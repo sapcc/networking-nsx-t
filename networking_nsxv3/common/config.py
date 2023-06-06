@@ -58,6 +58,11 @@ agent_opts = [
         help="Force NSX-T Manager API objects to be promoted to Policy API objects."
     ),
     cfg.BoolOpt(
+        'ports_tag_number_decrease_workaround',
+        default=True,
+        help="Workaround for NSX-T MP-to-Policy API bug. Decrease the number of tags on the SwitchPorts with 1 prior to promotion."
+    ),
+    cfg.BoolOpt(
         'continue_on_failed_promotions',
         default=False,
         help="Continue on failed MP-to-Policy Object Promotions. Used for testing purposes. Not recomended for production use."
