@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from networking_nsxv3.tests.functional.base_nsxv3_api import BaseNsxTest
 from oslo_log import log as logging
 from oslo_config import cfg
