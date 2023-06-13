@@ -1,23 +1,25 @@
 import eventlet
 eventlet.monkey_patch()
 
-from oslo_log import log as logging
-from oslo_config import cfg
-from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import\
-    provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES
-from typing import Callable, List, Set, Tuple
-import itertools
-import json
 import time
+import json
+import itertools
+from typing import Callable, List, Set, Tuple
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES, NSXV3_MIGRATION_SUCCESS_TAG, NSXV3_MP_MIGRATION_SCOPE
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider,\
+    provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
+from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
+from oslo_config import cfg
+from oslo_log import log as logging
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
 class AgentRealizer(object):
+
+    MIGR_IN_PROGRESS_MSG = "Migration is in progress. Skipping '{}'."
 
     def __init__(
         self,
@@ -34,19 +36,23 @@ class AgentRealizer(object):
 
         self.mngr_provider = mngr_provider
         self.plcy_provider = plcy_provider
+        self.migration_tracker = provider.MigrationTracker(self.plcy_provider)
 
-        self.PAUSE_REALIZATION = False
+
         self.AGE = int(time.time())
 
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
+
+        self.mp_to_policy_completed = any([t for t in self.plcy_provider.zone_tags if t.get(
+            "scope") == NSXV3_MP_MIGRATION_SCOPE and t.get("tag") == NSXV3_MIGRATION_SUCCESS_TAG])
 
         # Enable MP-to-Policy migration if force_mp_to_policy=True
         # It is used as a flag for using Policy API completely or not
         # in case migration canceled or failed this flag will be False
         # TODO: After completing the transition to NSX Policy API (ONLY if successful!), deprecate this flag
-        self.USE_POLICY_API = self._check_mp2policy_support()
+        self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
 
-        if self.USE_POLICY_API:
+        if self.USE_POLICY_API and not self.mp_to_policy_completed:
             self._try_start_migration()
         else:
             self._dryrun()
@@ -83,8 +89,8 @@ class AgentRealizer(object):
 
         :force: bool -- if True concider all objects as outdated
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping synchronization ...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('synchronization')}")
             return
         with LockManager.get_lock("all"):
             if self.kpi().get("passive") > 0:
@@ -111,7 +117,8 @@ class AgentRealizer(object):
             qos_outdated, qos_current = provider.outdated(provider.QOS, qos_meta)
 
             # There is not way to revision group members but can 'age' them
-            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
+            sgm_outdated, sgm_maybe_orphans = self.plcy_provider.outdated(
+                provider.SG_MEMBERS, {sg: 0 for sg in sg_meta})
             LOG.info("Inventory metadata have been refreshed.")
 
             if dryrun:
@@ -188,8 +195,8 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Security Group
         :reference: -- if True will create the group if unknown by the provider
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping security_group_members realization ...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_members realization')}")
             return
         with LockManager.get_lock("member-{}".format(os_id)):
             pp = self.plcy_provider
@@ -213,8 +220,8 @@ class AgentRealizer(object):
         Realization will happen only if the group has active ports on the host.
         :os_id: -- OpenStack ID of the Security Group
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping security_group_rules realization ...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_rules realization')}")
             return
         with LockManager.get_lock("rules-{}".format(os_id)):
             os_sg = self.rpc.get_security_group(os_id)
@@ -244,8 +251,8 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Port
         :network_meta: -- NSX Switch metadata
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping precreate_port realization...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
@@ -263,8 +270,8 @@ class AgentRealizer(object):
         Realize port state.
         :os_id: -- OpenStack ID of the Port
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping port realization ...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
@@ -282,8 +289,8 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the QoS Policy
         :reference: -- If True will create policy if unknown by the provider
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping qos realization ...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('qos realization')}")
             return
         with LockManager.get_lock("qos-{}".format(os_id)):
             # TODO: mngr has to be removed after POLICY is fully supported
@@ -303,8 +310,8 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Network Segmentation ID
         :return: -- provider ID for the network
         """
-        if self.PAUSE_REALIZATION:
-            LOG.info(f"MP-to-Policy Migration is in progress. Skipping network realization ...")
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('network realization')}")
             return {}
         with LockManager.get_lock("network-{}".format(os_seg_id)):
             # TODO: mngr has to be removed after POLICY is fully supported
@@ -381,35 +388,37 @@ class AgentRealizer(object):
                 return self._await_running_migration()
             raise RuntimeWarning(f"MP-to-Policy migration is in not supported by the agent state '{migr_state}'.")
         except Exception as e:
-            self.PAUSE_REALIZATION = False
+            self.migration_tracker.set_migration_in_progress(False)
             self.USE_POLICY_API = False
             LOG.error(f"Error while starting MP-to-Policy migration: {str(e)}")
             self._dryrun()
 
     def _await_running_migration(self):
-        self.PAUSE_REALIZATION = True
+        self.migration_tracker.set_migration_in_progress(True)
         eventlet.greenthread.spawn(self.migr_provider.migrate_generic, only_await=True).link(self._migration_handler)
 
     def _trigger_new_migration(self):
         migr_pre = self.migr_provider.get_migration_stats(pre=True)
         LOG.info(f"MP-to-Policy migration pre-check:\n{json.dumps(migr_pre, indent=4)}")
         if migr_pre and migr_pre.get("total_count", 0) > 0:
-            self.PAUSE_REALIZATION = True
+            self.migration_tracker.set_migration_in_progress(True)
             eventlet.greenthread.spawn(self.migr_provider.migrate_generic).link(self._migration_handler)
         else:
             LOG.info("MP-to-Policy migration not needed. No MP objects found.")
+            self.migration_tracker.store_migration_result(NSXV3_MP_MIGRATION_SCOPE, NSXV3_MIGRATION_SUCCESS_TAG)
 
     def _migration_handler(self, gt: eventlet.greenthread.GreenThread):
         try:
             success, migr_stats, fdbk = gt.wait()
             if not success:
                 raise RuntimeWarning("MP-to-Policy migration failed.")
+            self.migration_tracker.store_migration_result(NSXV3_MP_MIGRATION_SCOPE, NSXV3_MIGRATION_SUCCESS_TAG)
             LOG.info("MP-to-Policy Migration finished successfully.")
         except Exception as e:
             LOG.error(str(e))
             self.USE_POLICY_API = False
         finally:
-            self.PAUSE_REALIZATION = False
+            self.migration_tracker.set_migration_in_progress(False)
             self._dryrun()
 
     def _dryrun(self):

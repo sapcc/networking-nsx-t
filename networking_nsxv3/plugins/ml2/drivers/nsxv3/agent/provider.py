@@ -137,10 +137,11 @@ class Meta(object):
     def add(self, resource: Resource) -> ResourceMeta:
         old_meta = self.meta.get(resource.os_id)
         if resource.type == "LogicalSwitch" and old_meta:
-            LOG.critical("Resource type: %s, OS_ID: %s, ID: %s, Meta: %s", resource.type, resource.os_id, resource.id, resource.meta)
+            LOG.critical("Resource type: %s, OS_ID: %s, ID: %s, Meta: %s",
+                         resource.type, resource.os_id, resource.id, resource.meta)
             # self.meta[resource.os_id] = resource.meta
             # return resource.meta
-        
+
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
             LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.id)
@@ -202,16 +203,27 @@ class Provider(abc.ABC):
         self.client: Client = client
         self._metadata: Dict[str, MetaProvider] = self._metadata_loader()
         self.zone_name: str = cfg.CONF.NSXV3.nsxv3_transport_zone_name
-        self.zone_id: str = zone_id if zone_id else self._load_zone()
+        self.zone_id, self.zone_tags = self._load_zones()
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
 
     @abc.abstractmethod
-    def _load_zone(self) -> str:
-        """Load Transport Zone ID
+    def _load_zones(self) -> Tuple[str, List[Dict[str, str]]]:
+        """Load Transport Zone ID and zone tags
 
         Returns:
-            str: Transport Zone ID
+            str: Transport Zone ID, TZ tags list
+        """
+
+    @abc.abstractmethod
+    def tag_transport_zone(self, scope: str, tag: str) -> dict:
+        """Add/Update tag on Transport Zone
+
+        Args:
+            scope (str): Tag scope
+            tag (str): Tag value
+        Returns:
+            dict: Transport Zone
         """
 
     def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
@@ -413,3 +425,21 @@ class Provider(abc.ABC):
         :slice: number - the number of objects that can be cleaned up at this time
         :returns: list(id, callback) - where callback is a function accepting the ID
         """
+
+
+class MigrationTracker(object):
+    def __init__(self, provider: Provider) -> None:
+        self._migration_in_progress = False
+        self.mutex = "migration-tracking"
+        self.provider = provider
+
+    def set_migration_in_progress(self, in_progress: bool):
+        with LockManager.get_lock(self.mutex):
+            self._migration_in_progress = in_progress
+
+    def is_migration_in_progress(self):
+        with LockManager.get_lock(self.mutex):
+            return self._migration_in_progress
+
+    def store_migration_result(self, migration_scope: str, migration_result: str):
+        self.provider.tag_transport_zone(scope=migration_scope, tag=migration_result)
