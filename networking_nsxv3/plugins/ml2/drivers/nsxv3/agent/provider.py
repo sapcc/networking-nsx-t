@@ -242,14 +242,14 @@ class Provider(abc.ABC):
         """
 
     @abc.abstractmethod
-    def tag_transport_zone(self, scope: str, tag: str) -> dict:
-        """Add/Update tag on Transport Zone
+    def _load_zones(self) -> Tuple[str, str, List[Dict[str, str]], List[Dict[str, str]]]:
+        """Load Transport Zone ID and their tags
 
         Args:
             scope (str): Tag scope
             tag (str): Tag value
         Returns:
-            dict: Transport Zone
+            str: Transport Zone ID, ENS Transport Zone ID, Transport Zone Tags List, ENS Transport Tags Zone List
         """
 
     def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
@@ -503,20 +503,6 @@ class Provider(abc.ABC):
         :address_bindings: List[dict] -- NSX-T Address Bindings
         :return: dict -- updated port
         """
-
-
-class MigrationTracker(object):
-    def __init__(self) -> None:
-        self._migration_in_progress = False
-        self.mutex = "migration-tracking"
-
-    def set_migration_in_progress(self, in_progress: bool):
-        with LockManager.get_lock(self.mutex):
-            self._migration_in_progress = in_progress
-
-    def get_migration_in_progress(self):
-        with LockManager.get_lock(self.mutex):
-            return self._migration_in_progress
 
 
 class MigrationTracker(object):

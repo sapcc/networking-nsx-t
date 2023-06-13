@@ -9,6 +9,7 @@ from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLI
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider,\
     provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.hostswitch_migration import HostswitchMigrationProvider
 from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -49,12 +50,24 @@ class AgentRealizer(object):
         # It is used as a flag for using Policy API completely or not
         # in case migration canceled or failed this flag will be False
         # TODO: After completing the transition to NSX Policy API (ONLY if successful!), deprecate this flag
+        #self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
+        #self.provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
+
+        self.hostswitch_migr_provider = HostswitchMigrationProvider(self.provider, self.migration_tracker)
         self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
 
+        self.TZ_MIGRATION = self.hostswitch_migr_provider.check_tz_migration()
+        if self.TZ_MIGRATION:
+            self.hostswitch_migr_provider.try_hostswitch_migration()
+            self.migration_tracker.set_migration_in_progress(True)
+
+        if self.USE_POLICY_API:  # TODO: and not already migrated (zone_tags)
+            if self.TZ_MIGRATION:
+                raise RuntimeError("ENS migration is not supported with MP-to-Policy migration")
         if self.mp_to_policy_completed:
             self._dryrun()
             return
-        
+
         if self.USE_POLICY_API:
             self._try_start_migration()
         else:
@@ -96,7 +109,7 @@ class AgentRealizer(object):
 
         :force: bool -- if True concider all objects as outdated
         """
-        if self.migration_tracker.is_migration_in_progress():
+        if self.migration_tracker.get_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('synchronization')}")
             return
         with LockManager.get_lock("all"):
@@ -202,7 +215,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Security Group
         :reference: -- if True will create the group if unknown by the provider
         """
-        if self.migration_tracker.is_migration_in_progress():
+        if self.migration_tracker.get_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_members realization')}")
             return
         with LockManager.get_lock("member-{}".format(os_id)):
@@ -227,7 +240,7 @@ class AgentRealizer(object):
         Realization will happen only if the group has active ports on the host.
         :os_id: -- OpenStack ID of the Security Group
         """
-        if self.migration_tracker.is_migration_in_progress():
+        if self.migration_tracker.get_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_rules realization')}")
             return
         with LockManager.get_lock("rules-{}".format(os_id)):
@@ -258,7 +271,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Port
         :network_meta: -- NSX Switch metadata
         """
-        if self.migration_tracker.is_migration_in_progress():
+        if self.migration_tracker.get_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
@@ -274,14 +287,32 @@ class AgentRealizer(object):
                 self._port_realize(port)
             else:
                 self._port_realize({"id": os_id}, delete=True)
-    
+
+    # def port(self, os_id: str):
+    #     """
+    #     Realize port state.
+    #     :os_id: -- OpenStack ID of the Port
+    #     """
+    #     if self.PAUSE_REALIZATION:
+    #         LOG.info(f"MP-to-Policy Migration is in progress. Skipping port realization ...")
+    #         return
+    #     with LockManager.get_lock("port-{}".format(os_id)):
+    #         port: dict = self.rpc.get_port(os_id)
+    #         if port:
+    #             os_qid = port.get("qos_policy_id")
+    #             if os_qid:
+    #                 self.qos(os_qid, reference=True)
+    #             self._port_realize(port)
+    #         else:
+    #             self._port_realize({"id": os_id}, delete=True)
+
     def qos(self, os_id: str, reference=False):
         """
         Realize QoS Policy state.
         :os_id: -- OpenStack ID of the QoS Policy
         :reference: -- If True will create policy if unknown by the provider
         """
-        if self.migration_tracker.is_migration_in_progress():
+        if self.migration_tracker.get_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('qos realization')}")
             return
         with LockManager.get_lock("qos-{}".format(os_id)):
@@ -302,7 +333,7 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Network Segmentation ID
         :return: -- provider ID for the network
         """
-        if self.migration_tracker.is_migration_in_progress():
+        if self.migration_tracker.get_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('network realization')}")
             return {}
         with LockManager.get_lock("network-{}".format(os_seg_id)):
