@@ -175,6 +175,11 @@ nsxv3_opts = [
         help="NSXv3 Manager transport zone name."
     ),
     cfg.StrOpt(
+        'nsxv3_new_hostswitch_transport_zone_name',
+        default='',
+        help="NSXv3 Manager transport zone name for new hostswitches, to where the agent will migrate all the ports."
+    ),
+    cfg.StrOpt(
         'nsxv3_spoof_guard_switching_profile',
         default='nsx-default-spoof-guard-vif-profile',
         help="NSXv3 Spoof guard profile to use (or create if not existing)."

@@ -73,7 +73,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 break
 
         if try_create_port and bool(network_meta.get("nsx-logical-switch-id")):
-            self.realizer.precreate_port(current["id"], network_meta)
+            self.realizer.port(current["id"], network_meta)
 
         return network_meta
 
@@ -232,6 +232,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
             "nsxv3_user": c.nsxv3_login_user,
             "nsxv3_managed_hosts": c.nsxv3_managed_hosts,
             "nsxv3_transport_zone": c.nsxv3_transport_zone_name,
+            "nsxv3_new_hostswitch_transport_zone": c.nsxv3_new_hostswitch_transport_zone_name
         }
 
     def get_agent_id(self):

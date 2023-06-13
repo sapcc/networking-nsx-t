@@ -1,4 +1,6 @@
 import abc
+import re
+import uuid
 import time
 import netaddr
 from oslo_config import cfg
@@ -137,15 +139,16 @@ class Meta(object):
     def add(self, resource: Resource) -> ResourceMeta:
         old_meta = self.meta.get(resource.os_id)
         if resource.type == "LogicalSwitch" and old_meta:
-            LOG.critical("Resource type: %s, OS_ID: %s, ID: %s, Meta: %s", resource.type, resource.os_id, resource.id, resource.meta)
-            # self.meta[resource.os_id] = resource.meta
-            # return resource.meta
-        
+            LOG.critical("Resource type: %s, OS_ID: %s, ID: %s, Meta: %s",
+                         resource.type, resource.os_id, resource.id, resource.meta)
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
             LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.id)
         elif not resource.os_id:
             LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
+            if resource.type == "LogicalPort":
+                LOG.info("Invalid object %s without OS_ID, ID: %s added for DELETION", resource.type, resource.id)
+                self.meta[f"delete-{uuid.uuid1()}"] = resource.meta
         else:
             if resource.is_managed:
                 self.meta[resource.os_id] = resource.meta
@@ -194,6 +197,9 @@ class Provider(abc.ABC):
     SG_RULES = "Security Group (Rules)"
     SG_RULE = "Rule"
     SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
+    QOS = ""
+    NETWORK = ""
+    PORT = ""
 
     def __init__(self, client: Client, zone_id: str):
         super(Provider, self).__init__()
@@ -201,17 +207,37 @@ class Provider(abc.ABC):
         self.provider: str = ""
         self.client: Client = client
         self._metadata: Dict[str, MetaProvider] = self._metadata_loader()
-        self.zone_name: str = cfg.CONF.NSXV3.nsxv3_transport_zone_name
-        self.zone_id: str = zone_id if zone_id else self._load_zone()
-        if not self.zone_id:
-            raise Exception("Not found Transport Zone {}".format(self.zone_name))
+        self.tz_name: str = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        self.new_tz_name: str = cfg.CONF.NSXV3.nsxv3_new_hostswitch_transport_zone_name
+        self.tz_id, self.new_tz_id, self.tz_tags, self.new_tz_tags = zone_id if zone_id else self._load_zones()
+
+        if not self.tz_id:
+            raise RuntimeError("Not found Transport Zone {}".format(self.zone_name))
+
+        if self.new_tz_name and not self.new_tz_id:
+            raise RuntimeError("Not found NEW Transport Zone {}".format(self.new_tz_name))
+
+        self.zone_id = self.new_tz_id or self.tz_id
+        self.zone_tags = self.new_tz_tags or self.tz_tags
+        self.zone_name = self.new_tz_name or self.tz_name
+
+    @property
+    def net_name_pattern(self) -> str:
+        number_pattern = r"\d+"
+        return fr"({self.tz_name}-{number_pattern})|({self.new_tz_name}-{number_pattern})"
+
+    def is_managed_net(self, net_name: str) -> bool:
+        return bool(re.match(self.net_name_pattern, net_name))
+
+    def net_name(self, segmentation_id) -> str:
+        return f"{self.zone_name}-{segmentation_id}"
 
     @abc.abstractmethod
-    def _load_zone(self) -> str:
-        """Load Transport Zone ID
+    def _load_zones(self) -> Tuple[str, str, List[Dict[str, str]], List[Dict[str, str]]]:
+        """Load Transport Zone ID and their tags
 
         Returns:
-            str: Transport Zone ID
+            str: Transport Zone ID, ENS Transport Zone ID, Transport Zone Tags List, ENS Transport Tags Zone List
         """
 
     def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
@@ -413,3 +439,69 @@ class Provider(abc.ABC):
         :slice: number - the number of objects that can be cleaned up at this time
         :returns: list(id, callback) - where callback is a function accepting the ID
         """
+
+    @abc.abstractmethod
+    def get_all_networks(self, tz_id: str = None) -> List[dict]:
+        """Get all networks for a given transport zone
+
+        Args:
+            tz_id (str, optional): Transport Zone ID. Defaults to None.
+
+        Returns:
+            List[dict]: List of networks
+        """
+
+    @abc.abstractmethod
+    def get_all_ports_for_network(self, network_id: str) -> List[dict]:
+        """Get all ports for a given network
+
+        Args:
+            network_id (str): Logical Switch ID or Segment ID
+
+        Returns:
+            List[dict]: List of ports
+        """
+
+    @abc.abstractmethod
+    def port_precreate_empty(self, port: dict, net: ResourceMeta) -> dict:
+        """
+        Create port with empty binding in NSX-T
+
+        :port: dict -- NSX-T Port object
+        :net: ResourceMeta -- Network (Segment or Logical Switch)
+        :return: dict -- created port
+        """
+
+    @abc.abstractmethod
+    def port_unbind(self, port: dict) -> dict:
+        """
+        Unbind port from VIF
+
+        :port: dict -- NSX-T Port object
+        :return: dict -- updated port
+        """
+
+    @abc.abstractmethod
+    def port_bind(self, port: dict, attachment: dict, address_bindings: List[dict]) -> dict:
+        """
+        Bind port to VIF
+
+        :port: dict -- NSX-T Port object
+        :attachment: dict -- NSX-T Attachment object
+        :address_bindings: List[dict] -- NSX-T Address Bindings
+        :return: dict -- updated port
+        """
+
+
+class MigrationTracker(object):
+    def __init__(self) -> None:
+        self._migration_in_progress = False
+        self.mutex = "migration-tracking"
+
+    def set_migration_in_progress(self, in_progress: bool):
+        with LockManager.get_lock(self.mutex):
+            self._migration_in_progress = in_progress
+
+    def get_migration_in_progress(self):
+        with LockManager.get_lock(self.mutex):
+            return self._migration_in_progress

@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import copy
 import time
 from typing import List, Tuple
@@ -61,6 +64,8 @@ class Resource(base.Resource):
             user = self.resource.get("_create_user")
             if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
                 return True
+            if self.type == "LogicalPort" and user == "system":
+                return True
         return False
 
     @property
@@ -86,8 +91,6 @@ class Resource(base.Resource):
     @property
     def os_id(self):
         os_id = self.resource.get("display_name")
-        if self.type == "LogicalSwitch":
-            os_id = os_id.split("-")[-1]
         if self.type == "LogicalPort":
             os_id = self.resource.get("attachment", {}).get("id")
         return os_id
@@ -222,7 +225,7 @@ class Payload(object):
         port = {
             "resource_type": "LogicalPort",
             "display_name": os_port.get("id"),
-            "logical_switch_id": p.get("vif_details").get("nsx-logical-switch-id"),
+            "logical_switch_id": pp.get("logical_switch_id") or p.get("vif_details").get("nsx-logical-switch-id"),
             "admin_state": "UP",
             "switching_profile_ids": pp.get("switching_profile_ids"),
             "address_bindings": p.get("address_bindings"),
@@ -439,11 +442,27 @@ class Provider(base.Provider):
 
         self._setup_default_switching_profiles()
 
-    def _load_zone(self):
-        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
-        for zone in self.client.get_all(path="/api/v1/transport-zones"):
-            if zone.get("display_name") == self.zone_name:
-                return zone.get("id")
+    def _load_zones(self):
+        LOG.info("Looking for TransportZone with name %s.", self.tz_name)
+        if self.new_tz_name:
+            LOG.info("Looking for ENS TransportZone with name %s.", self.new_tz_name)
+
+        zone_id = None
+        new_zone_id = None
+        zone_tags = []
+        new_zone_tags = []
+
+        for tz in self.client.get_all(path="/api/v1/transport-zones"):
+            if tz.get("display_name") == self.tz_name:
+                zone_id = tz.get("id")
+                zone_tags = tz.get("tags", [])
+            elif self.new_tz_name and tz.get("display_name") == self.new_tz_name:
+                new_zone_id = tz.get("id")
+                new_zone_tags = tz.get("tags", [])
+            elif (zone_id and new_zone_id) or (zone_id and not self.new_tz_name):
+                break
+
+        return zone_id, new_zone_id, zone_tags, new_zone_tags
 
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
@@ -490,7 +509,7 @@ class Provider(base.Provider):
 
     def filter_nsx_policy(func):
         def wrapper(*args, **kwargs):
-            return filter(lambda s: s.get("_create_user") != "nsx_policy", func(*args, **kwargs))
+            return list(filter(lambda s: s.get("_create_user") != "nsx_policy", func(*args, **kwargs)))
         return wrapper
 
     @filter_nsx_policy
@@ -498,11 +517,15 @@ class Provider(base.Provider):
         return self.client.get_all(path=API.PROFILES, params=API.PARAMS_ALL_PROFILES)
 
     @filter_nsx_policy
-    def get_all_switches(self):
-        return self.client.get_all(path=API.SWITCHES, params={"transport_zone_id": self.zone_id})
+    def get_all_networks(self, tz_id=None):
+        tz_id = tz_id or self.zone_id
+        return self.client.get_all(path=API.SWITCHES, params={"transport_zone_id": tz_id})
+
+    @filter_nsx_policy
+    def get_all_ports_for_network(self, network_id):
+        return self.client.get_all(path=API.PORTS, params={"logical_switch_id": network_id})
 
     def metadata_refresh(self, resource_type, params=dict()):
-
         if resource_type != Provider.SG_RULE:
             provider = self._metadata[resource_type]
             with provider.meta:
@@ -525,15 +548,17 @@ class Provider(base.Provider):
                         if resource_type == Provider.SG_RULES:
                             if not res.has_valid_os_uuid:
                                 continue
+                        if resource_type == Provider.NETWORK and not self.is_managed_net(res.os_id):
+                            continue
                         if resource_type == Provider.PORT:
                             # Ensure this port is attached to a agent managed
                             # logical switch, else skip it
-                            is_valid_vlan = False
-                            for name, ls in self._metadata[Provider.NETWORK].meta.meta.items():
-                                if ls.id == res.resource.get("logical_switch_id") and name.isnumeric():
-                                    is_valid_vlan = True
+                            is_managed_port = False
+                            for _, ls in self._metadata[Provider.NETWORK].meta.meta.items():
+                                if ls.id == res.resource.get("logical_switch_id"):
+                                    is_managed_port = True
                                     break
-                            if not is_valid_vlan:
+                            if not is_managed_port:
                                 continue
 
                         provider.meta.add(res)
@@ -558,6 +583,10 @@ class Provider(base.Provider):
                     rules = self.client.get_all(API.RULES.format(meta.id))
                     meta = {Resource(o).os_id: o for o in rules}
                 return meta
+
+        if resource_type == Provider.NETWORK:
+            with LockManager.get_lock(Provider.NETWORK):
+                return self._metadata[Provider.NETWORK].meta.get(self.net_name(os_id))
 
         with LockManager.get_lock(resource_type):
             return self._metadata[resource_type].meta.get(os_id)
@@ -688,6 +717,33 @@ class Provider(base.Provider):
             return self.metadata_update(Provider.PORT, port), port
         return None
 
+    def port_precreate_empty(self, port, net):
+        with LockManager.get_lock("port-{}".format(port.get("attachment", {}).get("id"))):
+            return self.client.post(path=API.PORTS, data={
+                "display_name": port.get("display_name"),
+                "logical_switch_id": net.id,
+                "admin_state": "UP",
+                "tags": port.get("tags", []),
+                "switching_profile_ids": port.get("switching_profile_ids", []),
+            })
+
+    def port_unbind(self, port):
+        with LockManager.get_lock("port-{}".format(port.get("attachment", {}).get("id"))):
+            attachment = port.get("attachment", {})
+            attachment.update({"id": None})
+            port.update({"attachment": attachment})
+            port.update({"_revision": port.get("_revision", 0) + 1})
+
+            return self.client.put(path=API.PORT.format(port['id']), data=port)
+
+    def port_bind(self, port, attachment, address_bindings):
+        with LockManager.get_lock("port-{}".format(port.get("attachment", {}).get("id"))):
+            port.update({ "attachment": attachment})
+            port.update({ "address_bindings": address_bindings})
+            port.update({ "_revision": port.get("_revision", 0) + 1})
+
+            return self.client.put(path=API.PORT.format(port['id']), data=port)
+
     def port_realize(self, os_port: dict, delete=False):
         provider_port = dict()
 
@@ -703,13 +759,13 @@ class Provider(base.Provider):
             else:
                 LOG.warning("Not found. Parent Port:%s for Child Port:%s", os_port.get("parent_id"), os_port.get("id"))
                 return
+
+        port = self.get_port(os_port.get("id"))
+        if port and port[0]:
+            provider_port["id"] = port[0].id
+            provider_port["logical_switch_id"] = port[1].get("logical_switch_id")
         else:
-            # Parent port is NOT always created externally
-            port = self.get_port(os_port.get("id"))
-            if port and port[0]:
-                provider_port["id"] = port[0].id
-            else:
-                LOG.warning("Not found. Port: %s", os_port.get("id"))
+            LOG.warning("Not found. Port: %s", os_port.get("id"))
 
         if os_port.get("qos_policy_id"):
             meta_qos = self.metadata(Provider.QOS, os_port.get("qos_policy_id"))

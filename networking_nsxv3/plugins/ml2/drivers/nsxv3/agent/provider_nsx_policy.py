@@ -1,25 +1,23 @@
 import eventlet
 eventlet.monkey_patch()
 
-import ipaddress
-from networking_nsxv3.prometheus import exporter
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.common.constants import *
-from oslo_utils import excutils
-from oslo_log import log as logging
-from oslo_config import cfg
-import functools
-import json
-import re
-from requests.exceptions import HTTPError
-import uuid
-import functools
 from typing import Callable, Dict, List, Set
-
+import uuid
+from requests.exceptions import HTTPError
+import re
+import json
+import functools
+from oslo_config import cfg
+from oslo_log import log as logging
+from oslo_utils import excutils
+from networking_nsxv3.common.constants import *
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
+from networking_nsxv3.prometheus import exporter
+import ipaddress
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
@@ -69,6 +67,7 @@ class API(provider_nsx_mgmt.API):
     SEARCH_QUERY = POLICY_BASE + "/search/query"
     SEARCH_Q_TRANSPORT_ZONES = "resource_type:PolicyTransportZone AND display_name:{}"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
+    SEARCH_Q_SEG = "resource_type:Segment AND marked_for_delete:false AND resource_type:Segment AND marked_for_delete:false AND transport_zone_path:\"/infra/sites/default/enforcement-points/default/transport-zones/{}\""
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
     SEARCH_Q_QOS_PROFILES = {
         "query": "resource_type:QoSProfile AND NOT display_name:*default* AND marked_for_delete:false"}
@@ -141,17 +140,11 @@ class Resource(provider_nsx_mgmt.Resource):
             # rule name is a uuid
             if not self.has_valid_os_uuid:
                 return False
-        if self.type == Provider.NETWORK:
-            # os_id of a segment is expected to be a number
-            if not self.os_id.isnumeric():
-                return False
         return True
 
     @property
     def os_id(self):
         os_id = self.resource.get("display_name")
-        if self.type == "Segment":
-            os_id = os_id.split("-")[-1]
         if self.type == "SegmentPort":
             os_id = self.resource.get("attachment", {}).get("id")
         return os_id
@@ -448,11 +441,29 @@ class Provider(base.Provider):
             self._ensure_default_l3_policy()
         self._setup_default_app_drop_logged_section()
 
-    def _load_zone(self):
-        LOG.info("Looking for TransportZone with name %s.", self.zone_name)
-        for zone in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.zone_name)}):
-            if zone.get("display_name") == self.zone_name:
-                return zone.get("id")
+    def _load_zones(self):
+        LOG.info("Looking for TransportZone with name %s.", self.tz_name)
+        if self.new_tz_name:
+            LOG.info("Looking for ENS TransportZone with name %s.", self.new_tz_name)
+
+        zone_id = None
+        new_zone_id = None
+        zone_tags = []
+        new_zone_tags = []
+
+        for tz in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.tz_name)}):
+            if tz.get("display_name") == self.tz_name:
+                zone_id = tz.get("id")
+                zone_tags = tz.get("tags", [])
+                break
+        if self.new_tz_name:
+            for tz in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.new_tz_name)}):
+                if tz.get("display_name") == self.new_tz_name:
+                    new_zone_id = tz.get("id")
+                    new_zone_tags = tz.get("tags", [])
+                    break
+
+        return zone_id, new_zone_id, zone_tags, new_zone_tags
 
     def _ensure_default_l3_policy(self):
         res = self.client.get(path=API.POLICY.format(NSXV3_DEFAULT_L3_SECTION))
@@ -537,11 +548,10 @@ class Provider(base.Provider):
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.GROUP.format(id))
 
-    def _is_valid_vlan(self, res: Resource) -> bool:
-        ls_id: str
-        ls: Resource
-        for ls_id, ls in self._metadata[Provider.NETWORK].meta.meta.items():
-            if ls.id in res.resource.get("parent_path") and ls_id.isnumeric():
+    def _is_managed_port(self, res: Resource) -> bool:
+        segm: Resource
+        for _, segm in self._metadata[Provider.NETWORK].meta.meta.items():
+            if segm.id in res.resource.get("parent_path"):
                 return True
         return False
 
@@ -754,7 +764,8 @@ class Provider(base.Provider):
                 sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
                 if not sg_meta:
                     # Realize the Security Group if it does not exist with empty members
-                    sg_meta = self.sg_members_realize({"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
+                    sg_meta = self.sg_members_realize(
+                        {"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
                 if not port_meta.path:
                     raise RuntimeError(f"Not found path in Metadata for port: {port_meta.real_id}")
                 if port_meta.path not in sg_meta.sg_members:
@@ -769,6 +780,22 @@ class Provider(base.Provider):
         if port:
             return self.metadata_update(Provider.PORT, port), port
         return None, None
+
+    def port_precreate_empty(self, port, net):
+        raise NotImplementedError()
+
+    def port_unbind(self, port):
+        raise NotImplementedError()
+
+    def port_bind(self, port, attachment, address_bindings):
+        raise NotImplementedError()
+
+    def get_all_networks(self, tz_id=None):
+        tz_id = tz_id or self.zone_id
+        return self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG.format(tz_id)})
+
+    def get_all_ports_for_network(self, network_id: str):
+        return self.client.get_all(path=API.SEGMENT_PORTS.format(network_id))
 
     def get_port_meta_by_ids(self, port_ids: Set[str]) -> Set[PolicyResourceMeta]:
         segment_ports = set()
@@ -834,6 +861,10 @@ class Provider(base.Provider):
                         meta.rules = self._fetch_rules_from_nsx(meta)
                 return meta
 
+        if resource_type == Provider.NETWORK:
+            with LockManager.get_lock(Provider.NETWORK):
+                return self._metadata[Provider.NETWORK].meta.get(self.net_name(os_id))
+
         with LockManager.get_lock(resource_type):
             return self._metadata[resource_type].meta.get(os_id)
 
@@ -868,7 +899,9 @@ class Provider(base.Provider):
                         continue
                     if resource_type == Provider.SG_RULES_REMOTE_PREFIX and NSXV3_REVISION_SCOPE in res.tags:
                         continue
-                    if resource_type == Provider.PORT and not self._is_valid_vlan(res):
+                    if resource_type == Provider.NETWORK and not self.is_managed_net(res.os_id):
+                        continue
+                    if resource_type == Provider.PORT and not self._is_managed_port(res):
                         continue
 
                     provider.meta.add(res)

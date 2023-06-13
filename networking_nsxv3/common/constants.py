@@ -25,9 +25,9 @@ NSXV3_LOGGING_ENABLED = "enabled"
 NSXV3_DEFAULT_POLICY_ID = "DefaultML2Policy"
 NSXV3_DEFAULT_LOGGING_ID = "DefaultLoggingRule"
 
-NSXV3_MIGRATION_SCOPE = "vswitch_migration_target"
-NSXV3_MIGRATION_TAG_DVS = "dvs"
-NSXV3_MIGRATION_TAG_NVDS = "nvds"
+NSXV3_MP_MIGRATION_SCOPE = "mp2policy_migr_status"
+NSXV3_HOSTSWITCH_MIGRATION_SCOPE = "hostswitch_migr_status"
+NSXV3_MIGRATION_SUCCESS_TAG = "success"
 
 NSXV3_CAPABILITY_TCP_STRICT = "capability_tcp_strict"
 # If TCP strict is enabled on a section and a packet matches rule in it,
