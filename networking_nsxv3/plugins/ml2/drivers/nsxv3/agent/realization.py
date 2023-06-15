@@ -43,8 +43,7 @@ class AgentRealizer(object):
 
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
 
-        self.mp_to_policy_completed = any([t for t in self.plcy_provider.zone_tags if t.get(
-            "scope") == NSXV3_MP_MIGRATION_SCOPE and t.get("tag") == NSXV3_MIGRATION_SUCCESS_TAG])
+        self.mp_to_policy_completed = self._check_mp_to_policy_completed()
 
         # Enable MP-to-Policy migration if force_mp_to_policy=True
         # It is used as a flag for using Policy API completely or not
@@ -52,10 +51,18 @@ class AgentRealizer(object):
         # TODO: After completing the transition to NSX Policy API (ONLY if successful!), deprecate this flag
         self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
 
-        if self.USE_POLICY_API and not self.mp_to_policy_completed:
+        if self.mp_to_policy_completed:
+            self._dryrun()
+            return
+        
+        if self.USE_POLICY_API:
             self._try_start_migration()
         else:
             self._dryrun()
+
+    def _check_mp_to_policy_completed(self):
+        return any([t for t in self.plcy_provider.zone_tags\
+            if t.get("scope") == NSXV3_MP_MIGRATION_SCOPE and t.get("tag") == NSXV3_MIGRATION_SUCCESS_TAG])
 
     @staticmethod
     def _os_meta(query: Callable):
@@ -405,14 +412,14 @@ class AgentRealizer(object):
             eventlet.greenthread.spawn(self.migr_provider.migrate_generic).link(self._migration_handler)
         else:
             LOG.info("MP-to-Policy migration not needed. No MP objects found.")
-            self.migration_tracker.store_migration_result(NSXV3_MP_MIGRATION_SCOPE, NSXV3_MIGRATION_SUCCESS_TAG)
+            self.migration_tracker.persist_migration_status(NSXV3_MP_MIGRATION_SCOPE, NSXV3_MIGRATION_SUCCESS_TAG)
 
     def _migration_handler(self, gt: eventlet.greenthread.GreenThread):
         try:
             success, migr_stats, fdbk = gt.wait()
             if not success:
                 raise RuntimeWarning("MP-to-Policy migration failed.")
-            self.migration_tracker.store_migration_result(NSXV3_MP_MIGRATION_SCOPE, NSXV3_MIGRATION_SUCCESS_TAG)
+            self.migration_tracker.persist_migration_status(NSXV3_MP_MIGRATION_SCOPE, NSXV3_MIGRATION_SUCCESS_TAG)
             LOG.info("MP-to-Policy Migration finished successfully.")
         except Exception as e:
             LOG.error(str(e))

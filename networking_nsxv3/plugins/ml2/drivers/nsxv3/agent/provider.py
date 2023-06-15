@@ -441,5 +441,5 @@ class MigrationTracker(object):
         with LockManager.get_lock(self.mutex):
             return self._migration_in_progress
 
-    def store_migration_result(self, migration_scope: str, migration_result: str):
+    def persist_migration_status(self, migration_scope: str, migration_result: str):
         self.provider.tag_transport_zone(scope=migration_scope, tag=migration_result)
