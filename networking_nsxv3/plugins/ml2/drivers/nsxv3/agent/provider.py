@@ -223,8 +223,9 @@ class Provider(abc.ABC):
 
     @property
     def net_name_pattern(self) -> str:
-        number_pattern = r"\d+"
-        return fr"({self.tz_name}-{number_pattern})|({self.new_tz_name}-{number_pattern})"
+        if self.new_tz_name:
+            return f"^{self.tz_name}-(\d+)$|^{self.new_tz_name}-(\d+)$"
+        return f"^{self.tz_name}-(\d+)$"
 
     def is_managed_net(self, net_name: str) -> bool:
         return bool(re.match(self.net_name_pattern, net_name))
@@ -237,7 +238,18 @@ class Provider(abc.ABC):
         """Load Transport Zone ID and their tags
 
         Returns:
-            str: Transport Zone ID, ENS Transport Zone ID, Transport Zone Tags List, ENS Transport Tags Zone List
+            str: Transport Zone ID, ENS Transport Zone ID, Transport Zone Tags List, ENS Transport Tags Zone List, TZ tags list
+        """
+
+    @abc.abstractmethod
+    def tag_transport_zone(self, scope: str, tag: str) -> dict:
+        """Add/Update tag on Transport Zone
+
+        Args:
+            scope (str): Tag scope
+            tag (str): Tag value
+        Returns:
+            dict: Transport Zone
         """
 
     def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
@@ -505,3 +517,21 @@ class MigrationTracker(object):
     def get_migration_in_progress(self):
         with LockManager.get_lock(self.mutex):
             return self._migration_in_progress
+
+
+class MigrationTracker(object):
+    def __init__(self, provider: Provider) -> None:
+        self._migration_in_progress = False
+        self.mutex = "migration-tracking"
+        self.provider = provider
+
+    def set_migration_in_progress(self, in_progress: bool):
+        with LockManager.get_lock(self.mutex):
+            self._migration_in_progress = in_progress
+
+    def is_migration_in_progress(self):
+        with LockManager.get_lock(self.mutex):
+            return self._migration_in_progress
+
+    def persist_migration_status(self, migration_scope: str, migration_result: str):
+        self.provider.tag_transport_zone(scope=migration_scope, tag=migration_result)

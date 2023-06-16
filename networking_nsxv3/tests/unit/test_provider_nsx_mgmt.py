@@ -1262,13 +1262,16 @@ class TestProviderMgmt(base.BaseTestCase):
         meta = provider.network_realize('vmotion')
         os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
         provider.port_realize(os_port_parent)
-
+        provider.metadata_refresh(provider.NETWORK)
         outdated, _ = provider.outdated(provider.PORT, {})
         self.assertEquals(len(outdated), 0)
 
         # Create agent-managed port/switch
         meta = provider.network_realize('1234')
+        provider.metadata_refresh(provider.NETWORK)
+        os_port_parent["id"] = str(uuid.uuid4())
         os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        os_port_parent['vif_details']['segmentation_id'] = '1234'
         provider.port_realize(os_port_parent)
 
         # Assume to clean it up

@@ -1,8 +1,6 @@
 import eventlet
 eventlet.monkey_patch()
 
-from typing import Callable, Dict, List, Set
-import uuid
 from requests.exceptions import HTTPError
 import re
 import json
@@ -10,6 +8,7 @@ import functools
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import excutils
+from typing import Callable, Dict, List, Set
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
@@ -18,7 +17,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
 import ipaddress
-
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
@@ -97,6 +95,7 @@ class API(provider_nsx_mgmt.API):
 
     STATUS = INFRA + "/realized-state/status"
     TRANSPORT_ZONES_PATH = "/infra/sites/default/enforcement-points/default/transport-zones/{}"
+    TRANSPORT_ZONE = POLICY_BASE + TRANSPORT_ZONES_PATH
 
     POLICY_MNG_PREFIX = "default:"
 
@@ -441,27 +440,28 @@ class Provider(base.Provider):
             self._ensure_default_l3_policy()
         self._setup_default_app_drop_logged_section()
 
-    def _load_zones(self):
-        LOG.info("Looking for TransportZone with name %s.", self.tz_name)
-        if self.new_tz_name:
-            LOG.info("Looking for ENS TransportZone with name %s.", self.new_tz_name)
+    def _get_tz(self, zone_name: str) -> dict or None:
+        LOG.info("Looking for TransportZone with name %s.", zone_name)
+        for tz in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(zone_name)}):
+            if tz.get("display_name") == zone_name:
+                return tz
+        return None
 
+    def _load_zones(self):
         zone_id = None
         new_zone_id = None
         zone_tags = []
         new_zone_tags = []
 
-        for tz in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.tz_name)}):
-            if tz.get("display_name") == self.tz_name:
-                zone_id = tz.get("id")
-                zone_tags = tz.get("tags", [])
-                break
+        tz = self._get_tz(self.tz_name)
+        if tz:
+            zone_id = tz.get("id")
+            zone_tags = tz.get("tags", [])
         if self.new_tz_name:
-            for tz in self.client.get_all(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_TRANSPORT_ZONES.format(self.new_tz_name)}):
-                if tz.get("display_name") == self.new_tz_name:
-                    new_zone_id = tz.get("id")
-                    new_zone_tags = tz.get("tags", [])
-                    break
+            new_tz = self._get_tz(self.new_tz_name)
+            if new_tz:
+                new_zone_id = tz.get("id")
+                new_zone_tags = tz.get("tags", [])
 
         return zone_id, new_zone_id, zone_tags, new_zone_tags
 
@@ -1030,3 +1030,17 @@ class Provider(base.Provider):
     def update_policy_logging(self, log_obj):
         LOG.debug(f"PROVIDER: update_policy_logging")
         return self.set_policy_logging(log_obj, log_obj['enabled'])
+
+    def tag_transport_zone(self, scope, tag):
+        tz = self._get_tz(self.zone_name)
+        tags = tz.get("tags", [])
+        updated_tag_list = []
+
+        if len(tags) < 1:
+            updated_tag_list = [{"scope": scope, "tag": tag}]
+        else:
+            updated_tag_list = list([t for t in tags if t.get("scope") != scope])
+            updated_tag_list.append({"scope": scope, "tag": tag})
+
+        tz["tags"] = updated_tag_list
+        self.client.put(path=API.TRANSPORT_ZONE.format(tz.get("id")), data=tz)

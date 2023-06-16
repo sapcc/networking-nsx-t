@@ -1,6 +1,3 @@
-import eventlet
-eventlet.monkey_patch()
-
 import copy
 import time
 from typing import List, Tuple
@@ -464,6 +461,7 @@ class Provider(base.Provider):
 
         return zone_id, new_zone_id, zone_tags, new_zone_tags
 
+
     def _setup_default_switching_profiles(self):
         sg = self.payload.spoofguard()
         ip = self.payload.ip_discovery()
@@ -908,3 +906,6 @@ class Provider(base.Provider):
                     break
 
         return sanitize
+
+    def tag_transport_zone(self, scope, tag):
+        raise NotImplementedError("Unsupported operation for NSX Manager Provider")
