@@ -94,8 +94,8 @@ class TestAgentRealizer(base.BaseTestCase):
         mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], True)
-        self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], True)
+        self.assertEquals("openstack-tz-1000" in mngr_meta[mngr.NETWORK]["meta"], True)
+        self.assertEquals("openstack-tz-3200" in mngr_meta[mngr.NETWORK]["meta"], True)
         self.assertEquals(plcy_meta[plcy.NETWORK]["meta"], {})
         self.assertEquals(plcy_meta[plcy.PORT]["meta"], {})
 
@@ -141,7 +141,7 @@ class TestAgentRealizer(base.BaseTestCase):
         mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1001" in mngr_meta[mp.NETWORK]["meta"], True)
+        self.assertEquals("openstack-tz-1001" in mngr_meta[mp.NETWORK]["meta"], True)
 
         # Validate QoS State
         self.assertEquals(c.QOS_EXTERNAL["id"] in mngr_meta[mp.QOS]["meta"], True)
@@ -192,8 +192,8 @@ class TestAgentRealizer(base.BaseTestCase):
         mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1000" in mngr_meta[mp.NETWORK]["meta"], True)
-        self.assertEquals("3200" in mngr_meta[mp.NETWORK]["meta"], True)
+        self.assertEquals("openstack-tz-1000" in mngr_meta[mp.NETWORK]["meta"], True)
+        self.assertEquals("openstack-tz-3200" in mngr_meta[mp.NETWORK]["meta"], True)
 
         # Validate Ports
         self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
@@ -293,10 +293,10 @@ class TestMigrationRealization(base.BaseTestCase):
             mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
             # Validate Networks
-            self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], False)
-            self.assertEquals("3200" in mngr_meta[mngr.NETWORK]["meta"], False)
-            self.assertEquals("1000" in plcy_meta[plcy.NETWORK]["meta"], True)
-            self.assertEquals("3200" in plcy_meta[plcy.NETWORK]["meta"], True)
+            self.assertEquals("openstack-tz-1000" in mngr_meta[mngr.NETWORK]["meta"], False)
+            self.assertEquals("openstack-tz-3200" in mngr_meta[mngr.NETWORK]["meta"], False)
+            self.assertEquals("openstack-tz-1000" in plcy_meta[plcy.NETWORK]["meta"], True)
+            self.assertEquals("openstack-tz-3200" in plcy_meta[plcy.NETWORK]["meta"], True)
 
             # Validate Ports
             self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mngr.PORT]["meta"], False)
@@ -350,10 +350,10 @@ class TestMigrationRealization(base.BaseTestCase):
             mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
             # Validate network creation
-            self.assertEquals("1000" in mngr_meta[mp.NETWORK]["meta"], False)
-            self.assertEquals("3200" in mngr_meta[mp.NETWORK]["meta"], False)
-            self.assertEquals("1000" in plcy_meta[pp.NETWORK]["meta"], True)
-            self.assertEquals("3200" in plcy_meta[pp.NETWORK]["meta"], True)
+            self.assertEquals("openstack-tz-1000" in mngr_meta[mp.NETWORK]["meta"], False)
+            self.assertEquals("openstack-tz-3200" in mngr_meta[mp.NETWORK]["meta"], False)
+            self.assertEquals("openstack-tz-1000" in plcy_meta[pp.NETWORK]["meta"], True)
+            self.assertEquals("openstack-tz-3200" in plcy_meta[pp.NETWORK]["meta"], True)
 
             # Validate Ports
             self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in mngr_meta[mp.PORT]["meta"], False)
@@ -444,7 +444,7 @@ class TestGroupsRealization(base.BaseTestCase):
                 mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
 
                 # Validate Networks
-                self.assertEquals("1000" in mngr_meta[mngr.NETWORK]["meta"], False)
+                self.assertEquals("openstack-tz-1000" in mngr_meta[mngr.NETWORK]["meta"], False)
 
                 # Validate Ports
                 self.assertEquals(c.PORT_WITH_3_SG["id"] in mngr_meta[mngr.PORT]["meta"], False)
