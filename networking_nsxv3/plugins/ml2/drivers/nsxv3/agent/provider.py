@@ -443,3 +443,6 @@ class MigrationTracker(object):
 
     def persist_migration_status(self, migration_scope: str, migration_result: str):
         self.provider.tag_transport_zone(scope=migration_scope, tag=migration_result)
+
+    def unpersist_migration_status(self):
+        self.provider.tag_transport_zone(scope="", tag="", keep_old_tags=False)

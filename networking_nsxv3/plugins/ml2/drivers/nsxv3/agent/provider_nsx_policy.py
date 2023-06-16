@@ -1011,9 +1011,12 @@ class Provider(base.Provider):
         LOG.debug(f"PROVIDER: update_policy_logging")
         return self.set_policy_logging(log_obj, log_obj['enabled'])
 
-    def tag_transport_zone(self, scope, tag):
+    def tag_transport_zone(self, scope, tag, keep_old_tags=True):
         tz = self._get_tz()
-        tags = tz.get("tags", [])
+        if keep_old_tags:
+            tags = tz.get("tags", [])
+        else:
+            tags = []
         updated_tag_list = []
 
         if len(tags) < 1:

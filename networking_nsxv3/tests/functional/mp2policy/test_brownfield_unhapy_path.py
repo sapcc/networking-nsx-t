@@ -6,6 +6,7 @@ from oslo_log import log as logging
 from oslo_config import cfg
 from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import MigrationTracker
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.tests.unit import openstack
 
@@ -30,6 +31,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
                 cls, f"Migration Functional Tests skipped. Migration is NOT supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
         cls.clean_all_from_nsx()
         cls.enable_nsxtside_m2policy_migration()
+        cls.unset_migration_status()
 
         LOG.info(f"Activate migration on driver side")
 

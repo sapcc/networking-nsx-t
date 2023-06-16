@@ -5,6 +5,7 @@ from networking_nsxv3.tests.environment import Environment
 from oslo_log import log as logging
 from oslo_config import cfg
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider import MigrationTracker
 from networking_nsxv3.tests.datasets import coverage
 import copy
 import functools
@@ -164,6 +165,11 @@ class BaseNsxTest(base.BaseTestCase):
             LOG.info("Migration coordinator is NOT running. Enabling ...")
             cl.post(path="/api/v1/node/services/migration-coordinator?action=start", data={})
             eventlet.sleep(240)
+
+    @classmethod
+    def unset_migration_status(cls):
+        LOG.info(f"Unset MP2Policy Migration to make sure migration is started")
+        MigrationTracker(provider_nsx_policy.Provider()).unpersist_migration_status()
 
     @classmethod
     def _start_agent_with_migration(cls):
