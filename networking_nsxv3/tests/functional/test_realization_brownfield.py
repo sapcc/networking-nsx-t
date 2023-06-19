@@ -236,8 +236,8 @@ class TestAgentRealizer(base.BaseTestCase):
         p = environment.manager.realizer.mngr_provider
 
         # Validate network creation
-        TestAgentRealizer.instance.assertEquals("1000" in m[p.NETWORK]["meta"], True)
-        TestAgentRealizer.instance.assertEquals("3200" in m[p.NETWORK]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(f"{os.environ.get('NSXV3_TRANSPORT_ZONE_NAME')}-1000" in m[p.NETWORK]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(f"{os.environ.get('NSXV3_TRANSPORT_ZONE_NAME')}-3200" in m[p.NETWORK]["meta"], True)
 
         # Validate QoS State
         TestAgentRealizer.instance.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], True)
@@ -285,8 +285,8 @@ class TestAgentRealizer(base.BaseTestCase):
         p = environment.manager.realizer.mngr_provider
 
         # Validate network creation
-        TestAgentRealizer.instance.assertEquals("1000" in m[p.NETWORK]["meta"], True)
-        TestAgentRealizer.instance.assertEquals("3200" in m[p.NETWORK]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(f"{p.zone_name}-1000" in m[p.NETWORK]["meta"], True)
+        TestAgentRealizer.instance.assertEquals(f"{p.zone_name}-3200" in m[p.NETWORK]["meta"], True)
 
         # Validate QoS State
         TestAgentRealizer.instance.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], False)

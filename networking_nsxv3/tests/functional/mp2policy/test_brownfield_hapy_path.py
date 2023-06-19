@@ -37,6 +37,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cls.TEST_CONFIG.set_override("max_sg_tags_per_segment_port", 25, "AGENT")
         cls.TEST_CONFIG.set_override("polling_interval", 10, "AGENT")
         cls.TEST_CONFIG.set_override("sync_skew", 0, "AGENT")
+        cls.TEST_CONFIG.set_override("nsxv3_new_hostswitch_transport_zone_name", "", "NSXV3")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
             num_nets=5,  # 100
@@ -72,10 +73,10 @@ class TestMp2PolicyMigr(BaseNsxTest):
 
         for k, v in nets:
             vlan_id = v.get("segmentation_id")
-            self.assertFalse(str(vlan_id) in self.mngr_meta[self.mngr.NETWORK]["meta"],
-                             f"Network '{k}' with vlan '{vlan_id}' must NOT exists in the manager metadata!")
-            self.assertTrue(str(vlan_id) in self.plcy_meta[self.plcy.NETWORK]["meta"],
-                            f"Network '{k}' with vlan '{vlan_id}' must exists in the policy metadata!")
+            self.assertFalse(f"{self.plcy.zone_name}-{vlan_id}" in self.mngr_meta[self.mngr.NETWORK]["meta"],
+                             f"Network '{k}' with vlan '{vlan_id}' and tz '{self.plcy.zone_name}' must NOT exists in the manager metadata!")
+            self.assertTrue(f"{self.plcy.zone_name}-{vlan_id}" in self.plcy_meta[self.plcy.NETWORK]["meta"],
+                            f"Network '{k}' with vlan '{vlan_id}' and tz '{self.plcy.zone_name}' must exists in the policy metadata!")
 
     def test_port(self):
         # Case 1: Assert that all objects are migrated as expected

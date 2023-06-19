@@ -39,6 +39,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
         cls.TEST_CONFIG.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
         cls.TEST_CONFIG.set_override("polling_interval", 10, "AGENT")
         cls.TEST_CONFIG.set_override("sync_skew", 0, "AGENT")
+        cls.TEST_CONFIG.set_override("nsxv3_new_hostswitch_transport_zone_name", "", "NSXV3")
 
         cls.MIGR_INVENTORY = cls._polute_environment(
             num_nets=5,  # 100

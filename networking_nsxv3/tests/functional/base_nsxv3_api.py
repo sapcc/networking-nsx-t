@@ -208,8 +208,12 @@ class BaseNsxTest(base.BaseTestCase):
         BaseNsxTest.clean_domain_objects("SecurityPolicy")
         BaseNsxTest.clean_domain_objects("Group")
         BaseNsxTest.clean_segment_ports()
+        LOG.info("Sleeping 30 seconds to allow NSX-T Policy API to clean all SegmentPorts ...")
+        eventlet.sleep(30)
         BaseNsxTest.clean_logical_ports()
         BaseNsxTest.clean_segments()
+        LOG.info("Sleeping 30 seconds to allow NSX-T Policy API to clean all Segments ...")
+        eventlet.sleep(30)
         BaseNsxTest.clean_logical_switches()
         BaseNsxTest.clean_all_segment_profiles()
         BaseNsxTest.clean_switching_profiles()
@@ -343,6 +347,8 @@ class BaseNsxTest(base.BaseTestCase):
     def _polute_environment(num_nets=500, num_ports_per_net=5, num_groups=3000, num_qos=100, sg_gt_27=False) -> dict:
         """Polutes the environment with the given number of networks, ports and security groups.
         """
+        LOG.info("Poluting environment ...")
+        eventlet.sleep(30)
         os_inventory = coverage.generate_os_inventory(num_nets, num_ports_per_net, num_groups, num_qos, sg_gt_27)
         BaseNsxTest._polute_nsx(os_inventory)
 
