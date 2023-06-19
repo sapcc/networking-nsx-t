@@ -13,6 +13,7 @@ from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.db.standard_attr import StandardAttribute
+from neutron_lib.db import api as db_api
 # from sqlalchemy.orm.session import Session
 
 
@@ -392,3 +393,24 @@ def has_security_group_logging(context, security_group_id):
         Log.enabled
     ).count()
     return True if result else False
+
+def _update_binding(ports, new_switch_id):
+    updated_ports = []
+    for port in ports:
+        new_vif = json.loads(port.vif_details)
+        new_vif["nsx-logical-switch-id"] = new_switch_id
+        new_vif["external-id"] = new_switch_id
+        port.vif_details = json.dumps(new_vif)
+        updated_ports.append(port)
+    return ports
+def update_binding_details(context, port_ids, new_switch_id):
+    ports = context.session.query(PortBinding).filter(
+        PortBinding.port_id.in_(port_ids)
+    ).all()
+
+    updated_ports = []
+    with db_api.CONTEXT_WRITER.using(context):
+        updated_ports = _update_binding(ports, new_switch_id)
+        if updated_ports:
+            context.session.add_all(updated_ports)
+    return updated_ports
