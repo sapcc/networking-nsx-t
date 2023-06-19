@@ -3,6 +3,7 @@ eventlet.monkey_patch()
 
 from requests.exceptions import HTTPError
 import re
+import uuid
 import json
 import functools
 from oslo_config import cfg
