@@ -12,12 +12,15 @@ from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.common import config
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
-    client_nsx, provider_nsx_policy)
+    client_nsx, provider_nsx_policy, provider_nsx_mgmt)
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.agent import NSXv3Manager
 from networking_nsxv3.tests.environment import Environment
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client as nsxt_api
+from networking_nsxv3.db.db import update_binding_details
 from neutron.common import config as common_config
 from neutron.common import profiler
 from neutron_lib import context as neutron_context
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -410,6 +413,29 @@ class CLI(object):
 
         self.manager.shutdown()
 
+    def _run_update(self, rpc, type, ids):
+        PORT = "port"
+        QOS = "qos"
+        SECURITY_GROUP_RULES = "security_group_rules"
+        SECURITY_GROUP_MEMBERS = "security_group_members"
+
+        context = None
+
+        # Enforce synchronization
+        if type == SECURITY_GROUP_RULES:
+            rpc.security_groups_rule_updated(context, security_groups=ids)
+
+        if type == SECURITY_GROUP_MEMBERS:
+            rpc.security_groups_member_updated(context, security_groups=ids)
+
+        if type == PORT:
+            for id in ids:
+                rpc.port_update(context, port={"id": id})
+
+        if type == QOS:
+            for id in ids:
+                rpc.update_policy(context, policy={"id": id})
+
     def clean(self):
         """
         Clean up NSX-T inventory
@@ -424,6 +450,62 @@ class CLI(object):
         self._init_(args)
 
         NsxInventory().cleanup()
+
+    def force_network_synchronization(self):
+        description = 'Update object state'
+        parser = argparse.ArgumentParser(description=description)
+        parser.add_argument(
+            "--config-file", action="append",
+            help="OpenStack Neutron configuration file(s) location(s)")
+        args = parser.parse_args(sys.argv[2:])
+
+        LOG.info(f"Running with args - {args}")
+
+        self._init_(args)
+
+
+
+        #switch_id = "mp-to-policy-zone-4"
+        switch_id = "3c2b658f-5dfd-41d6-9ac4-4df4fbd5fadc"
+        api = nsxt_api()
+        path = provider_nsx_mgmt.API.PORTS
+        params = {"logical_switch_id": switch_id }
+        LOG.info(f"Fetch ports for switch ID {switch_id}")
+        ports = api.get_all(path=path,params=params)
+
+        #ToDo Convert to lambda expression
+        port_ids = []
+        for p in ports:
+            port_ids.append(p["attachment"]["id"])
+
+        LOG.info(f"Update ports: {port_ids}")
+
+        #ToDo - EULA
+        #ToDo - Revert if something bad happens
+        LOG.info("Start updating neutron database")
+
+        LOG.info(f"Triggering Port Update in Neutron Database with switch id {switch_id}")
+        context = neutron_context.get_admin_context()
+
+        #ToDo - Implement failrue handling and recovery
+        updated_ports = update_binding_details(context=context,port_ids=port_ids, new_switch_id=switch_id)
+
+        if updated_ports:
+            LOG.info("Succesfully updated port vif information in neutron database")
+            LOG.info("Triggering manual sync")
+            port_ids = [port.port_id for port in updated_ports]
+            LOG.info(f"Trigger sync for ports: {port_ids}")
+
+            manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
+                                    synchronization=False, monitoring=False)
+            rpc = manager.get_rpc_callbacks(context=None, agent=None,
+                                                 sg_agent=None)
+            self._run_update(rpc=rpc,type="PORTS", ids=port_ids)
+            LOG.info("Succesfully triggered manual update")
+            self.manager.shutdown()
+        else:
+            LOG.info("Failure in updating port vif information in neutron database")
+
 
     def updateDatabaseExport(self):
         """
