@@ -388,30 +388,16 @@ class CLI(object):
 
         self._init_(args)
 
-        self.manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
+        manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
                                     synchronization=False, monitoring=False)
-        self.rpc = self.manager.get_rpc_callbacks(context=None, agent=None,
+        rpc = manager.get_rpc_callbacks(context=None, agent=None,
                                                   sg_agent=None)
 
         ids = args.ids.split(",")
-        context = None
 
-        # Enforce synchronization
-        if args.type == SECURITY_GROUP_RULES:
-            self.rpc.security_groups_rule_updated(context, security_groups=ids)
+        self._run_update(rpc=rpc, type=args.type, ids=ids)
 
-        if args.type == SECURITY_GROUP_MEMBERS:
-            self.rpc.security_groups_member_updated(context, security_groups=ids)
-
-        if args.type == PORT:
-            for id in ids:
-                self.rpc.port_update(context, port={"id": id})
-
-        if args.type == QOS:
-            for id in ids:
-                self.rpc.update_policy(context, policy={"id": id})
-
-        self.manager.shutdown()
+        manager.shutdown()
 
     def _run_update(self, rpc, type, ids):
         PORT = "port"
@@ -451,48 +437,69 @@ class CLI(object):
 
         NsxInventory().cleanup()
 
+    def _confirmation_check(self):
+        answer = input("Are you sure to continue with the migration?")
+        if answer.lower() in ["y", "yes"]:
+            return True
+        else:
+            return False
+    def _fetch_ports_per_switch(self, switch_id):
+        api = nsxt_api()
+        path = provider_nsx_mgmt.API.PORTS
+        params = {"logical_switch_id": switch_id}
+        LOG.info(f"Fetch ports for switch ID {switch_id}")
+        ports = api.get_all(path=path, params=params)
+        return ports
     def force_network_synchronization(self):
         description = 'Update object state'
         parser = argparse.ArgumentParser(description=description)
         parser.add_argument(
             "--config-file", action="append",
             help="OpenStack Neutron configuration file(s) location(s)")
-        args = parser.parse_args(sys.argv[2:])
+        parser.add_argument(
+             "--switch-id", required=True,
+            help="NSXT Switch ID")
 
-        LOG.info(f"Running with args - {args}")
+        args = parser.parse_args(sys.argv[2:])
 
         self._init_(args)
 
+        switch_id = args.switch_id
 
+        if not switch_id:
+            LOG.info("Argument requires switch id")
+            exit()
 
-        #switch_id = "mp-to-policy-zone-4"
-        switch_id = "3c2b658f-5dfd-41d6-9ac4-4df4fbd5fadc"
-        api = nsxt_api()
-        path = provider_nsx_mgmt.API.PORTS
-        params = {"logical_switch_id": switch_id }
-        LOG.info(f"Fetch ports for switch ID {switch_id}")
-        ports = api.get_all(path=path,params=params)
+        ports = self._fetch_ports_per_switch(switch_id)
 
-        #ToDo Convert to lambda expression
-        port_ids = []
-        for p in ports:
-            port_ids.append(p["attachment"]["id"])
+        if not ports:
+            LOG.info(f"Switch {switch_id} does not have any ports connected to it")
+            exit()
 
-        LOG.info(f"Update ports: {port_ids}")
+        port_ids = [ port["attachment"]["id"] for port in ports]
+        port_ids = ["0083b77f-4ba9-4ae7-ad28-998a09d04b74"]
+        switch_id = 'new_switch_id'
+        LOG.info(f"Run migration for the following ports: {ports}")
+
+        if not self._confirmation_check():
+            exit()
 
         #ToDo - EULA
         #ToDo - Revert if something bad happens
-        LOG.info("Start updating neutron database")
+        # ToDo - Implement failrue handling and recovery
+        #ToDo - Mismatch of port_ids in neutron database and nsxt
+        #Case 1: (missing in nsxt - not considered here)
+        #Case 2: missing in neutron - deleted port)
+        LOG.info(f"Start updating neutron ports ml2_port_bindings with switch id {switch_id}")
 
-        LOG.info(f"Triggering Port Update in Neutron Database with switch id {switch_id}")
         context = neutron_context.get_admin_context()
-
-        #ToDo - Implement failrue handling and recovery
-        updated_ports = update_binding_details(context=context,port_ids=port_ids, new_switch_id=switch_id)
+        updated_ports = update_binding_details(context=context,port_ids=port_ids, new_switch_id=switch_id, logger=LOG)
 
         if updated_ports:
             LOG.info("Succesfully updated port vif information in neutron database")
-            LOG.info("Triggering manual sync")
+            LOG.info("Triggering manual agent sync")
+
+            #extract openstack port ids
             port_ids = [port.port_id for port in updated_ports]
             LOG.info(f"Trigger sync for ports: {port_ids}")
 
