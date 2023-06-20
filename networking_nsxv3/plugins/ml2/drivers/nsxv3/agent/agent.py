@@ -56,7 +56,10 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def get_network_bridge(self, context, current, network_segments, network_current):
         try_create_port = False
         if (
-            current.get("binding:vif_type") == portbindings.VIF_TYPE_UNBOUND
+            (
+                current.get("binding:vif_type") == portbindings.VIF_TYPE_UNBOUND
+                or current.get("binding:vif_type") == portbindings.VIF_TYPE_BINDING_FAILED
+            )
             and current.get("status") == nsxv3_constants.neutron_constants.ACTIVE
         ):
             # This is a double-bound port with inactive new binding, proactivly sync it
