@@ -403,14 +403,22 @@ def _update_binding(ports, new_switch_id):
         port.vif_details = json.dumps(new_vif)
         updated_ports.append(port)
     return ports
-def update_binding_details(context, port_ids, new_switch_id):
+
+def _log_changes(logger, ports, action):
+    logger.info(f"{action} ")
+    for p in ports:
+        logger.info(f"openstack port {p.port_id} with {p.vif_details}")
+def update_binding_details(context, port_ids, new_switch_id, logger):
     ports = context.session.query(PortBinding).filter(
         PortBinding.port_id.in_(port_ids)
     ).all()
 
+    _log_changes(logger, ports, action=f"The following ports change binding to switch_id {new_switch_id}")
+
     updated_ports = []
     with db_api.CONTEXT_WRITER.using(context):
         updated_ports = _update_binding(ports, new_switch_id)
+        _log_changes(logger, updated_ports, "updated the ports following")
         if updated_ports:
             context.session.add_all(updated_ports)
     return updated_ports
