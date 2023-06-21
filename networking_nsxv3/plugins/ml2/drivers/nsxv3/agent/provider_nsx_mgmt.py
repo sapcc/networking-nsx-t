@@ -1,4 +1,3 @@
-import json
 import eventlet
 eventlet.monkey_patch()
 
@@ -542,7 +541,6 @@ class Provider(base.Provider):
                 if provider.endpoint == API.PROFILES:
                     params = API.PARAMS_GET_QOS_PROFILES
                 resources = self.client.get_all(path=provider.endpoint, params=params)
-                LOG.critical("Resources: %s", json.dumps(resources, indent=2))
                 with LockManager.get_lock(resource_type):
                     provider.meta.reset()
                     for o in resources:
