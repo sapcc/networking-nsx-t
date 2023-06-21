@@ -1,3 +1,4 @@
+import json
 import eventlet
 eventlet.monkey_patch()
 
@@ -60,8 +61,9 @@ class Resource(base.Resource):
     def is_managed(self):
         if self.type == "LogicalSwitch" or self.type == "QosSwitchingProfile":
             return True
-        if "policyPath" in self.tags and "/default:" not in self.tags.get("policyPath"):
-            return False
+        if "policyPath" in self.tags:
+            return False # NSX Policy API migrated resource
+        
         if not self.resource.get("locked"):
             user = self.resource.get("_create_user")
             if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
@@ -69,6 +71,7 @@ class Resource(base.Resource):
 
             if self.type == "LogicalPort":
                 att_id = self.resource.get("attachment", {}).get("id")
+                # Skip NSX Policy API created ports
                 if user != "nsx_policy" and att_id:
                     return True
         return False
@@ -520,6 +523,7 @@ class Provider(base.Provider):
                 if provider.endpoint == API.PROFILES:
                     params = API.PARAMS_GET_QOS_PROFILES
                 resources = self.client.get_all(path=provider.endpoint, params=params)
+                LOG.critical("Resources: %s", json.dumps(resources, indent=2))
                 with LockManager.get_lock(resource_type):
                     provider.meta.reset()
                     for o in resources:
