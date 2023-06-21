@@ -14,7 +14,8 @@ from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.db.standard_attr import StandardAttribute
 from neutron_lib.db import api as db_api
-# from sqlalchemy.orm.session import Session
+from sqlalchemy import bindparam, update
+from sqlalchemy.orm.session import Session
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
@@ -408,17 +409,25 @@ def _log_changes(logger, ports, action):
     logger.info(f"{action} ")
     for p in ports:
         logger.info(f"openstack port {p.port_id} with {p.vif_details}")
+
+
 def update_binding_details(context, port_ids, new_switch_id, logger):
-    ports = context.session.query(PortBinding).filter(
+    ses: Session = context.session
+    ports = ses.query(PortBinding).filter(
         PortBinding.port_id.in_(port_ids)
     ).all()
 
     _log_changes(logger, ports, action=f"The following ports change binding to switch_id {new_switch_id}")
+    updated_ports = _update_binding(ports, new_switch_id)
 
-    updated_ports = []
-    with db_api.CONTEXT_WRITER.using(context):
-        updated_ports = _update_binding(ports, new_switch_id)
-        _log_changes(logger, updated_ports, "updated the ports following")
-        if updated_ports:
-            context.session.add_all(updated_ports)
+    if len(updated_ports) > 0:
+        stmt = (
+            update(PortBinding)
+            .where(PortBinding.port_id.in_([p.port_id for p in updated_ports]))
+            .values(vif_details=bindparam("new_vif_details")))
+
+        with ses.begin() as trans:
+            _log_changes(logger, updated_ports, "updated the ports following")
+            ses.execute(stmt, [{"new_vif_details": p.vif_details} for p in updated_ports])
+
     return updated_ports

@@ -338,12 +338,13 @@ class CLI(object):
             usage='''neutron-nsxv3-agent-cli-sync COMMAND
                 update - Force synchronization between Neutron and NSX-T objects
                 export - Export Neutron and NSX-T inventories
+                force_network_synchronization - Force synchronization between Neutron and NSX-T networks
                 load - Loads the exported NSX-T Inventory
                 updateDatabaseExport - Update neutron sql file NSXT object IDs
                 run - Runs the NSX-T Agent with the exported Neutron inventory
                 clean - Clean up NSX-T objects
             ''')
-        parser.add_argument('command', help='Subcommand update|export|load|updateDatabaseExport|run|clean')
+        parser.add_argument('command', help='Subcommand update|export|load|updateDatabaseExport|run|clean|force_network_synchronization')
         args = parser.parse_args(sys.argv[1:2])
         if hasattr(self, args.command):
             getattr(self, args.command)()
@@ -389,9 +390,9 @@ class CLI(object):
         self._init_(args)
 
         manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
-                                    synchronization=False, monitoring=False)
+                               synchronization=False, monitoring=False)
         rpc = manager.get_rpc_callbacks(context=None, agent=None,
-                                                  sg_agent=None)
+                                        sg_agent=None)
 
         ids = args.ids.split(",")
 
@@ -443,6 +444,7 @@ class CLI(object):
             return True
         else:
             return False
+
     def _fetch_ports_per_switch(self, switch_id):
         api = nsxt_api()
         path = provider_nsx_mgmt.API.PORTS
@@ -450,6 +452,7 @@ class CLI(object):
         LOG.info(f"Fetch ports for switch ID {switch_id}")
         ports = api.get_all(path=path, params=params)
         return ports
+
     def force_network_synchronization(self):
         description = 'Update object state'
         parser = argparse.ArgumentParser(description=description)
@@ -476,43 +479,40 @@ class CLI(object):
             LOG.info(f"Switch {switch_id} does not have any ports connected to it")
             exit()
 
-        port_ids = [ port["attachment"]["id"] for port in ports]
-        port_ids = ["0083b77f-4ba9-4ae7-ad28-998a09d04b74"]
-        switch_id = 'new_switch_id'
+        port_ids = [port["attachment"]["id"] for port in ports]
         LOG.info(f"Run migration for the following ports: {ports}")
 
         if not self._confirmation_check():
             exit()
 
-        #ToDo - EULA
-        #ToDo - Revert if something bad happens
+        # ToDo - EULA
+        # ToDo - Revert if something bad happens
         # ToDo - Implement failrue handling and recovery
-        #ToDo - Mismatch of port_ids in neutron database and nsxt
-        #Case 1: (missing in nsxt - not considered here)
-        #Case 2: missing in neutron - deleted port)
+        # ToDo - Mismatch of port_ids in neutron database and nsxt
+        # Case 1: (missing in nsxt - not considered here)
+        # Case 2: missing in neutron - deleted port)
         LOG.info(f"Start updating neutron ports ml2_port_bindings with switch id {switch_id}")
 
         context = neutron_context.get_admin_context()
-        updated_ports = update_binding_details(context=context,port_ids=port_ids, new_switch_id=switch_id, logger=LOG)
+        updated_ports = update_binding_details(context=context, port_ids=port_ids, new_switch_id=switch_id, logger=LOG)
 
         if updated_ports:
             LOG.info("Succesfully updated port vif information in neutron database")
             LOG.info("Triggering manual agent sync")
 
-            #extract openstack port ids
+            # extract openstack port ids
             port_ids = [port.port_id for port in updated_ports]
             LOG.info(f"Trigger sync for ports: {port_ids}")
 
             manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),
-                                    synchronization=False, monitoring=False)
+                                   synchronization=False, monitoring=False)
             rpc = manager.get_rpc_callbacks(context=None, agent=None,
-                                                 sg_agent=None)
-            self._run_update(rpc=rpc,type="PORTS", ids=port_ids)
+                                            sg_agent=None)
+            self._run_update(rpc=rpc, type="PORTS", ids=port_ids)
             LOG.info("Succesfully triggered manual update")
-            self.manager.shutdown()
+            manager.shutdown()
         else:
             LOG.info("Failure in updating port vif information in neutron database")
-
 
     def updateDatabaseExport(self):
         """
