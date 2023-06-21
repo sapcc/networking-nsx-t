@@ -508,7 +508,7 @@ class CLI(object):
                                    synchronization=False, monitoring=False)
             rpc = manager.get_rpc_callbacks(context=None, agent=None,
                                             sg_agent=None)
-            self._run_update(rpc=rpc, type="PORTS", ids=port_ids)
+            self._run_update(rpc=rpc, type="port", ids=port_ids)
             LOG.info("Succesfully triggered manual update")
             manager.shutdown()
         else:
