@@ -55,14 +55,19 @@ class Resource(base.Resource):
 
     @property
     def is_managed(self):
+        if self.type == "LogicalSwitch" or self.type == "QosSwitchingProfile":
+            return True
+        if "policyPath" in self.tags and "/default:" not in self.tags.get("policyPath"):
+            return False
         if not self.resource.get("locked"):
-            if "policyPath" in self.tags:
-                return False
             user = self.resource.get("_create_user")
             if user == "admin" or user == cfg.CONF.NSXV3.nsxv3_login_user:
                 return True
-            if self.type == "LogicalPort" and user == "system":
-                return True
+
+            if self.type == "LogicalPort":
+                att_id = self.resource.get("attachment", {}).get("id")
+                if user != "nsx_policy" and att_id:
+                    return True
         return False
 
     @property
