@@ -16,7 +16,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import (
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.agent import NSXv3Manager
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client as nsxt_api
-from networking_nsxv3.db.db import update_binding_details
 from neutron.common import config as common_config
 from neutron.common import profiler
 from neutron_lib import context as neutron_context
@@ -493,15 +492,15 @@ class CLI(object):
         # Case 2: missing in neutron - deleted port)
         LOG.info(f"Start updating neutron ports ml2_port_bindings with switch id {switch_id}")
 
-        context = neutron_context.get_admin_context()
-        updated_ports = update_binding_details(context=context, port_ids=port_ids, new_switch_id=switch_id, logger=LOG)
+        rpc = nsxv3_rpc.NSXv3ServerRpcApi()
+        updated_ports = rpc.update_port_binding_details(port_ids=port_ids, new_switch_id=switch_id)
 
         if updated_ports:
             LOG.info("Succesfully updated port vif information in neutron database")
             LOG.info("Triggering manual agent sync")
 
             # extract openstack port ids
-            port_ids = [port.port_id for port in updated_ports]
+            port_ids = [ port.get("port_id") for port in updated_ports if port.get("port_id")]
             LOG.info(f"Trigger sync for ports: {port_ids}")
 
             manager = NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi(),

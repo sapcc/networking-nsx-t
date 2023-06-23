@@ -403,21 +403,21 @@ def _update_binding(ports, new_switch_id):
         new_vif["external-id"] = new_switch_id
         port.vif_details = json.dumps(new_vif)
         updated_ports.append(port)
-    return ports
+    return updated_ports
 
-def _log_changes(logger, ports, action):
-    logger.info(f"{action} ")
-    for p in ports:
-        logger.info(f"openstack port {p.port_id} with {p.vif_details}")
+#def _log_changes(logger, ports, action):
+##    logger.info(f"{action} ")
+#    for p in ports:
+#        logger.info(f"openstack port {p.port_id} with {p.vif_details}")
 
 
-def update_binding_details(context, port_ids, new_switch_id, logger):
+def update_binding_details(context, port_ids, new_switch_id):
     ses: Session = context.session
     ports = ses.query(PortBinding).filter(
         PortBinding.port_id.in_(port_ids)
     ).all()
 
-    _log_changes(logger, ports, action=f"The following ports change binding to switch_id {new_switch_id}")
+    #_log_changes(logger, ports, action=f"The following ports change binding to switch_id {new_switch_id}")
     updated_ports = _update_binding(ports, new_switch_id)
 
     if len(updated_ports) > 0:
@@ -427,7 +427,7 @@ def update_binding_details(context, port_ids, new_switch_id, logger):
             .values(vif_details=bindparam("new_vif_details")))
 
         with ses.begin() as trans:
-            _log_changes(logger, updated_ports, "updated the ports following")
+            #_log_changes(logger, updated_ports, "updated the ports following")
             ses.execute(stmt, [{"new_vif_details": p.vif_details} for p in updated_ports])
 
     return updated_ports
