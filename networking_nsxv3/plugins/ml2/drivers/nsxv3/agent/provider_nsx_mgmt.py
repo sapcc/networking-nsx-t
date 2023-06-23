@@ -878,8 +878,15 @@ class Provider(base.Provider):
     def network_realize(self, segmentation_id):
         meta = self.metadata(self.NETWORK, segmentation_id)
         if not meta:
-            os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}
-            provider_net = {"transport_zone_id": self.zone_id}
+            if self.zone_name == cfg.CONF.NSXV3.nsxv3_new_hostswitch_transport_zone_name:
+                self.metadata_refresh(self.NETWORK)
+                new_switch_meta = self.metadata(self.NETWORK, segmentation_id)
+                if new_switch_meta:
+                    return new_switch_meta # if there is a new switch, use it
+
+            # otherwise, continue to create a new switch in the old transport zone
+            os_net = {"id": "{}-{}".format(self.tz_name, segmentation_id), "segmentation_id": segmentation_id}
+            provider_net = {"transport_zone_id": self.tz_id}
 
             data = self.payload.network(os_net, provider_net)
             o = self.client.post(path=API.SWITCHES, data=data).json()
