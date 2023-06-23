@@ -50,8 +50,8 @@ class AgentRealizer(object):
         # It is used as a flag for using Policy API completely or not
         # in case migration canceled or failed this flag will be False
         # TODO: After completing the transition to NSX Policy API (ONLY if successful!), deprecate this flag
-        #self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
-        #self.provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
+        self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
+        self.provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
         self.hostswitch_migr_provider = HostswitchMigrationProvider(self.provider, self.migration_tracker)
         self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
