@@ -109,7 +109,7 @@ class AgentRealizer(object):
 
         :force: bool -- if True concider all objects as outdated
         """
-        if self.migration_tracker.get_migration_in_progress():
+        if self.migration_tracker.is_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('synchronization')}")
             return
         with LockManager.get_lock("all"):
@@ -215,7 +215,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Security Group
         :reference: -- if True will create the group if unknown by the provider
         """
-        if self.migration_tracker.get_migration_in_progress():
+        if self.migration_tracker.is_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_members realization')}")
             return
         with LockManager.get_lock("member-{}".format(os_id)):
@@ -240,7 +240,7 @@ class AgentRealizer(object):
         Realization will happen only if the group has active ports on the host.
         :os_id: -- OpenStack ID of the Security Group
         """
-        if self.migration_tracker.get_migration_in_progress():
+        if self.migration_tracker.is_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_rules realization')}")
             return
         with LockManager.get_lock("rules-{}".format(os_id)):
@@ -271,7 +271,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Port
         :network_meta: -- NSX Switch metadata
         """
-        if self.migration_tracker.get_migration_in_progress():
+        if self.migration_tracker.is_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
@@ -312,7 +312,7 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the QoS Policy
         :reference: -- If True will create policy if unknown by the provider
         """
-        if self.migration_tracker.get_migration_in_progress():
+        if self.migration_tracker.is_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('qos realization')}")
             return
         with LockManager.get_lock("qos-{}".format(os_id)):
@@ -333,7 +333,7 @@ class AgentRealizer(object):
         :os_seg_id: -- OpenStack Network Segmentation ID
         :return: -- provider ID for the network
         """
-        if self.migration_tracker.get_migration_in_progress():
+        if self.migration_tracker.is_migration_in_progress():
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('network realization')}")
             return {}
         with LockManager.get_lock("network-{}".format(os_seg_id)):
