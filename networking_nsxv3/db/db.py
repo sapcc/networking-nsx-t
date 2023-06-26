@@ -405,29 +405,21 @@ def _update_binding(ports, new_switch_id):
         updated_ports.append(port)
     return updated_ports
 
-#def _log_changes(logger, ports, action):
-##    logger.info(f"{action} ")
-#    for p in ports:
-#        logger.info(f"openstack port {p.port_id} with {p.vif_details}")
-
-
 def update_binding_details(context, port_ids, new_switch_id):
     ses: Session = context.session
     ports = ses.query(PortBinding).filter(
         PortBinding.port_id.in_(port_ids)
     ).all()
 
-    #_log_changes(logger, ports, action=f"The following ports change binding to switch_id {new_switch_id}")
     updated_ports = _update_binding(ports, new_switch_id)
 
     if len(updated_ports) > 0:
         stmt = (
             update(PortBinding)
-            .where(PortBinding.port_id.in_([p.port_id for p in updated_ports]))
+            .where(PortBinding.port_id == bindparam('port_id_to_update'))
             .values(vif_details=bindparam("new_vif_details")))
 
         with ses.begin() as trans:
-            #_log_changes(logger, updated_ports, "updated the ports following")
-            ses.execute(stmt, [{"new_vif_details": p.vif_details} for p in updated_ports])
+            ses.execute(stmt, [{"port_id_to_update": p.port_id , "new_vif_details": p.vif_details} for p in updated_ports])
 
     return updated_ports
