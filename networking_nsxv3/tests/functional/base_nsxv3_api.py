@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 from networking_nsxv3.tests.environment import Environment
 from oslo_log import log as logging
 from oslo_config import cfg
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy, provider
 from networking_nsxv3.tests.datasets import coverage
 import copy
 import functools
@@ -151,6 +151,12 @@ class BaseNsxTest(base.BaseTestCase):
                 p = env.manager.realizer.mngr_provider
                 if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
                     self.assertEquals(expected=dict(), observed=meta["meta"])
+
+    @classmethod
+    def unpersist_migration_status(cls):
+        LOG.info(f"Remove Tags persisting mp-to--policy migration")
+        migration_tracker = provider.MigrationTracker(provider_nsx_policy.Provider())
+        migration_tracker.unpersist_migration_status()
 
     @classmethod
     def enable_nsxtside_m2policy_migration(cls):
