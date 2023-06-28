@@ -5,6 +5,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from typing import Callable, Dict, List, Set, Tuple
 
+from networking_nsxv3.common.constants import NSXV3_MP_MIGRATION_SCOPE
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
 
@@ -443,3 +444,6 @@ class MigrationTracker(object):
 
     def persist_migration_status(self, migration_scope: str, migration_result: str):
         self.provider.tag_transport_zone(scope=migration_scope, tag=migration_result)
+
+    def unpersist_migration_status(self):
+        self.provider.tag_transport_zone(scope=NSXV3_MP_MIGRATION_SCOPE, tag="run-migration-again")

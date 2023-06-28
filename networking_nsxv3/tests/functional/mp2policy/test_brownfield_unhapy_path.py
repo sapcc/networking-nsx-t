@@ -29,6 +29,7 @@ class TestMp2PolicyMigr(BaseNsxTest):
             cls.skipTest(
                 cls, f"Migration Functional Tests skipped. Migration is NOT supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
         cls.clean_all_from_nsx()
+        cls.unpersist_migration_status()
         cls.enable_nsxtside_m2policy_migration()
 
         LOG.info(f"Activate migration on driver side")
