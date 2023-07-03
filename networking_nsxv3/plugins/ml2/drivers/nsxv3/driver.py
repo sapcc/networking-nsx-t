@@ -58,7 +58,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         self.vif_details = {
             portbindings.CAP_PORT_FILTER: sg_enabled,
             portbindings.VIF_DETAILS_CONNECTIVITY:
-                portbindings.CONNECTIVITY_L2
+                self.connectivity
         }
 
         self.rpc = nsxv3_rpc.NSXv3AgentRpcClient(self.context)
@@ -78,6 +78,10 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         )
 
         LOG.info("Initialized Mechanism Driver Type = " + str(self.agent_type))
+
+    @property
+    def connectivity(self):
+        return portbindings.CONNECTIVITY_L2
 
     def get_workers(self):
         return [service.RpcWorker([self], worker_process_count=0)]
