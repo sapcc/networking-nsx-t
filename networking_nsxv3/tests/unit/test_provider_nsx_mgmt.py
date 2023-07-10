@@ -1274,3 +1274,46 @@ class TestProviderMgmt(base.BaseTestCase):
         # Assume to clean it up
         outdated, _ = provider.outdated(provider.PORT, {})
         self.assertEquals(len(outdated), 1)
+
+    @responses.activate
+    def test_port_update_after_vc_nic_reconfiguration(self):
+        provider_port, os_sg, _, os_qos, os_port_parent, os_port_child = self.port_fixture()
+
+        # Port crated via Nova machine provisioning
+        requests.post(get_url("/api/v1/logical-ports"), data=json.dumps(provider_port)).json()
+
+        inv = self.inventory.inv
+        provider = provider_nsx_mgmt.Provider()
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        net_meta1 = provider.network_realize(os_port_parent['vif_details']['segmentation_id'])
+        net_meta2 = provider.network_realize(os_port_child['vif_details']['segmentation_id'])
+        provider.port_realize(os_port_parent)
+        provider.port_realize(os_port_child)
+
+        meta_parent_port = provider.metadata(provider.PORT, os_port_parent.get("id")).id
+        meta_child_port = provider.metadata(provider.PORT, os_port_child.get("id")).id
+
+        self.assertEquals(len(inv[Inventory.PORTS].keys()), 2)
+        self.assertNotEqual(meta_parent_port, None)
+        self.assertNotEqual(meta_child_port, None)
+
+        # Simulate VC NIC reconfiguration
+        self.get_by_name(inv[Inventory.PORTS], os_port_parent.get("id"))["_create_user"] = "system"
+        self.get_by_name(inv[Inventory.PORTS], os_port_child.get("id"))["_create_user"] = "system"
+        self.get_by_name(inv[Inventory.PORTS], os_port_parent.get("id"))["logical_switch_id"] = net_meta1.id
+        self.get_by_name(inv[Inventory.PORTS], os_port_child.get("id"))["logical_switch_id"] = net_meta2.id
+
+        provider.metadata_refresh(provider.NETWORK)
+        provider.metadata_refresh(provider.PORT)
+
+        # Assert metadata persist after refresh
+        self.assertTrue(provider.metadata(provider.PORT, os_port_parent.get("id")))
+        self.assertTrue(provider.metadata(provider.PORT, os_port_child.get("id")))
+
+        provider.port_realize(os_port_child)
+        provider.port_realize(os_port_parent)
+
+        # Assert metadata persist after update
+        self.assertTrue(provider.metadata(provider.PORT, os_port_parent.get("id")).id)
+        self.assertTrue(provider.metadata(provider.PORT, os_port_child.get("id")).id)
