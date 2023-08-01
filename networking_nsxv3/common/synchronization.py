@@ -19,7 +19,7 @@ import collections
 
 LOG = logging.getLogger(__name__)
 
-MESSAGE = "{} Resource ID:{} with Priority:{} for action {}"
+MESSAGE = "{} Resource ID: {} with Priority: {} for action {}"
 INFINITY = -1
 TIMEOUT = 5
 

@@ -176,7 +176,7 @@ class NsxInventory(object):
                 for o in json.load(file):
                     id = o.get("id")
                     if id in meta:
-                        LOG.info("Object with ID:%s already processed.", id)
+                        LOG.info("Object with ID: %s already processed.", id)
                         if isinstance(meta[id], dict) and not meta[id]["rules_processed"]:
                             self._load_section_rules(full_meta, id, self.api.RULES_CREATE.format(
                                 meta[id]["id"]), os.path.join(folder_path, id))

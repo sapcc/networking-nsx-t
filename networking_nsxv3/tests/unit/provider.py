@@ -203,7 +203,7 @@ class Inventory(object):
                     inventory_dump2 = json.dumps(self.inv[Inventory.PORTS], indent=2)
                     if (real_id in inventory_dump) or (real_id in inventory_dump1) or (real_id in inventory_dump2):
                         inventory[real_id] = o
-                        return self.resp(417, "SG with ID:{} cannot be deleted as either it has children or it is being referenced.".format(real_id))
+                        return self.resp(417, "SG with ID: {} cannot be deleted as either it has children or it is being referenced.".format(real_id))
             return self.resp(200) if o else self.resp(404)
 # TODO: Add support for creation of Segments and SegmentPorts
 
