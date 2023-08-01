@@ -578,8 +578,8 @@ class Provider(base.Provider):
     def _realize(self, resource_type, delete, convertor, os_o, provider_o):
         os_id = os_o.get("id")
 
-        begin_report = "[{}] Resource:{} with ID:{} is going to be %s.".format(self.provider, resource_type, os_id)
-        end_report = "[{}] Resource:{} with ID:{} has been %s.".format(self.provider, resource_type, os_id)
+        begin_report = "[{}] Resource: {} with ID: {} is going to be %s.".format(self.provider, resource_type, os_id)
+        end_report = "[{}] Resource: {} with ID: {} has been %s.".format(self.provider, resource_type, os_id)
 
         path = self.meta_provider(resource_type).endpoint
         metadata = self.metadata(resource_type, os_id)
@@ -738,7 +738,7 @@ class Provider(base.Provider):
     def sg_members_realize(self, sg, delete=False):
         if delete and self.metadata(Provider.SG_RULES, sg.get("id")):
             LOG.warning(
-                "Resource:%s with ID:%s deletion is rescheduled due to dependency.", Provider.SG_MEMBERS, sg.get("id")
+                "Resource: %s with ID: %s deletion is rescheduled due to dependency.", Provider.SG_MEMBERS, sg.get("id")
             )
             return
         return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, sg, dict())

@@ -433,7 +433,7 @@ class Provider(base.Provider):
     QOS = "Segment QoS"
     NETWORK = "Segment"
     PORT = "SegmentPort"
-    RESCHEDULE_WARN_MSG = "Resource:%s with ID:%s deletion is rescheduled due to dependency."
+    RESCHEDULE_WARN_MSG = "Resource: %s with ID: %s deletion is rescheduled due to dependency."
 
     def __init__(self, payload: Payload = Payload(), zone_id: str = ""):
         super(Provider, self).__init__(client=Client(), zone_id=zone_id)
@@ -576,23 +576,23 @@ class Provider(base.Provider):
             o = self.client.get(path=API.STATUS, params=params).json()
             status = o.get("consolidated_status", {}).get("consolidated_status")
             if status == "SUCCESS":
-                LOG.info("%s ID:%s in Status:%s", resource_type, os_id, status)
+                LOG.info("%s ID: %s in Status: %s", resource_type, os_id, status)
                 exporter.REALIZED.labels(resource_type, status).inc()
                 return True
             else:
-                LOG.info("%s ID:%s in Status:%s for %ss", resource_type, os_id, status, attempt * pause)
+                LOG.info("%s ID: %s in Status: %s for %ss", resource_type, os_id, status, attempt * pause)
                 eventlet.sleep(pause)
         # When multiple policies did not get realized in the defined timeframe,
         # this is a symptom for another issue.
         # This should be detected by the Prometheus after a while
         exporter.REALIZED.labels(resource_type, status).inc()
-        raise Exception("{} ID:{} did not get realized for {}s", resource_type, os_id, until * pause)
+        raise Exception("{} ID: {} did not get realized for {}s", resource_type, os_id, until * pause)
 
     # overrides
     @refresh_and_retry
     def _realize(self, resource_type: str, delete: bool, convertor: Callable, os_o: dict, provider_o: dict):
         os_id = os_o.get("id")
-        report = "Resource:{} with ID:{} is going to be %s.".format(resource_type, os_id)
+        report = "Resource: {} with ID: {} is going to be %s.".format(resource_type, os_id)
 
         meta = self.metadata(resource_type, os_id)
         if meta:
@@ -632,7 +632,7 @@ class Provider(base.Provider):
                 meta = self.metadata_update(resource_type, data)
                 self._wait_to_realize(resource_type, os_id)
                 return meta
-            LOG.info("Resource:%s with ID:%s already deleted.", resource_type, os_id)
+            LOG.info("Resource: %s with ID: %s already deleted.", resource_type, os_id)
 
     def _delete_segment_port(self, os_port: dict, port_meta: PolicyResourceMeta) -> None:
         os_id = os_port.get("id")
