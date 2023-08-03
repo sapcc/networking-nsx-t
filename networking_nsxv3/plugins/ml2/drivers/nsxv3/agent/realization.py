@@ -38,7 +38,6 @@ class AgentRealizer(object):
         self.plcy_provider = plcy_provider
         self.migration_tracker = provider.MigrationTracker(self.plcy_provider)
 
-
         self.AGE = int(time.time())
 
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
@@ -54,14 +53,14 @@ class AgentRealizer(object):
         if self.mp_to_policy_completed:
             self._dryrun()
             return
-        
+
         if self.USE_POLICY_API:
             self._try_start_migration()
         else:
             self._dryrun()
 
     def _check_mp_to_policy_completed(self):
-        return any([t for t in self.plcy_provider.zone_tags\
+        return any([t for t in self.plcy_provider.zone_tags
             if t.get("scope") == NSXV3_MP_MIGRATION_SCOPE and t.get("tag") == NSXV3_MIGRATION_SUCCESS_TAG])
 
     @staticmethod
@@ -243,6 +242,22 @@ class AgentRealizer(object):
                     remote_id = os_rule.get("remote_group_id")
                     if remote_id:
                         self.security_group_members(remote_id, reference=True)
+
+                    remote_address_group_id = os_rule.get("remote_address_group_id")
+                    if remote_address_group_id:
+                        addr_grp_members = self.rpc.get_addresses_for_address_group_id(remote_address_group_id) or []
+                        os_rule["addr_grp_members"] = [ip[0] for ip in addr_grp_members]
+                         # Validate if the rule is IPv4 and the members are IPv6 and vice versa 
+                        if os_rule["ethertype"] == "IPv4" and any([":" in i for i in os_rule["addr_grp_members"]]):
+                            LOG.warning(
+                                f"IPv4 rule with IPv6 address group members is not supported!\
+                                    Skipping realization for SG: '{os_id}', Rule: '{os_rule['id']}'")
+                            del os_rule
+                        if os_rule["ethertype"] == "IPv6" and any(["." in i for i in os_rule["addr_grp_members"]]):
+                            LOG.warning(
+                                f"IPv6 rule with IPv4 address group members is not supported!\
+                                    Skipping realization for SG: '{os_id}', Rule: '{os_rule['id']}'")
+                            del os_rule
 
                 logged = self.rpc.has_security_group_logging(os_id)
                 LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")

@@ -216,6 +216,12 @@ class NSXv3ServerRpcApi(object):
         return cctxt.call(self.context, 'has_security_group_logging',
                           security_group_id=security_group_id)
 
+    @log_helpers.log_method_call
+    def get_addresses_for_address_group_id(self, address_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_addresses_for_address_group_id',
+                          address_group_id=address_group_id)
+
 
 class NSXv3ServerRpcCallback(object):
     """Plugin-side RPC (implementation) for agent-to-plugin interaction.
@@ -326,6 +332,10 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def get_port_logging(self, context, port_id):
         return db.get_port_logging(context, port_id)
+
+    @log_helpers.log_method_call
+    def get_addresses_for_address_group_id(self, context, address_group_id):
+        return db.get_addresses_for_address_group_id(context, address_group_id)
 
     @log_helpers.log_method_call
     def has_security_group_logging(self, context, security_group_id):

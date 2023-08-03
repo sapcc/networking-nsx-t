@@ -375,6 +375,7 @@ class Payload(provider_nsx_mgmt.Payload):
         os_id = os_rule["id"]
         ethertype = os_rule["ethertype"]
         direction = os_rule["direction"]
+        ip_grp_members = os_rule.get("addr_grp_members", [])
 
         def group_ref(group_id):
             return "ANY" if (not group_id or group_id == "ANY") else API.GROUP_PATH.format(group_id)
@@ -390,6 +391,11 @@ class Payload(provider_nsx_mgmt.Payload):
             self._filter_out_ipv4_mapped_ipv6_nets(target)
             if not len(target):
                 return None
+        elif len(ip_grp_members) > 0:
+            # add remote address group addresses to the rule as sources
+            target = [ip for ip in ip_grp_members]
+            # Workaround for NSX-T glitch when IPv4-mapped IPv6 with prefix used in rules target
+            self._filter_out_ipv4_mapped_ipv6_nets(target)
         else:
             target = ["ANY"]
 
@@ -521,7 +527,6 @@ class Provider(base.Provider):
             revision = meta.rules.get(rule["id"], {}).get("_revision") if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)  # TODO: this could be optimized
             provider_rule = self.payload.sg_rule(rule, provider_rule, logged=logged, sp_id=os_sg.get("id"))
-
             if provider_rule:
                 provider_rules.append(provider_rule)
 
