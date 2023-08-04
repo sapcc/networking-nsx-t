@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from neutronclient.v2_0 import client
 
 
