@@ -16,6 +16,7 @@ import heapq
 import functools
 import collections
 
+from oslo_context import context
 
 LOG = logging.getLogger(__name__)
 
@@ -69,10 +70,11 @@ class Identifier(object):
 
 class Runnable(object):
 
-    def __init__(self, idn, fn, priority=Priority.LOWEST):
+    def __init__(self, idn, fn, priority=Priority.LOWEST, context=None):
         self.priority = priority
         self.idn = idn
         self.fn = fn
+        self.context = context
 
     def __repr__(self):
         return str(self.idn)
@@ -137,7 +139,7 @@ class Runner(object):
         self._idle = workers_size
         self._state = "not started"
 
-    def run(self, priority, ids, fn):
+    def run(self, priority, ids, fn, context=None):
         """ Submit a job with priority
 
         Keyword arguments:
@@ -154,7 +156,7 @@ class Runner(object):
             try:
                 LOG.info(MESSAGE.format("Enqueued", jid, priority.name, fn.__name__))
 
-                job = Runnable(jid, fn, priority.value)
+                job = Runnable(jid, fn, priority.value, context)
                 if priority.value == Priority.HIGHEST:
                     self._active.put_nowait(job)
                 else:
@@ -172,8 +174,8 @@ class Runner(object):
                     self._active.put_nowait(self._passive.get_nowait())
                     self._passive.task_done()
                 job = self._active.get(block=True, timeout=TIMEOUT)
-                LOG.info(MESSAGE.format("Processing", job.idn, Priority(job.priority).name, job.fn.__name__))
-                self._workers.spawn(job.fn, job.idn)#.wait()
+                LOG.info(MESSAGE.format("Processing", job.idn, Priority(job.priority).name, job.fn.__name__), context=job.context)
+                self._workers.spawn(job.fn, job.idn, job.context)#.wait()
                 self._active.task_done()
             except eventlet.queue.Empty:
                 LOG.info("No activity for the last {} seconds.".format(TIMEOUT))

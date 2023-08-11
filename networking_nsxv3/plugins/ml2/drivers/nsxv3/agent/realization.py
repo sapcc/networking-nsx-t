@@ -194,7 +194,7 @@ class AgentRealizer(object):
 
             self.AGE = int(time.time())
 
-    def security_group_members(self, os_id: str, reference=False):
+    def security_group_members(self, os_id: str, reference=False, context=None):
         """
         Realize security group members state.
         Realization will happen only if the group has active ports on the host
@@ -217,11 +217,12 @@ class AgentRealizer(object):
                     paths = [p.path for p in segment_ports]
 
                     # SG Members are not revisionable, use default "0"
-                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": 0, "member_paths": paths})
+                    pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": 0, "member_paths": paths},
+                                          context=context)
                 else:
-                    pp.sg_members_realize({"id": os_id}, delete=True)
+                    pp.sg_members_realize({"id": os_id}, delete=True, context=context)
 
-    def security_group_rules(self, os_id: str):
+    def security_group_rules(self, os_id: str, context=None):
         """
         Realize security group rules state.
         Realization will happen only if the group has active ports on the host.
@@ -235,24 +236,25 @@ class AgentRealizer(object):
 
             if os_sg and os_sg.get("ports"):
                 # Create Members Container
-                self.security_group_members(os_id, reference=True)
+                self.security_group_members(os_id, reference=True, context=context)
 
                 os_sg["rules"] = self.rpc.get_rules_for_security_group_id(os_id)
 
                 for os_rule in os_sg["rules"]:
                     remote_id = os_rule.get("remote_group_id")
                     if remote_id:
-                        self.security_group_members(remote_id, reference=True)
+                        self.security_group_members(remote_id, reference=True, context=context)
 
                 logged = self.rpc.has_security_group_logging(os_id)
-                LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")
-                self.plcy_provider.sg_rules_realize(os_sg, logged=logged)
+                LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}",
+                         context=context)
+                self.plcy_provider.sg_rules_realize(os_sg, logged=logged, context=context)
 
             else:
-                self.plcy_provider.sg_rules_realize({"id": os_id}, delete=True)
+                self.plcy_provider.sg_rules_realize({"id": os_id}, delete=True, context=context)
                 # Skip members as they can be used as references
 
-    def precreate_port(self, os_id: str, network_meta: dict):
+    def precreate_port(self, os_id: str, network_meta: dict, context=None):
         """
         Try to precreate port on first binding request.
         :os_id: -- OpenStack ID of the Port
@@ -266,13 +268,13 @@ class AgentRealizer(object):
             if port:
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
-                    self.qos(os_qid, reference=True)
+                    self.qos(os_qid, reference=True, context=context)
 
                 if not port.get("vif_details") and network_meta:
                     port["vif_details"] = network_meta
-                self._port_realize(port)
+                self._port_realize(port, context)
 
-    def port(self, os_id: str):
+    def port(self, os_id: str, context=None):
         """
         Realize port state.
         :os_id: -- OpenStack ID of the Port
@@ -286,11 +288,11 @@ class AgentRealizer(object):
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
                     self.qos(os_qid, reference=True)
-                self._port_realize(port)
+                self._port_realize(port, context=context)
             else:
-                self._port_realize({"id": os_id}, delete=True)
+                self._port_realize({"id": os_id}, delete=True, context=context)
 
-    def qos(self, os_id: str, reference=False):
+    def qos(self, os_id: str, reference=False, context=None):
         """
         Realize QoS Policy state.
         :os_id: -- OpenStack ID of the QoS Policy
@@ -307,11 +309,11 @@ class AgentRealizer(object):
             if not (reference and meta):
                 qos = self.rpc.get_qos(os_id)
                 if qos:
-                    self._qos_realize(os_qos=qos)
+                    self._qos_realize(os_qos=qos, context=context)
                 else:
-                    self._qos_realize(os_qos={"id": os_id}, delete=True)
+                    self._qos_realize(os_qos={"id": os_id}, delete=True, context=context)
 
-    def network(self, os_seg_id: str):
+    def network(self, os_seg_id: str, context=None):
         """
         Realize Network state.
         :os_seg_id: -- OpenStack Network Segmentation ID
@@ -323,47 +325,47 @@ class AgentRealizer(object):
         with LockManager.get_lock("network-{}".format(os_seg_id)):
             # TODO: mngr has to be removed after POLICY is fully supported
             provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
-            meta = provider.network_realize(os_seg_id)
+            meta = provider.network_realize(os_seg_id, context=context)
             return {"nsx-logical-switch-id": meta.unique_id, "external-id": meta.id, "segmentation_id": os_seg_id}
 
-    def enable_policy_logging(self, log_obj: dict):
+    def enable_policy_logging(self, log_obj: dict, context=None):
         """
         Realize security policy logging state enablement.
         :os_seg_id: -- OpenStack Security Group ID
         :return: -- None
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
-            self.plcy_provider.enable_policy_logging(log_obj)
+            self.plcy_provider.enable_policy_logging(log_obj, context)
 
-    def disable_policy_logging(self, log_obj: dict):
+    def disable_policy_logging(self, log_obj: dict, context=None):
         """
         Realize security policy logging state disablement.
         :os_seg_id: -- OpenStack Security Group ID
         :return: -- None
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
-            self.plcy_provider.disable_policy_logging(log_obj)
+            self.plcy_provider.disable_policy_logging(log_obj, context)
 
-    def update_policy_logging(self, log_obj: dict):
+    def update_policy_logging(self, log_obj: dict, context=None):
         """
         Realize security policy logging state update.
         :os_seg_id: -- OpenStack Security Group ID
         :return: -- None
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
-            self.plcy_provider.update_policy_logging(log_obj)
+            self.plcy_provider.update_policy_logging(log_obj, context)
 
-    def _qos_realize(self, os_qos: dict, delete=False):
+    def _qos_realize(self, os_qos: dict, delete=False, context=None):
         # TODO: mngr has to be removed after POLICY is fully supported
         provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
-        return provider.qos_realize(os_qos, delete)
+        return provider.qos_realize(os_qos, delete, context)
 
-    def _port_realize(self, os_port: dict, delete: bool = False):
+    def _port_realize(self, os_port: dict, delete: bool = False, context=None):
         # TODO: mngr has to be removed after POLICY is fully supported
         provider = self.plcy_provider if self.USE_POLICY_API else self.mngr_provider
 
-        return provider.port_realize(os_port, delete)
+        return provider.port_realize(os_port, delete, context=context)
 
     def _check_mp2policy_support(self):
         """Check if MP-to-Policy is forced, check if NSX-T version is supported
