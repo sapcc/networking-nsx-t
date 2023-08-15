@@ -247,17 +247,17 @@ class AgentRealizer(object):
                     if remote_address_group_id:
                         addr_grp_members = self.rpc.get_addresses_for_address_group_id(remote_address_group_id) or []
                         os_rule["addr_grp_members"] = [ip[0] for ip in addr_grp_members]
-                         # Validate if the rule is IPv4 and the members are IPv6 and vice versa 
+                        # Validate if the rule is IPv4 and the members are IPv6 and vice versa 
                         if os_rule["ethertype"] == "IPv4" and any([":" in i for i in os_rule["addr_grp_members"]]):
                             LOG.warning(
                                 f"IPv4 rule with IPv6 address group members is not supported!\
                                     Skipping realization for SG: '{os_id}', Rule: '{os_rule['id']}'")
-                            del os_rule
-                        if os_rule["ethertype"] == "IPv6" and any(["." in i for i in os_rule["addr_grp_members"]]):
+                            os_sg["rules"].remove(os_rule)
+                        elif os_rule["ethertype"] == "IPv6" and any(["." in i for i in os_rule["addr_grp_members"]]):
                             LOG.warning(
                                 f"IPv6 rule with IPv4 address group members is not supported!\
                                     Skipping realization for SG: '{os_id}', Rule: '{os_rule['id']}'")
-                            del os_rule
+                            os_sg["rules"].remove(os_rule)
 
                 logged = self.rpc.has_security_group_logging(os_id)
                 LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")
