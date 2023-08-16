@@ -558,7 +558,7 @@ class Provider(base.Provider):
         return False
 
     @exporter.IN_REALIZATION.track_inprogress()
-    def _wait_to_realize(self, resource_type, os_id):
+    def _wait_to_realize(self, resource_type, os_id, context):
         if resource_type == Provider.SG_RULES:
             path = API.POLICY.format(os_id)
         elif resource_type == Provider.SG_MEMBERS:
@@ -576,11 +576,11 @@ class Provider(base.Provider):
             o = self.client.get(path=API.STATUS, params=params).json()
             status = o.get("consolidated_status", {}).get("consolidated_status")
             if status == "SUCCESS":
-                LOG.info("%s ID: %s in Status: %s", resource_type, os_id, status)
+                LOG.info("%s ID: %s in Status: %s", resource_type, os_id, status, context=context)
                 exporter.REALIZED.labels(resource_type, status).inc()
                 return True
             else:
-                LOG.info("%s ID: %s in Status: %s for %ss", resource_type, os_id, status, attempt * pause)
+                LOG.info("%s ID: %s in Status: %s for %ss", resource_type, os_id, status, attempt * pause, context=context)
                 eventlet.sleep(pause)
         # When multiple policies did not get realized in the defined timeframe,
         # this is a symptom for another issue.
@@ -590,7 +590,7 @@ class Provider(base.Provider):
 
     # overrides
     @refresh_and_retry
-    def _realize(self, resource_type: str, delete: bool, convertor: Callable, os_o: dict, provider_o: dict):
+    def _realize(self, resource_type: str, delete: bool, convertor: Callable, os_o: dict, provider_o: dict, context=None):
         os_id = os_o.get("id")
         report = "Resource: {} with ID: {} is going to be %s.".format(resource_type, os_id)
 
@@ -598,17 +598,17 @@ class Provider(base.Provider):
         if meta:
             if delete:
                 try:
-                    LOG.info(report, "deleted")
+                    LOG.info(report, "deleted", context=context)
                     self.client.delete(path="{}{}".format(API.POLICY_BASE, meta.path))
                     return self.metadata_delete(resource_type, os_id)
                 except RuntimeError as e:
                     if re.match("cannot be deleted as either it has children or it is being referenced", str(e)):
-                        LOG.warning(self.RESCHEDULE_WARN_MSG, resource_type, os_id)
+                        LOG.warning(self.RESCHEDULE_WARN_MSG, resource_type, os_id, context=context)
                         return
                     else:
                         raise e
             else:
-                LOG.info(report, "updated")
+                LOG.info(report, "updated", context=context)
                 provider_o["_revision"] = meta.revision
                 data = convertor(os_o, provider_o)
                 path = "{}{}".format(API.POLICY_BASE, data.get("path"))
@@ -617,11 +617,11 @@ class Provider(base.Provider):
                 data = res.json()
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
-                self._wait_to_realize(resource_type, os_id)
+                self._wait_to_realize(resource_type, os_id, context)
                 return meta
         else:
             if not delete:
-                LOG.info(report, "created")
+                LOG.info(report, "created", context=context)
                 provider_o["_revision"] = None
                 data = convertor(os_o, provider_o)
                 path = "{}{}".format(API.POLICY_BASE, data.get("path"))
@@ -630,11 +630,11 @@ class Provider(base.Provider):
                 data = res.json()
                 # NSX-T applies desired state, no need to fetch after put
                 meta = self.metadata_update(resource_type, data)
-                self._wait_to_realize(resource_type, os_id)
+                self._wait_to_realize(resource_type, os_id, context)
                 return meta
-            LOG.info("Resource: %s with ID: %s already deleted.", resource_type, os_id)
+            LOG.info("Resource: %s with ID: %s already deleted.", resource_type, os_id, context=context)
 
-    def _delete_segment_port(self, os_port: dict, port_meta: PolicyResourceMeta) -> None:
+    def _delete_segment_port(self, os_port: dict, port_meta: PolicyResourceMeta, context) -> None:
         os_id = os_port.get("id")
         nsx_segment_id = port_meta.parent_path.replace(API.SEGMENT_PATH.format(""), "")
         target_o = {"id": nsx_segment_id, "resource_type": Provider.NETWORK}
@@ -651,11 +651,11 @@ class Provider(base.Provider):
                 match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
                 LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.PORT, os_id)
                 if match:
-                    self._realize_sg_members_after_port_deletion(child_o, match)
+                    self._realize_sg_members_after_port_deletion(child_o, match, context)
 
             return self.metadata_delete(Provider.PORT, os_id)
 
-    def _realize_sg_members_after_port_deletion(self, child_o, match):
+    def _realize_sg_members_after_port_deletion(self, child_o, match, context):
         refs = match.groups()[0].split(",")
         sg_paths = filter(lambda r: re.match(r'\/infra\/domains\/default\/groups\/', r), refs)
         meta = self._metadata[Provider.SG_MEMBERS].meta
@@ -671,9 +671,9 @@ class Provider(base.Provider):
                         except:
                             pass
                         else:
-                            self.sg_members_realize({"id": sg_id, "member_paths": sg_m.sg_members})
+                            self.sg_members_realize({"id": sg_id, "member_paths": sg_m.sg_members}, context)
 
-    def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
+    def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False, context=None):
         logged_drop_policy_rules = self.client.get_all(path=API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
         is_logged = [rule for rule in logged_drop_policy_rules if rule["id"] == os_sg["id"]]
 
@@ -698,15 +698,15 @@ class Provider(base.Provider):
                 path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
 
     # overrides
-    def port_realize(self, os_port: dict, delete=False):
+    def port_realize(self, os_port: dict, delete=False, context=None):
         port_id = os_port.get("id")
         port_meta = self.metadata(Provider.PORT, port_id)
 
         if delete:
             if not port_meta:
-                LOG.info("Segment Port:%s already deleted.", port_id)
+                LOG.info("Segment Port:%s already deleted.", port_id, context=context)
                 return
-            return self._delete_segment_port(os_port, port_meta)
+            return self._delete_segment_port(os_port, port_meta, context)
 
         # Realize the port via the Policy API
         provider_port = dict()
@@ -718,7 +718,7 @@ class Provider(base.Provider):
             if parent_meta:
                 provider_port["parent_id"] = parent_meta.real_id
             else:
-                LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s.", parent_port_id, port_id)
+                LOG.warning("Not found. Parent Segment Port:%s for Child Port:%s.", parent_port_id, port_id, context=context)
                 return
 
         if port_meta:
@@ -726,7 +726,7 @@ class Provider(base.Provider):
             provider_port["path"] = port_meta.path
             provider_port["_revision"] = port_meta.revision
         else:
-            LOG.warning("Not found. Segment Port: %s", port_id)
+            LOG.warning("Not found. Segment Port: %s", port_id, context=context)
 
         os_qos_id = os_port.get("qos_policy_id")
 
@@ -750,24 +750,24 @@ class Provider(base.Provider):
 
             # In case the port already exists, realize the static group membership before the port is updated
             if port_meta:
-                self.realize_sg_static_members(port_sgs, port_meta)
+                self.realize_sg_static_members(port_sgs, port_meta, context)
 
             # Realize the port with empty security groups tags
-            updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
+            updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port, context)
 
             # If the port was not existing, realize the static group membership after the port was created
-            return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
+            return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta, context)
 
-        return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
+        return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port, context)
 
-    def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
+    def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta, context):
         for sg_id in port_sgs:
             with LockManager.get_lock("member-{}".format(sg_id)):
                 sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
                 if not sg_meta:
                     # Realize the Security Group if it does not exist with empty members
                     sg_meta = self.sg_members_realize(
-                        {"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
+                        {"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []}, context)
                 if not port_meta.path:
                     raise RuntimeError(f"Not found path in Metadata for port: {port_meta.real_id}")
                 if port_meta.path not in sg_meta.sg_members:
@@ -775,7 +775,7 @@ class Provider(base.Provider):
                     self.sg_members_realize({"id": sg_id,
                                              "cidrs": sg_meta.sg_cidrs,
                                              "member_paths": sg_meta.sg_members,
-                                             "revision_number": sg_meta.revision or 0})
+                                             "revision_number": sg_meta.revision or 0}, context)
 
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
@@ -792,12 +792,12 @@ class Provider(base.Provider):
         return segment_ports
 
     # overrides
-    def network_realize(self, segmentation_id: int) -> PolicyResourceMeta:
+    def network_realize(self, segmentation_id: int, context=None) -> PolicyResourceMeta:
         segment = self.metadata(Provider.NETWORK, segmentation_id)
         if not segment or segment.real_id is None:
             os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}
             provider_net = {"transport_zone_id": self.zone_id}
-            segment = self._realize(Provider.NETWORK, False, self.payload.segment, os_net, provider_net)
+            segment = self._realize(Provider.NETWORK, False, self.payload.segment, os_net, provider_net, context)
         return segment
 
     def get_non_default_switching_profiles(self) -> list:
@@ -806,36 +806,36 @@ class Provider(base.Provider):
         return [p for p in prfls if p and p.get("id").find("default") == -1]
 
     # overrides
-    def sg_rules_realize(self, os_sg, delete=False, logged=False):
+    def sg_rules_realize(self, os_sg, delete=False, logged=False, context=None):
         os_id = os_sg.get("id")
         logged = bool(logged)
-        self._sg_logged_drop_rules_realize(os_sg, delete, logged)
+        self._sg_logged_drop_rules_realize(os_sg, delete, logged, context)
 
         if delete:
-            self._realize(Provider.SG_RULES, delete, None, os_sg, dict())
+            self._realize(Provider.SG_RULES, delete, None, os_sg, dict(), context)
             return
 
         provider_sg = self._create_provider_sg(os_sg, os_id, logged=logged)
-        return self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg)
+        return self._realize(Provider.SG_RULES, delete, self.payload.sg_rules_container, os_sg, provider_sg, context)
 
-    def qos_realize(self, qos: dict, delete=False):
+    def qos_realize(self, qos: dict, delete=False, context=None):
         qos_id = qos.get("id")
         meta = self.metadata(Provider.QOS, qos_id)
         if not meta:
             return None
         provider_o = {"id": meta.real_id, "_revision": meta.revision}
-        return self._realize(Provider.QOS, delete, self.payload.qos, qos, provider_o)
+        return self._realize(Provider.QOS, delete, self.payload.qos, qos, provider_o, context)
 
-    def sg_members_realize(self, os_sg: dict, delete=False):
+    def sg_members_realize(self, os_sg: dict, delete=False, context=None):
         os_id = os_sg.get("id")
         if delete and self.metadata(Provider.SG_RULES, os_id):
             provider_group = {"paths": [], "_revision": None}
-            self._realize(Provider.SG_MEMBERS, False, self.payload.sg_members_container, os_sg, provider_group)
-            LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SG_MEMBERS, os_id)
+            self._realize(Provider.SG_MEMBERS, False, self.payload.sg_members_container, os_sg, provider_group, context)
+            LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.SG_MEMBERS, os_id, context=context)
             return
 
         provider_group = {"paths": os_sg.get("member_paths"), "_revision": None}
-        return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, os_sg, provider_group)
+        return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, os_sg, provider_group, context)
 
     # overrides
     def metadata(self, resource_type: str, os_id: str) -> PolicyResourceMeta:
@@ -974,12 +974,12 @@ class Provider(base.Provider):
                 sanitize.append((service.get("id"), remove_orphan_service))
         return sanitize
 
-    def set_policy_logging(self, log_obj, enable_logging):
-        LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")
+    def set_policy_logging(self, log_obj, enable_logging, context):
+        LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}", context=context)
 
         # Check for a valid request
         if log_obj['resource_type'] != 'security_group':
-            LOG.error(f"set_policy_logging: incompatible resource type: {log_obj['resource_type']}")
+            LOG.error(f"set_policy_logging: incompatible resource type: {log_obj['resource_type']}", context)
             return
 
         # Get current rules configuration
@@ -997,19 +997,19 @@ class Provider(base.Provider):
         # Update the logging state
         res = self.client.patch(path=API.POLICY.format(log_obj['resource_id']), data=data)
         res.raise_for_status()
-        self._sg_logged_drop_rules_realize({"id": log_obj['resource_id']}, False, enable_logging)
+        self._sg_logged_drop_rules_realize({"id": log_obj['resource_id']}, False, enable_logging, context)
 
-    def enable_policy_logging(self, log_obj):
+    def enable_policy_logging(self, log_obj, context=None):
         LOG.debug(f"PROVIDER: enable_policy_logging")
-        return self.set_policy_logging(log_obj, True)
+        return self.set_policy_logging(log_obj, True, context)
 
-    def disable_policy_logging(self, log_obj):
+    def disable_policy_logging(self, log_obj, context=None):
         LOG.debug(f"PROVIDER: disable_policy_logging")
-        return self.set_policy_logging(log_obj, False)
+        return self.set_policy_logging(log_obj, False, context)
 
-    def update_policy_logging(self, log_obj):
+    def update_policy_logging(self, log_obj, context=None):
         LOG.debug(f"PROVIDER: update_policy_logging")
-        return self.set_policy_logging(log_obj, log_obj['enabled'])
+        return self.set_policy_logging(log_obj, log_obj['enabled'], context)
 
     def tag_transport_zone(self, scope, tag):
         tz = self._get_tz()

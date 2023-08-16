@@ -327,7 +327,7 @@ class TestNSXv3ServerRpcApi(object):
                 effective_sgs.append((id, rev, cursor))
         return effective_sgs
 
-    def has_security_group_used_by_host(self, os_id):
+    def has_security_group_used_by_host(self, os_id, context=None):
         sgs = set()
         for _, port in self.inventory.get_all(NeutronMock.PORT):
             port_sgs = port.get("security_groups")
@@ -341,7 +341,7 @@ class TestNSXv3ServerRpcApi(object):
                 return True
         return False
 
-    def get_security_group_port_ids(self, os_id):
+    def get_security_group_port_ids(self, os_id, context=None):
         ports = set()
         for port_id, port in self.inventory.get_all(NeutronMock.PORT):
             port_sgs = port.get("security_groups")
@@ -349,7 +349,7 @@ class TestNSXv3ServerRpcApi(object):
                 ports.update(port_id)
         return ports
 
-    def get_security_group_members_effective_ips(self, os_id):
+    def get_security_group_members_effective_ips(self, os_id, context=None):
         sg = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, os_id)
         if not sg:
             return []
@@ -365,7 +365,7 @@ class TestNSXv3ServerRpcApi(object):
                     effective_ips.extend(ips_allowed)
         return effective_ips
 
-    def get_security_group(self, os_id):
+    def get_security_group(self, os_id, context=None):
         sg = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, os_id)
         if not sg:
             return None
@@ -373,14 +373,14 @@ class TestNSXv3ServerRpcApi(object):
         sg["ports"] = [o.get("id") for _, o in id_o if os_id in o.get("security_groups")]
         return sg
 
-    def get_rules_for_security_group_id(self, os_id):
+    def get_rules_for_security_group_id(self, os_id, context=None):
         id_o = self.inventory.get_all(NeutronMock.SECURITY_GROUP_RULE)
         return [o for _, o in id_o if os_id == o.get("security_group_id")]
 
-    def get_port(self, id):
+    def get_port(self, id, context=None):
         return self.inventory.get_by_id(NeutronMock.PORT, id)
 
-    def get_qos(self, os_id):
+    def get_qos(self, os_id, context):
         """
         Return QoS only if associated with port
         """
@@ -388,6 +388,6 @@ class TestNSXv3ServerRpcApi(object):
         if [o for _, o in id_o if o.get("qos_policy_id") == os_id]:
             return self.inventory.get_by_id(NeutronMock.QOS, os_id)
 
-    def has_security_group_logging(self, security_group_id):
+    def has_security_group_logging(self, security_group_id, context=None):
         g = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, security_group_id)
         return g is not None and g.get("logged")

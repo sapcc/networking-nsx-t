@@ -575,7 +575,7 @@ class Provider(base.Provider):
     def meta_provider(self, resource_type) -> base.MetaProvider:
         return self._metadata.get(resource_type)
 
-    def _realize(self, resource_type, delete, convertor, os_o, provider_o):
+    def _realize(self, resource_type, delete, convertor, os_o, provider_o, context=None):
         os_id = os_o.get("id")
 
         begin_report = "[{}] Resource: {} with ID: {} is going to be %s.".format(self.provider, resource_type, os_id)
@@ -601,7 +601,7 @@ class Provider(base.Provider):
                 if resource_type == Provider.PORT:
                     res = self.client.get(path=path)
                     if res.status_code == 404:
-                        LOG.info(end_report, "rescheduled due 404: not found")
+                        LOG.info(end_report, "rescheduled due 404: not found", context=context)
                         return metadata
 
                     o = res.json()
@@ -609,16 +609,16 @@ class Provider(base.Provider):
                         stamp = int(o.get("_last_modified_time")) / 1000
 
                         if not self.orphan_ports_tmout_passed(stamp):
-                            LOG.info(end_report, "rescheduled for deletion")
+                            LOG.info(end_report, "rescheduled for deletion", context=context)
                             return metadata
 
                 self.client.delete(path=path, params=params)
 
-                LOG.info(end_report, "deleted")
+                LOG.info(end_report, "deleted", context=context)
 
                 return self.metadata_delete(resource_type, os_id)
             else:
-                LOG.info(begin_report, "updated")
+                LOG.info(begin_report, "updated", context=context)  
                 if resource_type == Provider.SG_RULES_EXT:
                     LOG.debug(
                         "Skipping update of NSGroup:%s",
@@ -627,15 +627,15 @@ class Provider(base.Provider):
                 if metadata.revision != None:
                     data["_revision"] = metadata.revision
                 o = self.client.put(path=path, data=data)
-                LOG.info(end_report, "updated")
+                LOG.info(end_report, "updated", context=context)
                 return self.metadata_update(resource_type, o.json())
         else:
             if not delete:
-                LOG.info(begin_report, "created")
+                LOG.info(begin_report, "created", context=context)
                 o = self.client.post(path=path, data=convertor(os_o, provider_o))
-                LOG.info(end_report, "created")
+                LOG.info(end_report, "created", context=context)
                 return self.metadata_update(resource_type, o.json())
-            LOG.info(end_report, "already deleted")
+            LOG.info(end_report, "already deleted", context=context)
 
     def outdated(self, resource_type: str, os_meta):
         self.metadata_refresh(resource_type)
@@ -698,7 +698,7 @@ class Provider(base.Provider):
             return self.metadata_update(Provider.PORT, port), port
         return None
 
-    def port_realize(self, os_port: dict, delete=False):
+    def port_realize(self, os_port: dict, delete=False, context=None):
         provider_port = dict()
 
         if delete:
@@ -711,7 +711,7 @@ class Provider(base.Provider):
             if parent_port and parent_port[0]:
                 provider_port["parent_id"] = parent_port[0].id
             else:
-                LOG.warning("Not found. Parent Port:%s for Child Port:%s", os_port.get("parent_id"), os_port.get("id"))
+                LOG.warning("Not found. Parent Port:%s for Child Port:%s", os_port.get("parent_id"), os_port.get("id"), context=context)
                 return
         else:
             # Parent port is NOT always created externally
@@ -719,31 +719,31 @@ class Provider(base.Provider):
             if port and port[0]:
                 provider_port["id"] = port[0].id
             else:
-                LOG.warning("Not found. Port: %s", os_port.get("id"))
+                LOG.warning("Not found. Port: %s", os_port.get("id"), context=context)
 
         if os_port.get("qos_policy_id"):
             meta_qos = self.metadata(Provider.QOS, os_port.get("qos_policy_id"))
             if meta_qos:
                 provider_port["qos_policy_id"] = meta_qos.id
             else:
-                LOG.warning("Not found. QoS:%s for Port:%s", os_port.get("qos_policy_id"), os_port.get("id"))
+                LOG.warning("Not found. QoS:%s for Port:%s", os_port.get("qos_policy_id"), os_port.get("id"), context=context)
 
         provider_port["switching_profile_ids"] = copy.deepcopy(self.switch_profiles)
 
-        return self._realize(Provider.PORT, False, self.payload.port, os_port, provider_port)
+        return self._realize(Provider.PORT, False, self.payload.port, os_port, provider_port, context=context)
 
-    def qos_realize(self, qos, delete=False):
-        return self._realize(Provider.QOS, delete, self.payload.qos, qos, dict())
+    def qos_realize(self, qos, delete=False, context=None):
+        return self._realize(Provider.QOS, delete, self.payload.qos, qos, dict(), context)
 
-    def sg_members_realize(self, sg, delete=False):
+    def sg_members_realize(self, sg, delete=False, context=None):
         if delete and self.metadata(Provider.SG_RULES, sg.get("id")):
             LOG.warning(
                 "Resource: %s with ID: %s deletion is rescheduled due to dependency.", Provider.SG_MEMBERS, sg.get("id")
             )
             return
-        return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, sg, dict())
+        return self._realize(Provider.SG_MEMBERS, delete, self.payload.sg_members_container, sg, dict(), context)
 
-    def sg_rules_realize(self, os_sg, delete=False, logged=False):
+    def sg_rules_realize(self, os_sg, delete=False, logged=False, context=None):
         provider_sg = dict()
 
         nsg_args = [Provider.SG_RULES_EXT, delete, self.payload.sg_rules_ext_container, os_sg, dict()]
@@ -764,7 +764,7 @@ class Provider(base.Provider):
 
         # Update section tags(revision) when all rules applied successfully
         provider_sg["tags_update"] = True
-        self._realize(*sec_args)
+        self._realize(*sec_args, context=context)
 
     def _sg_rules_realize(self, os_sg, meta_sg: ResourceMeta, logged=False):
 
@@ -824,7 +824,7 @@ class Provider(base.Provider):
     def _delete_sg_provider_rule_remote_prefix(self, id):
         self.client.delete(path=API.IPSET.format(id))
 
-    def network_realize(self, segmentation_id):
+    def network_realize(self, segmentation_id, context=None):
         meta = self.metadata(self.NETWORK, segmentation_id)
         if not meta:
             os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}

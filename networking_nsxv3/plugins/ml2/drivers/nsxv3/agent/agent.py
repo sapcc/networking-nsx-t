@@ -72,19 +72,19 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             seg_id = ns.get("segmentation_id")
             net_type = ns.get("network_type")
             if seg_id and net_type in nsxv3_constants.NSXV3_AGENT_NETWORK_TYPES:
-                network_meta = self.realizer.network(seg_id)
+                network_meta = self.realizer.network(seg_id, context=context)
                 break
 
         if try_create_port and bool(network_meta.get("nsx-logical-switch-id")):
-            self.realizer.precreate_port(current["id"], network_meta)
+            self.realizer.precreate_port(current["id"], network_meta, context=context)
 
         return network_meta
 
     def security_groups_member_updated(self, context, **kwargs):
-        self.callback(kwargs["security_groups"], self.realizer.security_group_members)
+        self.callback(kwargs["security_groups"], self.realizer.security_group_members, context)
 
     def security_groups_rule_updated(self, context, **kwargs):
-        self.callback(kwargs["security_groups"], self.realizer.security_group_rules)
+        self.callback(kwargs["security_groups"], self.realizer.security_group_rules, context)
 
     def port_create(self, **kwargs):
         self.realizer.port(kwargs["port"]["id"])
@@ -92,41 +92,41 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
     def port_update(self, context, **kwargs):
         # Ensure security groups attached to the port are synced first
         for sg in kwargs["port"].get("security_groups", []):
-            self.callback(sg, self.realizer.security_group_rules)
+            self.callback(sg, self.realizer.security_group_rules, context)
             # Also ensure allowed_address_pairs are re-processed
-            self.callback(sg, self.realizer.security_group_members)
-        self.callback(kwargs["port"]["id"], self.realizer.port)
+            self.callback(sg, self.realizer.security_group_members, context)
+        self.callback(kwargs["port"]["id"], self.realizer.port, context)
 
     def port_delete(self, context, **kwargs):
         # Ports removed by the background synchronization
         pass
 
     def create_policy(self, context, policy):
-        self.update_policy(context, policy)
+        self.update_policy(context, policy, context)
 
     def delete_policy(self, context, policy):
-        self.update_policy(context, policy)
+        self.update_policy(context, policy, context)
 
     def update_policy(self, context, policy):
-        self.callback(policy["id"], self.realizer.qos)
+        self.callback(policy["id"], self.realizer.qos, context)
 
     def validate_policy(self, context, policy):
         pass
 
     def create_log(self, context, log_obj):
-        self.callback(log_obj, self.realizer.enable_policy_logging)
+        self.callback(log_obj, self.realizer.enable_policy_logging, context)
 
     def create_log_precommit(self, context, log_obj):
         pass
 
     def update_log(self, context, log_obj):
-        self.callback(log_obj, self.realizer.update_policy_logging)
+        self.callback(log_obj, self.realizer.update_policy_logging, context)
 
     def update_log_precommit(self, context, log_obj):
         pass
 
     def delete_log(self, context, log_obj):
-        self.callback(log_obj, self.realizer.disable_policy_logging)
+        self.callback(log_obj, self.realizer.disable_policy_logging, context)
 
     def delete_log_precommit(self, context, log_obj):
         pass
@@ -162,15 +162,15 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         except Exception as err:
             LOG.error("Synchronization has failed. Error: %s", err)
 
-    def _sync_immediate(self, os_ids, realizer):
+    def _sync_immediate(self, os_ids, realizer, context=None):
         ids = list(os_ids) if isinstance(os_ids, set) else os_ids
         ids = ids if isinstance(ids, list) else [ids]
-        self.runner.run(sync.Priority.HIGHEST, ids, realizer)
+        self.runner.run(sync.Priority.HIGHEST, ids, realizer, context)
 
-    def _sync_delayed(self, os_ids, realizer):
+    def _sync_delayed(self, os_ids, realizer, context=None):
         ids = list(os_ids) if isinstance(os_ids, set) else os_ids
         ids = ids if isinstance(ids, list) else [ids]
-        self.runner.run(sync.Priority.HIGH, ids, realizer)
+        self.runner.run(sync.Priority.HIGH, ids, realizer, context)
 
     def kpi(self):
         return {"active": self.runner.active(), "passive": self.runner.passive()}

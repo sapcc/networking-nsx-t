@@ -27,7 +27,6 @@ class NSXv3AgentRpcClient(object):
 
         self.context = context
         self.rpc = rpc.get_client(target)
-
     def _get_call_context(self, host=None):
         topic = topics.get_topic_name(
             topics.AGENT, nsxv3_constants.NSXV3, topics.UPDATE, host)
@@ -133,7 +132,11 @@ class NSXv3ServerRpcApi(object):
         self.context = neutron_context.get_admin_context()
         self.client = rpc.get_client(target)
         self.host = cfg.CONF.host
-
+    
+    def _choose_context(self, request_context):
+        if not request_context:
+            return self.context
+        return request_context
     @log_helpers.log_method_call
     def get_ports_with_revisions(self, limit, cursor):
         cctxt = self.client.prepare()
@@ -153,38 +156,38 @@ class NSXv3ServerRpcApi(object):
                           host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
-    def get_security_group(self, security_group_id):
+    def get_security_group(self, security_group_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group',
+        return cctxt.call(self._choose_context(request_context), 'get_security_group',
                           host=self.host, security_group_id=security_group_id)
 
     @log_helpers.log_method_call
-    def get_qos(self, qos_id):
+    def get_qos(self, qos_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_qos', host=self.host, qos_id=qos_id)
+        return cctxt.call(self._choose_context(request_context), 'get_qos', host=self.host, qos_id=qos_id)
 
     @log_helpers.log_method_call
-    def get_port(self, port_id):
+    def get_port(self, port_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
+        return cctxt.call(self._choose_context(request_context), 'get_port', host=self.host, port_id=port_id)
 
     @log_helpers.log_method_call
-    def get_rules_for_security_group_id(self, security_group_id):
+    def get_rules_for_security_group_id(self, security_group_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_rules_for_security_group_id',
+        return cctxt.call(self._choose_context(request_context), 'get_rules_for_security_group_id',
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_group_members_effective_ips(self, security_group_id):
+    def get_security_group_members_effective_ips(self, security_group_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context,
+        return cctxt.call(self._choose_context(request_context),
                           'get_security_group_members_effective_ips',
                           security_group_id=security_group_id)
 
     @log_helpers.log_method_call
-    def get_security_group_port_ids(self, security_group_id):
+    def get_security_group_port_ids(self, security_group_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'get_security_group_port_ids',
+        return cctxt.call(self._choose_context(request_context), 'get_security_group_port_ids',
                           host=self.host, security_group_id=security_group_id)
 
     @log_helpers.log_method_call
@@ -200,9 +203,9 @@ class NSXv3ServerRpcApi(object):
                           host=self.host, limit=limit, cursor=cursor)
 
     @log_helpers.log_method_call
-    def has_security_group_used_by_host(self, security_group_id):
+    def has_security_group_used_by_host(self, security_group_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'has_security_group_used_by_host',
+        return cctxt.call(self._choose_context(request_context), 'has_security_group_used_by_host',
                           host=self.host, security_group_id=security_group_id)
 
     @log_helpers.log_method_call
@@ -211,9 +214,9 @@ class NSXv3ServerRpcApi(object):
         return cctxt.call(self.context, 'get_port_logging', port_id=port_id)
 
     @log_helpers.log_method_call
-    def has_security_group_logging(self, security_group_id):
+    def has_security_group_logging(self, security_group_id, request_context):
         cctxt = self.client.prepare()
-        return cctxt.call(self.context, 'has_security_group_logging',
+        return cctxt.call(self._choose_context(request_context), 'has_security_group_logging',
                           security_group_id=security_group_id)
 
 
