@@ -209,9 +209,9 @@ class AgentRealizer(object):
             pp = self.plcy_provider
             meta = pp.metadata(pp.SG_MEMBERS, os_id)
             if not (reference and meta):
-                if self.rpc.has_security_group_used_by_host(os_id):
-                    cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
-                    port_ids = set(self.rpc.get_security_group_port_ids(os_id))
+                if self.rpc.has_security_group_used_by_host(os_id, context):
+                    cidrs = self.rpc.get_security_group_members_effective_ips(os_id, context)
+                    port_ids = set(self.rpc.get_security_group_port_ids(os_id, context))
 
                     segment_ports = pp.get_port_meta_by_ids(port_ids)
                     paths = [p.path for p in segment_ports]
@@ -232,20 +232,20 @@ class AgentRealizer(object):
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('security_group_rules realization')}")
             return
         with LockManager.get_lock("rules-{}".format(os_id)):
-            os_sg = self.rpc.get_security_group(os_id)
+            os_sg = self.rpc.get_security_group(os_id, context)
 
             if os_sg and os_sg.get("ports"):
                 # Create Members Container
                 self.security_group_members(os_id, reference=True, context=context)
 
-                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(os_id)
+                os_sg["rules"] = self.rpc.get_rules_for_security_group_id(os_id, context)
 
                 for os_rule in os_sg["rules"]:
                     remote_id = os_rule.get("remote_group_id")
                     if remote_id:
                         self.security_group_members(remote_id, reference=True, context=context)
 
-                logged = self.rpc.has_security_group_logging(os_id)
+                logged = self.rpc.has_security_group_logging(os_id, context)
                 LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}",
                          context=context)
                 self.plcy_provider.sg_rules_realize(os_sg, logged=logged, context=context)
@@ -264,7 +264,7 @@ class AgentRealizer(object):
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
-            port: dict = self.rpc.get_port(os_id)
+            port: dict = self.rpc.get_port(os_id, context)
             if port:
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
@@ -283,7 +283,7 @@ class AgentRealizer(object):
             LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
             return
         with LockManager.get_lock("port-{}".format(os_id)):
-            port: dict = self.rpc.get_port(os_id)
+            port: dict = self.rpc.get_port(os_id, context)
             if port:
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
@@ -307,7 +307,7 @@ class AgentRealizer(object):
 
             meta = provider.metadata(provider.QOS, os_id)
             if not (reference and meta):
-                qos = self.rpc.get_qos(os_id)
+                qos = self.rpc.get_qos(os_id, context)
                 if qos:
                     self._qos_realize(os_qos=qos, context=context)
                 else:
