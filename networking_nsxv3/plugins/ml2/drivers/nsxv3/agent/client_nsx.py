@@ -259,9 +259,9 @@ class Client(metaclass=Singleton):
         results = self.get(path=path, params=params).json().get("results")
         if isinstance(results, list):
             if results:
+                if len(results) > 1:
+                    LOG.error("Ambiguous. %s", results)
                 result = results.pop()
-                if results:
-                    LOG.warning("Ambiguous. %s", results)
                 return result
         elif results:
             return results
