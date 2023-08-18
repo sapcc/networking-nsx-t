@@ -133,6 +133,9 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def resource_update(self, context, log_obj):
         pass
+    
+    def address_group_updated(self, context, address_group):
+        self.callback(address_group, self.realizer.address_group_update)
 
 
 class NSXv3Manager(amb.CommonAgentManagerBase):

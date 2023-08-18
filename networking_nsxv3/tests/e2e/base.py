@@ -17,6 +17,7 @@ from keystoneauth1 import identity
 LOG = logging.getLogger(__name__)
 
 class E2ETestCase(base.BaseTestCase):
+    
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -49,7 +50,9 @@ class E2ETestCase(base.BaseTestCase):
         cls.nsx_client = client_nsx.Client()
         cls.nsx_client.version  # This will force the client to login
 
+    @staticmethod
     def retry(max_retries, sleep_duration):
+        """ Retry decorator for functions that return None on failure. """
         def decorator(func):
             def wrapper(*args, **kwargs):
                 retry_counter = max_retries

@@ -400,3 +400,15 @@ def get_addresses_for_address_group_id(context, addr_group_id):
     ).filter(
         ag_db.AddressAssociation.address_group_id == addr_group_id
     ).all()
+
+
+def get_address_group_revision_number(context, addr_group_id):
+    return context.session.query(
+        StandardAttribute.revision_number
+    ).select_from(
+        ag_db.AddressGroup
+    ).join(
+        StandardAttribute
+    ).filter(
+        ag_db.AddressGroup.id == addr_group_id
+    ).one_or_none()
