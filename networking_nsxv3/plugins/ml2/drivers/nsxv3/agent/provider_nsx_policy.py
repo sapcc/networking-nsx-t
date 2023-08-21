@@ -65,6 +65,7 @@ class API(provider_nsx_mgmt.API):
     RULES_CREATE = RULES + "/{}"
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
+    SEARCH = POLICY_BASE + "/search"
     SEARCH_Q_TRANSPORT_ZONES = "resource_type:PolicyTransportZone AND display_name:{}"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
@@ -993,19 +994,20 @@ class Provider(base.Provider):
 
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
-        
+
         def remove_orphan_addr_grps(provider_id):
             self.client.delete(path=API.GROUP.format(provider_id))
+            self.metadata_delete(Provider.ADDR_GROUPS, provider_id)
 
         self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
         self.metadata_refresh(Provider.ADDR_GROUPS)
-        
+
         rrp_meta = self._metadata.get(Provider.SG_RULES_REMOTE_PREFIX).meta
         ag_meta = self._metadata.get(Provider.ADDR_GROUPS).meta
-        
-        # TODO: sanitize ag_meta
 
         sanitize = []
+
+        # Sanitize orphaned remote prefix rules
         for os_id in rrp_meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
@@ -1020,6 +1022,25 @@ class Provider(base.Provider):
                     sanitize = sanitize[0:slice]
                     break
 
+        # Sanitize orphaned address groups
+        if len(sanitize) < slice:
+            for ag_id in ag_meta.keys():
+                resource = ag_meta.get(ag_id)
+                # Search for rules where this address group is used
+                search_resp = self.client.get(path=API.SEARCH, params={
+                    "query": "resource_type:Rule",
+                    "dsl": resource.id,
+                    "exclude_internal_types": True
+                })
+                if search_resp.ok and search_resp.json().get("result_count") < 1:
+                    # No rules found, remove the address group
+                    sanitize.append((resource.id, remove_orphan_addr_grps))
+
+                if len(sanitize) >= slice:
+                    sanitize = sanitize[0:slice]
+                    break
+
+        # Sanitize orphaned services
         if len(sanitize) < slice:
             services = self.client.get_all(path=API.SERVICES, params={"default_service": False})
             # Mitigating bug with 3.0.1 which ignores default_service = False
