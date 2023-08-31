@@ -308,6 +308,43 @@ class Inventory(object):
 
             return self.resp(404)
 
+        elif "policy/api/v1/search" in request.url and request.method == "GET":
+            q: str = request.params.get("query")
+            dsl: str = request.params.get("dsl")
+            LOG.info("DSL Search query: " + q)
+            LOG.info("DSL Search dsl: " + dsl)
+            if not q or not dsl:
+                return self.resp(404)
+            matches = re.findall(r'resource_type:(\w+)', q)
+            if not matches:
+                return self.resp(404)
+
+            resources = list()
+            for resource_type in matches:
+                LOG.info(f"DSL Searching for resource resource_type: \"{resource_type}\"")
+                if resource_type == "Group":
+                    inventory: dict = self.inv.get(Inventory.GROUPS)
+                else:
+                    LOG.warning(f"DSL Search handler for resource_type: \"{resource_type}\" not implemented!")
+                    inventory = None
+
+                if not inventory:
+                    continue
+
+                for o in inventory.values():
+                    # match the dsl query with the resource
+                    if dsl in str(o):
+                        o["status"] = {"consolidated_status": "SUCCESS"}
+                        resources.append(o)
+
+            if len(resources):
+                LOG.debug(f"DSL Search query: {q} dsl: {dsl}, found {len(resources)} resources")
+                LOG.debug(f"DSL Resources: {resources}")
+                return self.resp(
+                    200, {"results": resources, "result_count": len(resources), "cursor": f"{len(resources)}"})
+
+            return self.resp(404)
+
     def _infra(self, request: Request):
         path_url = request.path_url.split("?")[0]
         if "/policy/api/v1/infra" == path_url and request.method == "PATCH":
