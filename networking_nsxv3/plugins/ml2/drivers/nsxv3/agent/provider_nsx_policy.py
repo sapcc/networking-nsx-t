@@ -80,6 +80,14 @@ class API(provider_nsx_mgmt.API):
         " OR resource_type:IPDiscoveryProfile"
     }
 
+    SEARCH_DSL = POLICY_BASE + "/search"
+    SEARCH_DSL_QUERY = lambda res_type, dsl: {
+        "query": f"resource_type:{res_type}",
+        "dsl": f"{dsl}",
+        "data_source": "INTENT",
+        "exclude_internal_types": "true"
+    }
+
     SEGMENTS = INFRA + "/segments"
     SEGMENT_PATH = "/infra/segments/{}"
     SEGMENT = POLICY_BASE + SEGMENT_PATH
@@ -323,7 +331,7 @@ class Payload(provider_nsx_mgmt.Payload):
             "expression": [
                 {
                     "value": "security_group|{}".format(os_sg.get("id")),
-                    "member_type": "LogicalPort",
+                    "member_type": "SegmentPort",
                     "key": "Tag",
                     "operator": "EQUALS",
                     "resource_type": "Condition",
@@ -651,27 +659,9 @@ class Provider(base.Provider):
                 match = re.search(r'referenced by other objects path=\[([\w\/\-\,]+)\]', err_msg)
                 LOG.warning(self.RESCHEDULE_WARN_MSG, Provider.PORT, os_id)
                 if match:
-                    self._realize_sg_members_after_port_deletion(child_o, match)
+                    self._clear_all_static_memberships_for_port(port_meta)
 
             return self.metadata_delete(Provider.PORT, os_id)
-
-    def _realize_sg_members_after_port_deletion(self, child_o, match):
-        refs = match.groups()[0].split(",")
-        sg_paths = filter(lambda r: re.match(r'\/infra\/domains\/default\/groups\/', r), refs)
-        meta = self._metadata[Provider.SG_MEMBERS].meta
-        meta_keys = meta.keys()
-        for path in sg_paths:
-            for sg_id in meta_keys:
-                sg_meta = meta.get(sg_id)
-                if path == sg_meta.path:
-                    with LockManager.get_lock("member-{}".format(sg_id)):
-                        try:
-                            sg_m = self._metadata[Provider.SG_MEMBERS].meta.get(sg_id)
-                            sg_m.sg_members.remove(child_o.get("path"))
-                        except:
-                            pass
-                        else:
-                            self.sg_members_realize({"id": sg_id, "member_paths": sg_m.sg_members})
 
     def _sg_logged_drop_rules_realize(self, os_sg, delete=False, logged=False):
         logged_drop_policy_rules = self.client.get_all(path=API.RULES.format(DEFAULT_APPLICATION_DROP_POLICY["id"]))
@@ -696,6 +686,25 @@ class Provider(base.Provider):
         if delete and len(is_logged) > 0:
             return self.client.delete(
                 path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
+
+    def _clear_all_static_memberships_for_port(self, port_meta: PolicyResourceMeta):
+        # Get all SGs where the port might have been a static member
+        grps = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
+        if len(grps) > 0:
+            # Remove the port path from the SGs PathExpressions
+            for grp in grps:
+                for exp in grp["expression"]:
+                    if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
+                        exp["paths"].remove(port_meta.path)
+                        if len(exp["paths"]) == 0:
+                            # If no more paths, remove the PathExpression and the ConjunctionOperator
+                            grp["expression"] = grp["expression"][:-2] # remove the last two elements
+                        with LockManager.get_lock("member-{}".format(grp["id"])):
+                            sg_meta = self.metadata(self.SG_MEMBERS, grp["id"])
+                            sg_meta.sg_members.remove(port_meta.path)
+                            del grp["status"]
+                            self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
+                        break
 
     # overrides
     def port_realize(self, os_port: dict, delete=False):
@@ -752,7 +761,7 @@ class Provider(base.Provider):
         # we need to realize the port with empty security groups first,
         # and then add the port to the security groups as a static member.
         port_sgs = os_port.get("security_groups")
-        if len(port_sgs) >= cfg.CONF.AGENT.max_sg_tags_per_segment_port:
+        if len(port_sgs) > min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27):
             os_port["security_groups"] = None
 
             # In case the port already exists, realize the static group membership before the port is updated
@@ -764,8 +773,12 @@ class Provider(base.Provider):
 
             # If the port was not existing, realize the static group membership after the port was created
             return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
-        if os_port.get("binding_status") == "INACTIVE":
-            LOG.info("Live migration - start creating now with {}".format(provider_port))
+            if os_port.get("binding_status") == "INACTIVE":
+                LOG.info("Live migration - start creating now with %s", provider_port)
+        else:
+            if port_meta:
+                self._clear_all_static_memberships_for_port(port_meta)
+
         return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
 
     def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
