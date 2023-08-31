@@ -433,7 +433,7 @@ class TestGroupsRealization(base.BaseTestCase):
                 eventlet.sleep(10)
 
             cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
-            cfg.CONF.set_override("max_sg_tags_per_segment_port", 3, "AGENT")
+            cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
 
             with env:
                 eventlet.sleep(120)
