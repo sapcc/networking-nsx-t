@@ -283,11 +283,13 @@ class AgentRealizer(object):
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
             if port:
+                LOG.info("realization of port %s with status %s", os_id, port.get("binding_status"))
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
                     self.qos(os_qid, reference=True)
                 self._port_realize(port)
             else:
+                LOG.info("deletion realization of port %s", os_id)
                 self._port_realize({"id": os_id}, delete=True)
 
     def qos(self, os_id: str, reference=False):
