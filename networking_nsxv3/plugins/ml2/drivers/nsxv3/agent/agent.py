@@ -63,6 +63,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             and current.get("status") == nsxv3_constants.neutron_constants.ACTIVE
         ):
             # This is a double-bound port with inactive new binding, proactivly sync it
+            LOG.info("Live Migration %s is double-bound, proactivly syncing it.", current["id"])
             self.port_update(context, port=current)
         else:
             try_create_port = True

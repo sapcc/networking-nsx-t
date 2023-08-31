@@ -162,6 +162,7 @@ def get_port(context, host, port_id):
         StandardAttribute.revision_number,
         PortBinding.host,
         PortBinding.vif_details,
+        PortBinding.status
     ).join(
         StandardAttribute,
         PortBinding
@@ -190,7 +191,7 @@ def get_port(context, host, port_id):
     if not port:
         return None
 
-    (id, mac, up, status, rev, binding_host, vif_details) = port
+    (id, mac, up, status, rev, binding_host, vif_details, binding_status) = port
 
     return {
         "id": id,
@@ -206,7 +207,8 @@ def get_port(context, host, port_id):
         "binding:host_id": binding_host,
         "vif_details": json.loads(vif_details) if vif_details else vif_details,
         portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
-        portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
+        portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS,
+        "binding_status": binding_status,
     }
 
 

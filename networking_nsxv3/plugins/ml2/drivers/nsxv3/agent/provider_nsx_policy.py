@@ -702,12 +702,19 @@ class Provider(base.Provider):
         port_id = os_port.get("id")
         port_meta = self.metadata(Provider.PORT, port_id)
 
+        # binding status is INACTIVE when a port is live migrated (multiple bindings)
+        if os_port.get("binding_status") == "INACTIVE":
+            port_meta, p = self.get_port(os_id=port_id)
+            LOG.info("Live migration [%s] - Duplicate port already in metadata", port_id)
+            LOG.info("Live migration [%s] - metadata %s", port_id, port_meta)
+            LOG.info("Live migration [%s] - nsxt segement port %s", port_id, p)
+            
         if delete:
             if not port_meta:
                 LOG.info("Segment Port:%s already deleted.", port_id)
                 return
             return self._delete_segment_port(os_port, port_meta)
-
+        
         # Realize the port via the Policy API
         provider_port = dict()
         parent_port_id = os_port.get("parent_id")
@@ -757,7 +764,8 @@ class Provider(base.Provider):
 
             # If the port was not existing, realize the static group membership after the port was created
             return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
-
+        if os_port.get("binding_status") == "INACTIVE":
+            LOG.info("Live migration - start creating now with {}".format(provider_port))
         return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
 
     def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
