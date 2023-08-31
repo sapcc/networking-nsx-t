@@ -693,18 +693,17 @@ class Provider(base.Provider):
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
             for grp in grps:
-                for exp in grp["expression"]:
-                    if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
-                        exp["paths"].remove(port_meta.path)
-                        if len(exp["paths"]) == 0:
-                            # If no more paths, remove the PathExpression and the ConjunctionOperator
-                            grp["expression"] = grp["expression"][:-2] # remove the last two elements
-                        with LockManager.get_lock("member-{}".format(grp["id"])):
-                            sg_meta = self.metadata(self.SG_MEMBERS, grp["id"])
-                            sg_meta.sg_members.remove(port_meta.path)
-                            del grp["status"]
-                            self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
-                        break
+                exp = grp["expression"][4]  # the PathExpression is always the 5th element
+                if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
+                    exp["paths"].remove(port_meta.path)
+                    if len(exp["paths"]) == 0:
+                        # If no more paths, remove the PathExpression and the ConjunctionOperator
+                        grp["expression"] = grp["expression"][:-2]  # remove the last two elements
+                    with LockManager.get_lock("member-{}".format(grp["display_name"])):
+                        sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
+                        sg_meta.sg_members.remove(port_meta.path)
+                        del grp["status"]
+                        self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
 
     # overrides
     def port_realize(self, os_port: dict, delete=False):
@@ -761,7 +760,10 @@ class Provider(base.Provider):
         # we need to realize the port with empty security groups first,
         # and then add the port to the security groups as a static member.
         port_sgs = os_port.get("security_groups")
-        if len(port_sgs) > min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27):
+        max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
+        if len(port_sgs) > max_sg_tags:
+            LOG.debug("Port:%s has %s security groups which is more than the maximum allowed %s.",
+                      port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
 
             # In case the port already exists, realize the static group membership before the port is updated
