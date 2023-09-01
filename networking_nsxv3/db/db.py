@@ -13,7 +13,8 @@ from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.db.standard_attr import StandardAttribute
-# from sqlalchemy.orm.session import Session
+from sqlalchemy.orm.session import Session
+from sqlalchemy.sql import text
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
@@ -342,8 +343,7 @@ def get_security_group_members_ips(context, security_group_id):
 
 
 def get_security_group_port_ids(context, host, security_group_id):
-    # ses: Session = context.session
-    ses = context.session
+    ses: Session = context.session
     res = ses.query(
         sg_db.SecurityGroupPortBinding.port_id
     ).distinct(
@@ -356,7 +356,20 @@ def get_security_group_port_ids(context, host, security_group_id):
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
     ).all()
 
-    return [port_id for (port_id,) in res]
+    port_ids = [port_id for (port_id,) in res]
+    if not port_ids or len(port_ids) == 0:
+        return []
+
+    # For each port get the number of the security groups it is a member of
+    port_ids_str = [f"'{port_id}'" for port_id in port_ids]
+    ports_with_sg_count = ses.execute(text(
+        "SELECT port_id, COUNT(port_id) as sg_count " +
+        "FROM securitygroupportbindings " +
+        f"WHERE port_id IN ({', '.join(port_ids_str)})" +
+        "GROUP BY port_id"
+    ))
+
+    return ports_with_sg_count
 
 
 def get_security_group_members_address_bindings_ips(context,
