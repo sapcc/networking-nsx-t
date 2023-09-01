@@ -275,5 +275,6 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
             self.assertEqual(self.sg_id_1, sgs_for_h[0])
         self.assertEqual(1, len(sg_ips))
         self.assertEqual("192.168.0.100", sg_ips[0][0])
-        self.assertEqual(1, len(sg_port_ids))
-        self.assertEqual(self.port_id_1, sg_port_ids[0])
+        rows = [r for r in sg_port_ids]
+        self.assertEqual(1, len(rows))
+        self.assertEqual(self.port_id_1, rows[0][0])
