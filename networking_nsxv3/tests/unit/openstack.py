@@ -342,11 +342,11 @@ class TestNSXv3ServerRpcApi(object):
         return False
 
     def get_security_group_port_ids(self, os_id):
-        ports = set()
+        ports = list()
         for port_id, port in self.inventory.get_all(NeutronMock.PORT):
             port_sgs = port.get("security_groups")
             if port_sgs and os_id in port_sgs:
-                ports.update(port_id)
+                ports.append({"port_id": port_id, "sg_count": len(port_sgs)})
         return ports
 
     def get_security_group_members_effective_ips(self, os_id):
