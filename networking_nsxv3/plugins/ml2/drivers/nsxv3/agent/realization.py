@@ -38,7 +38,6 @@ class AgentRealizer(object):
         self.plcy_provider = plcy_provider
         self.migration_tracker = provider.MigrationTracker(self.plcy_provider)
 
-
         self.AGE = int(time.time())
 
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
@@ -54,14 +53,14 @@ class AgentRealizer(object):
         if self.mp_to_policy_completed:
             self._dryrun()
             return
-        
+
         if self.USE_POLICY_API:
             self._try_start_migration()
         else:
             self._dryrun()
 
     def _check_mp_to_policy_completed(self):
-        return any([t for t in self.plcy_provider.zone_tags\
+        return any([t for t in self.plcy_provider.zone_tags
             if t.get("scope") == NSXV3_MP_MIGRATION_SCOPE and t.get("tag") == NSXV3_MIGRATION_SUCCESS_TAG])
 
     @staticmethod
@@ -211,10 +210,12 @@ class AgentRealizer(object):
             if not (reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
                     cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
-                    port_ids = set(self.rpc.get_security_group_port_ids(os_id))
+                    port_ids_with_sg_count = self.rpc.get_security_group_port_ids(os_id)
+                    max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
 
-                    segment_ports = pp.get_port_meta_by_ids(port_ids)
-                    paths = [p.path for p in segment_ports]
+                    filtered_port_ids = [p["port_id"] for p in port_ids_with_sg_count if int(p["sg_count"]) > max_sg_tags]
+
+                    paths = [p.path for p in pp.get_port_meta_by_ids(filtered_port_ids)] if filtered_port_ids else []
 
                     # SG Members are not revisionable, use default "0"
                     pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": 0, "member_paths": paths})
