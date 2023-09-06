@@ -169,6 +169,11 @@ class NSXv3ServerRpcApi(object):
         return cctxt.call(self.context, 'get_port', host=self.host, port_id=port_id)
 
     @log_helpers.log_method_call
+    def get_port_from_any_host(self, port_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_port', host=None, port_id=port_id)
+
+    @log_helpers.log_method_call
     def get_rules_for_security_group_id(self, security_group_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_rules_for_security_group_id',

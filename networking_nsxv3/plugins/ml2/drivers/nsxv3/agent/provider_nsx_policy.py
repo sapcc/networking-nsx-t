@@ -711,7 +711,7 @@ class Provider(base.Provider):
         port_meta = self.metadata(Provider.PORT, port_id)
 
         # binding status is INACTIVE when a port is live migrated (multiple bindings)
-        if os_port.get("binding_status") == "INACTIVE":
+        if os_port.get("binding_status") == "INACTIVE" or os_port.get("binding:host_id") != cfg.CONF.host:
             port_meta, p = self.get_port(os_id=port_id)
             LOG.info("Live migration [%s] - Duplicate port already in metadata", port_id)
             LOG.info("Live migration [%s] - metadata %s", port_id, port_meta)

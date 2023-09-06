@@ -273,6 +273,27 @@ class AgentRealizer(object):
                     port["vif_details"] = network_meta
                 self._port_realize(port)
 
+    def precreate_unbound_port(self, os_id: str, network_meta: dict):
+        """
+        Try to precreate port on multuple binding ports, fetch port from active binding.
+        :os_id: -- OpenStack ID of the Port
+        :network_meta: -- NSX Switch metadata
+        """
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
+            return
+        with LockManager.get_lock("port-{}".format(os_id)):
+            port: dict = self.rpc.get_port_from_any_host(os_id)
+            if port:
+                os_qid = port.get("qos_policy_id")
+                if os_qid:
+                    self.qos(os_qid, reference=True)
+
+                if not port.get("vif_details") and network_meta:
+                    port["vif_details"] = network_meta
+
+                self._port_realize(port)
+
     def port(self, os_id: str):
         """
         Realize port state.

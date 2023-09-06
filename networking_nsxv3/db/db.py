@@ -169,8 +169,16 @@ def get_port(context, host, port_id):
         PortBinding
     ).filter(
         Port.id == port_id,
-        PortBinding.host == host
-    ).one_or_none()
+    )
+    if host:
+        port = port.filter(
+            PortBinding.host == host
+        )
+    else:
+        port = port.filter(
+            PortBinding.status == 'ACTIVE'
+        )
+    port = port.one_or_none()
 
     qos_id = context.session.query(
         QosPolicy.id
