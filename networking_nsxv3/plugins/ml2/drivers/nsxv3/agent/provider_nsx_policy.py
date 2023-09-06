@@ -710,13 +710,6 @@ class Provider(base.Provider):
         port_id = os_port.get("id")
         port_meta = self.metadata(Provider.PORT, port_id)
 
-        # binding status is INACTIVE when a port is live migrated (multiple bindings)
-        if os_port.get("binding_status") == "INACTIVE":
-            port_meta, p = self.get_port(os_id=port_id)
-            LOG.info("Live migration [%s] - Duplicate port already in metadata", port_id)
-            LOG.info("Live migration [%s] - metadata %s", port_id, port_meta)
-            LOG.info("Live migration [%s] - nsxt segement port %s", port_id, p)
-            
         if delete:
             if not port_meta:
                 LOG.info("Segment Port:%s already deleted.", port_id)
@@ -741,7 +734,7 @@ class Provider(base.Provider):
             provider_port["path"] = port_meta.path
             provider_port["_revision"] = port_meta.revision
         else:
-            LOG.warning("Not found. Segment Port: %s", port_id)
+            LOG.info("Segment Port %s not found, creating...", port_id)
 
         os_qos_id = os_port.get("qos_policy_id")
 
@@ -752,6 +745,15 @@ class Provider(base.Provider):
         segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details").get("segmentation_id"))
         if not segment_meta:
             raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
+
+        # If vlan (segment) changed, delete the port before realizing it again
+        if port_meta and port_meta.parent_path != segment_meta.path:
+            LOG.warning("Existing Segment Port: %s is going to be deleted due to VLAN change.", port_id)
+            port_meta = self._delete_segment_port(os_port, port_meta)
+            # todo: wait for port deletion realized?
+            del provider_port["id"]
+            del provider_port["path"]
+            del provider_port["_revision"]
 
         provider_port["nsx_segment_id"] = segment_meta.unique_id
         provider_port["nsx_segment_real_id"] = segment_meta.real_id
@@ -775,8 +777,6 @@ class Provider(base.Provider):
 
             # If the port was not existing, realize the static group membership after the port was created
             return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
-            if os_port.get("binding_status") == "INACTIVE":
-                LOG.info("Live migration - start creating now with %s", provider_port)
         else:
             if port_meta:
                 self._clear_all_static_memberships_for_port(port_meta)
