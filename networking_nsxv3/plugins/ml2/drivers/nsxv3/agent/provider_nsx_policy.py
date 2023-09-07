@@ -750,7 +750,6 @@ class Provider(base.Provider):
         if port_meta and port_meta.parent_path != segment_meta.path:
             LOG.warning("Existing Segment Port: %s is going to be deleted due to VLAN change.", port_id)
             port_meta = self._delete_segment_port(os_port, port_meta)
-            # todo: wait for port deletion realized?
             del provider_port["id"]
             del provider_port["path"]
             del provider_port["_revision"]
