@@ -306,6 +306,12 @@ class AgentRealizer(object):
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
             if port:
+                if port.get("binding_status") == "INACTIVE":
+                    # port pre-creation happens in get_network_bridge - if that fails, we let the agent loop take care of
+                    # fixing the (vmotioned) segment port after migration is finished.
+                    # Otherwise, we would risk a duplicate port due to race condition with vmotion
+                    LOG.info("Skipping realization of port %s with status %s", os_id, port.get("binding_status"))
+                    return
                 LOG.info("realization of port %s with status %s", os_id, port.get("binding_status"))
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
