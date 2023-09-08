@@ -346,7 +346,6 @@ def get_security_group_port_ids(context, host, security_group_id):
     ses: Session = context.session
     res = ses.query(
         sg_db.SecurityGroupPortBinding.port_id
-    ).distinct(
     ).join(
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
@@ -354,6 +353,8 @@ def get_security_group_port_ids(context, host, security_group_id):
         sg_db.SecurityGroupPortBinding.security_group_id == security_group_id,
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).group_by(
+        sg_db.SecurityGroupPortBinding.port_id
     ).all()
 
     port_ids = [port_id for (port_id,) in res]
@@ -362,13 +363,14 @@ def get_security_group_port_ids(context, host, security_group_id):
 
     # For each port get the number of the security groups it is a member of
     port_ids_str = [f"'{port_id}'" for port_id in port_ids]
-    ports_with_sg_count = ses.execute(text(
+    sql = text(
         "SELECT port_id, COUNT(port_id) as sg_count " +
         "FROM securitygroupportbindings " +
-        f"WHERE port_id IN ({', '.join(port_ids_str)})" +
+        f"WHERE port_id IN ({', '.join(port_ids_str)}) " +
         "GROUP BY port_id"
-    ))
+    )
 
+    ports_with_sg_count = ses.execute(sql)
     return ports_with_sg_count
 
 
