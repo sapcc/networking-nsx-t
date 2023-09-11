@@ -38,7 +38,6 @@ class AgentRealizer(object):
         self.plcy_provider = plcy_provider
         self.migration_tracker = provider.MigrationTracker(self.plcy_provider)
 
-
         self.AGE = int(time.time())
 
         LOG.info("Detected NSX-T %s version.", self.mngr_provider.client.version)
@@ -54,14 +53,14 @@ class AgentRealizer(object):
         if self.mp_to_policy_completed:
             self._dryrun()
             return
-        
+
         if self.USE_POLICY_API:
             self._try_start_migration()
         else:
             self._dryrun()
 
     def _check_mp_to_policy_completed(self):
-        return any([t for t in self.plcy_provider.zone_tags\
+        return any([t for t in self.plcy_provider.zone_tags
             if t.get("scope") == NSXV3_MP_MIGRATION_SCOPE and t.get("tag") == NSXV3_MIGRATION_SUCCESS_TAG])
 
     @staticmethod
@@ -211,10 +210,12 @@ class AgentRealizer(object):
             if not (reference and meta):
                 if self.rpc.has_security_group_used_by_host(os_id):
                     cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
-                    port_ids = set(self.rpc.get_security_group_port_ids(os_id))
+                    port_ids_with_sg_count = self.rpc.get_security_group_port_ids(os_id)
+                    max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
 
-                    segment_ports = pp.get_port_meta_by_ids(port_ids)
-                    paths = [p.path for p in segment_ports]
+                    filtered_port_ids = [p["port_id"] for p in port_ids_with_sg_count if int(p["sg_count"]) > max_sg_tags]
+
+                    paths = [p.path for p in pp.get_port_meta_by_ids(filtered_port_ids)] if filtered_port_ids else []
 
                     # SG Members are not revisionable, use default "0"
                     pp.sg_members_realize({"id": os_id, "cidrs": cidrs, "revision_number": 0, "member_paths": paths})
@@ -272,6 +273,28 @@ class AgentRealizer(object):
                     port["vif_details"] = network_meta
                 self._port_realize(port)
 
+    def precreate_unbound_port(self, os_id: str, network_meta: dict):
+        """
+        Try to precreate port on multiple binding ports, fetch port from active binding.
+        :os_id: -- OpenStack ID of the Port
+        :network_meta: -- NSX Switch metadata
+        """
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
+            return
+        with LockManager.get_lock("port-{}".format(os_id)):
+            port: dict = self.rpc.get_port_from_any_host(os_id)
+            if port:
+                port.pop("vif_details", None)
+                os_qid = port.get("qos_policy_id")
+                if os_qid:
+                    self.qos(os_qid, reference=True)
+
+                if network_meta:
+                    port["vif_details"] = network_meta
+
+                self._port_realize(port)
+
     def port(self, os_id: str):
         """
         Realize port state.
@@ -283,11 +306,19 @@ class AgentRealizer(object):
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
             if port:
+                if port.get("binding_status") == "INACTIVE":
+                    # port pre-creation happens in get_network_bridge - if that fails, we let the agent loop take care of
+                    # fixing the (vmotioned) segment port after migration is finished.
+                    # Otherwise, we would risk a duplicate port due to race condition with vmotion
+                    LOG.info("Skipping realization of port %s with status %s", os_id, port.get("binding_status"))
+                    return
+                LOG.info("realization of port %s with status %s", os_id, port.get("binding_status"))
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
                     self.qos(os_qid, reference=True)
                 self._port_realize(port)
             else:
+                LOG.info("deletion realization of port %s", os_id)
                 self._port_realize({"id": os_id}, delete=True)
 
     def qos(self, os_id: str, reference=False):

@@ -12,7 +12,6 @@ import copy
 import os
 import re
 
-
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
 
 
@@ -433,9 +432,10 @@ class TestGroupsRealization(base.BaseTestCase):
                 eventlet.sleep(10)
 
             cfg.CONF.set_override("force_mp_to_policy", True, "AGENT")
-            cfg.CONF.set_override("max_sg_tags_per_segment_port", 3, "AGENT")
+            cfg.CONF.set_override("max_sg_tags_per_segment_port", 2, "AGENT")
 
             with env:
+                # Test static SG membership
                 eventlet.sleep(120)
 
                 plcy = env.manager.realizer.plcy_provider
@@ -468,6 +468,35 @@ class TestGroupsRealization(base.BaseTestCase):
                 self.assertEquals(4, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
                                 [c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
                 self.assertEquals(2, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))
+
+            with env:
+                # Test static SG membership cleanup
+                eventlet.sleep(10)
+                i.port_update(c.PORT_WITH_3_SG["name"], security_group_names=[
+                              c.SECURITY_GROUP_FRONTEND["id"], c.SECURITY_GROUP_OPERATIONS["id"]])
+                eventlet.sleep(20)
+
+                plcy = env.manager.realizer.plcy_provider
+                mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
+
+                # Validate Security Groups Members
+                self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+                self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+                self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+
+                # Assert the new static membership is NOT used
+                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"], False)
+                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"], False)
+                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_members"], False)
+
+                self.assertEquals(3, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
+                                  [c.SECURITY_GROUP_FRONTEND["id"]]["sg_cidrs"]))
+                self.assertEquals(4, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
+                                [c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
+                self.assertEquals(1, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))
 
     def test_policy_api_ports_realization(self):
         # TODO
