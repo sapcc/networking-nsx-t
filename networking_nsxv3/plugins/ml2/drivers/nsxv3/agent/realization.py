@@ -273,6 +273,28 @@ class AgentRealizer(object):
                     port["vif_details"] = network_meta
                 self._port_realize(port)
 
+    def precreate_unbound_port(self, os_id: str, network_meta: dict):
+        """
+        Try to precreate port on multiple binding ports, fetch port from active binding.
+        :os_id: -- OpenStack ID of the Port
+        :network_meta: -- NSX Switch metadata
+        """
+        if self.migration_tracker.is_migration_in_progress():
+            LOG.info(f"{self.MIGR_IN_PROGRESS_MSG.format('port realization')}")
+            return
+        with LockManager.get_lock("port-{}".format(os_id)):
+            port: dict = self.rpc.get_port_from_any_host(os_id)
+            if port:
+                port.pop("vif_details", None)
+                os_qid = port.get("qos_policy_id")
+                if os_qid:
+                    self.qos(os_qid, reference=True)
+
+                if network_meta:
+                    port["vif_details"] = network_meta
+
+                self._port_realize(port)
+
     def port(self, os_id: str):
         """
         Realize port state.
@@ -284,11 +306,19 @@ class AgentRealizer(object):
         with LockManager.get_lock("port-{}".format(os_id)):
             port: dict = self.rpc.get_port(os_id)
             if port:
+                if port.get("binding_status") == "INACTIVE":
+                    # port pre-creation happens in get_network_bridge - if that fails, we let the agent loop take care of
+                    # fixing the (vmotioned) segment port after migration is finished.
+                    # Otherwise, we would risk a duplicate port due to race condition with vmotion
+                    LOG.info("Skipping realization of port %s with status %s", os_id, port.get("binding_status"))
+                    return
+                LOG.info("realization of port %s with status %s", os_id, port.get("binding_status"))
                 os_qid = port.get("qos_policy_id")
                 if os_qid:
                     self.qos(os_qid, reference=True)
                 self._port_realize(port)
             else:
+                LOG.info("deletion realization of port %s", os_id)
                 self._port_realize({"id": os_id}, delete=True)
 
     def qos(self, os_id: str, reference=False):

@@ -721,7 +721,7 @@ class Provider(base.Provider):
                 LOG.info("Segment Port:%s already deleted.", port_id)
                 return
             return self._delete_segment_port(os_port, port_meta)
-
+        
         # Realize the port via the Policy API
         provider_port = dict()
         parent_port_id = os_port.get("parent_id")
@@ -740,7 +740,7 @@ class Provider(base.Provider):
             provider_port["path"] = port_meta.path
             provider_port["_revision"] = port_meta.revision
         else:
-            LOG.warning("Not found. Segment Port: %s", port_id)
+            LOG.info("Segment Port %s not found, creating...", port_id)
 
         os_qos_id = os_port.get("qos_policy_id")
 
@@ -751,6 +751,14 @@ class Provider(base.Provider):
         segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details").get("segmentation_id"))
         if not segment_meta:
             raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
+
+        # If vlan (segment) changed, delete the port before realizing it again
+        if port_meta and port_meta.parent_path != segment_meta.path:
+            LOG.warning("Existing Segment Port: %s is going to be deleted due to VLAN change.", port_id)
+            port_meta = self._delete_segment_port(os_port, port_meta)
+            del provider_port["id"]
+            del provider_port["path"]
+            del provider_port["_revision"]
 
         provider_port["nsx_segment_id"] = segment_meta.unique_id
         provider_port["nsx_segment_real_id"] = segment_meta.real_id
