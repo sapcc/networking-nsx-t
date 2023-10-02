@@ -7,6 +7,7 @@ from neutron.tests import base
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
+from networking_nsxv3.common.constants import ONLY_POLICY_API_NSX_VERSION
 import copy
 import os
 import re
@@ -134,7 +135,7 @@ class TestAgentRealizer(base.BaseTestCase):
     @staticmethod
     def end_to_end_test_generator():
         LOG.info("Starting end to end tests ...")
-        TestAgentRealizer.cleanup_sleep = 180
+        TestAgentRealizer.cleanup_sleep = 80
         TestAgentRealizer.cleanup()
         TestAgentRealizer.cleanup_sleep = 30
         c = coverage
@@ -217,10 +218,10 @@ class TestAgentRealizer(base.BaseTestCase):
             LOG.info("Deleting port \"PORT_FRONTEND_EXTERNAL\"")
             i.port_delete(c.PORT_FRONTEND_EXTERNAL["name"])
 
-            eventlet.sleep(30)
+            eventlet.sleep(60)
             # Test split point
             yield 10
-            
+
         LOG.info("Checking \"_assert_update\"")
         TestAgentRealizer._assert_update(c, env)
         TestAgentRealizer.cleanup_on_teardown = True
@@ -233,7 +234,8 @@ class TestAgentRealizer(base.BaseTestCase):
         c = os_inventory
         mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         m = {**mgmt_meta, **plcy_meta}
-        p = environment.manager.realizer.mngr_provider
+
+        p = environment.manager.realizer.mngr_provider if environment.version < ONLY_POLICY_API_NSX_VERSION else environment.manager.realizer.plcy_provider
 
         # Validate network creation
         TestAgentRealizer.instance.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -282,7 +284,7 @@ class TestAgentRealizer(base.BaseTestCase):
         c = os_inventory
         mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         m = {**mgmt_meta, **plcy_meta}
-        p = environment.manager.realizer.mngr_provider
+        p = environment.manager.realizer.mngr_provider if environment.version < ONLY_POLICY_API_NSX_VERSION else environment.manager.realizer.plcy_provider
 
         # Validate network creation
         TestAgentRealizer.instance.assertEquals("1000" in m[p.NETWORK]["meta"], True)
