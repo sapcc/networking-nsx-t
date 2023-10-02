@@ -54,19 +54,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         self.realizer = realizer
 
     def get_network_bridge(self, context, current, network_segments, network_current):
-        try_create_port = False
-        if (
-            (
-                current.get("binding:vif_type") == portbindings.VIF_TYPE_UNBOUND
-                or current.get("binding:vif_type") == portbindings.VIF_TYPE_BINDING_FAILED
-            )
-            and current.get("status") == nsxv3_constants.neutron_constants.ACTIVE
-        ):
-            # This is a double-bound port with inactive new binding, proactivly sync it
-            self.port_update(context, port=current)
-        else:
-            try_create_port = True
-
+        # First, realize the network bridge (segment)
         network_meta = dict()
         for ns in network_segments:
             seg_id = ns.get("segmentation_id")
@@ -75,8 +63,19 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
                 network_meta = self.realizer.network(seg_id)
                 break
 
-        if try_create_port and bool(network_meta.get("nsx-logical-switch-id")):
-            self.realizer.precreate_port(current["id"], network_meta)
+        # pre-create the port
+        if (current.get("status") == nsxv3_constants.neutron_constants.ACTIVE and
+                current.get("binding:vif_type") in [portbindings.VIF_TYPE_UNBOUND, portbindings.VIF_TYPE_BINDING_FAILED]):
+            # This is going to be a double binded port, but it's not guaranteed that the port's
+            # second binding already exists in the database. So we fetch and process the
+            # active binding instead to be sure it's realized before the migration is started.
+            LOG.info("Detected port currently live migrating: %s", current["id"])
+            if bool(network_meta.get("nsx-logical-switch-id")):
+                LOG.info("Realizing unbound port for: %s with network meta %s", current["id"], network_meta)
+                self.realizer.precreate_unbound_port(current["id"], network_meta)
+        else:
+            if bool(network_meta.get("nsx-logical-switch-id")):
+                self.realizer.precreate_port(current["id"], network_meta)
 
         return network_meta
 

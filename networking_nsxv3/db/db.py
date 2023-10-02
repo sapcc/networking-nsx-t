@@ -14,7 +14,8 @@ from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.db.standard_attr import StandardAttribute
-# from sqlalchemy.orm.session import Session
+from sqlalchemy.orm.session import Session
+from sqlalchemy.sql import text
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
@@ -163,13 +164,22 @@ def get_port(context, host, port_id):
         StandardAttribute.revision_number,
         PortBinding.host,
         PortBinding.vif_details,
+        PortBinding.status
     ).join(
         StandardAttribute,
         PortBinding
     ).filter(
         Port.id == port_id,
-        PortBinding.host == host
-    ).one_or_none()
+    )
+    if host:
+        port = port.filter(
+            PortBinding.host == host
+        )
+    else:
+        port = port.filter(
+            PortBinding.status == 'ACTIVE'
+        )
+    port = port.one_or_none()
 
     qos_id = context.session.query(
         QosPolicy.id
@@ -191,7 +201,7 @@ def get_port(context, host, port_id):
     if not port:
         return None
 
-    (id, mac, up, status, rev, binding_host, vif_details) = port
+    (id, mac, up, status, rev, binding_host, vif_details, binding_status) = port
 
     return {
         "id": id,
@@ -207,7 +217,8 @@ def get_port(context, host, port_id):
         "binding:host_id": binding_host,
         "vif_details": json.loads(vif_details) if vif_details else vif_details,
         portbindings.VNIC_TYPE: portbindings.VNIC_NORMAL,
-        portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS
+        portbindings.VIF_TYPE: portbindings.VIF_TYPE_OVS,
+        "binding_status": binding_status,
     }
 
 
@@ -343,8 +354,7 @@ def get_security_group_members_ips(context, security_group_id):
 
 
 def get_security_group_port_ids(context, host, security_group_id):
-    # ses: Session = context.session
-    ses = context.session
+    ses: Session = context.session
     res = ses.query(
         sg_db.SecurityGroupPortBinding.port_id
     ).distinct(
@@ -357,7 +367,20 @@ def get_security_group_port_ids(context, host, security_group_id):
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
     ).all()
 
-    return [port_id for (port_id,) in res]
+    port_ids = [port_id for (port_id,) in res]
+    if not port_ids or len(port_ids) == 0:
+        return []
+
+    # For each port get the number of the security groups it is a member of
+    port_ids_str = [f"'{port_id}'" for port_id in port_ids]
+    ports_with_sg_count = ses.execute(text(
+        "SELECT port_id, COUNT(port_id) as sg_count " +
+        "FROM securitygroupportbindings " +
+        f"WHERE port_id IN ({', '.join(port_ids_str)})" +
+        "GROUP BY port_id"
+    ))
+
+    return ports_with_sg_count
 
 
 def get_security_group_members_address_bindings_ips(context, security_group_id):
