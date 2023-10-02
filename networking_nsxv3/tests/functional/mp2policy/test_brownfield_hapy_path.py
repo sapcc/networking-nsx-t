@@ -3,7 +3,7 @@ eventlet.monkey_patch()
 
 from networking_nsxv3.tests.unit import openstack
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, ONLY_POLICY_API_NSX_VERSION
 from networking_nsxv3.tests.datasets import coverage
 
 from oslo_config import cfg
@@ -27,6 +27,9 @@ class TestMp2PolicyMigr(BaseNsxTest):
         if client_nsx.Client().version < MP2POLICY_NSX_MIN_VERSION:
             cls.skipTest(
                 cls, f"Migration Functional Tests skipped. Migration is NOT supported for NSX-T < {MP2POLICY_NSX_MIN_VERSION}")
+        if client_nsx.Client().version >= ONLY_POLICY_API_NSX_VERSION:
+            cls.skipTest(
+                cls, f"Migration Functional Tests skipped for NSX-T >= 4.0.0")
         cls.clean_all_from_nsx()
         cls.unpersist_migration_status()
         cls.enable_nsxtside_m2policy_migration()

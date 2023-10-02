@@ -1,16 +1,17 @@
 import eventlet
 eventlet.monkey_patch()
-from oslo_log import log as logging
-from oslo_config import cfg
-from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
+
+import time
+import json
+import itertools
+from typing import Callable, List, Set, Tuple
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES, NSXV3_MIGRATION_SUCCESS_TAG, NSXV3_MP_MIGRATION_SCOPE, ONLY_POLICY_API_NSX_VERSION
+from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider,\
     provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
-from networking_nsxv3.common.locking import LockManager
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES, NSXV3_MIGRATION_SUCCESS_TAG, NSXV3_MP_MIGRATION_SCOPE
-from typing import Callable, List, Set, Tuple
-import itertools
-import json
-import time
+from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
+from oslo_config import cfg
+from oslo_log import log as logging
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
@@ -47,7 +48,10 @@ class AgentRealizer(object):
         # It is used as a flag for using Policy API completely or not
         # in case migration canceled or failed this flag will be False
         # TODO: After completing the transition to NSX Policy API (ONLY if successful!), deprecate this flag
-        self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
+        if self.plcy_provider.client.version >= ONLY_POLICY_API_NSX_VERSION:
+            self.USE_POLICY_API = True
+        else:
+            self.USE_POLICY_API = self.mp_to_policy_completed or self._check_mp2policy_support()
 
         if self.mp_to_policy_completed:
             self._dryrun()
