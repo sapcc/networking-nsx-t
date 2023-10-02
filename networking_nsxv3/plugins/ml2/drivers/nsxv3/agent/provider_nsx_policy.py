@@ -287,7 +287,6 @@ class Payload(provider_nsx_mgmt.Payload):
     def segment_port(self, os_port, provider_port) -> dict:
         p_ppid = provider_port.get("parent_id")
         port_id = provider_port.get("id") or os_port.get("id")
-        p_qid = provider_port.get("qos_policy_id")
         sec_groups = os_port.get("security_groups")
         sgs = {NSXV3_SECURITY_GROUP_SCOPE: sec_groups} if sec_groups else dict()
         path = provider_port.get("path") or API.SEGMENT_PORT_PATH.format(provider_port["nsx_segment_real_id"], port_id)
@@ -316,11 +315,11 @@ class Payload(provider_nsx_mgmt.Payload):
             if os_port.get("traffic_tag"):
                 segment_port["attachment"]["traffic_tag"] = os_port["traffic_tag"]
 
-        if p_qid:
-            # Handled in Manager Provider
-            pass
-
         return segment_port
+
+    def qos_profile_binding(self) -> dict:
+        # TODO: QOS Profile Binding
+        return {}
 
     # NSX-T Group Members
     def sg_members_container(self, os_sg: dict, provider_sg: dict) -> dict:
@@ -768,7 +767,7 @@ class Provider(base.Provider):
                 LOG.info("Segment Port:%s already deleted.", port_id)
                 return
             return self._delete_segment_port(os_port, port_meta)
-        
+
         # Realize the port via the Policy API
         provider_port = dict()
         parent_port_id = os_port.get("parent_id")
@@ -788,12 +787,6 @@ class Provider(base.Provider):
             provider_port["_revision"] = port_meta.revision
         else:
             LOG.info("Segment Port %s not found, creating...", port_id)
-
-        os_qos_id = os_port.get("qos_policy_id")
-
-        if os_qos_id:
-            # QoS policy attached on creation by the Manager API
-            pass
 
         segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details").get("segmentation_id"))
         if not segment_meta:
@@ -866,9 +859,8 @@ class Provider(base.Provider):
     def qos_realize(self, qos: dict, delete=False):
         qos_id = qos.get("id")
         meta = self.metadata(Provider.QOS, qos_id)
-        if not meta:
-            return None
-        provider_o = {"id": meta.real_id, "_revision": meta.revision}
+        provider_o = {"id": qos_id, "_revision": None} if not meta else {
+            "id": meta.real_id, "_revision": meta.revision}
         return self._realize(Provider.QOS, delete, self.payload.qos, qos, provider_o)
 
     def sg_members_realize(self, os_sg: dict, delete=False):
@@ -924,10 +916,15 @@ class Provider(base.Provider):
                         continue
                     if resource_type == Provider.SG_MEMBERS and (NSXV3_REVISION_SCOPE not in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
                         continue
-                    if resource_type == Provider.SG_RULES_REMOTE_PREFIX and (NSXV3_REVISION_SCOPE in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
-                        continue
                     if resource_type == Provider.ADDR_GROUPS and NSXV3_ADDR_GRP_SCOPE not in res.tags:
                         continue
+                    if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
+                        if (NSXV3_REVISION_SCOPE in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
+                            # This will filter-out Provider.SG_MEMBERS as they use the same endpoint
+                            continue
+                        if res.resource.get("display_name") == DEFAULT_MALICIOUS_GROUP_NAME:
+                            # This will filter-out the default malicious group
+                            continue
                     if resource_type == Provider.PORT and not self._is_valid_vlan(res):
                         continue
 
