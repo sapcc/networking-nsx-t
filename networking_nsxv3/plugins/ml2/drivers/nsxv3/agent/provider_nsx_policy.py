@@ -692,18 +692,24 @@ class Provider(base.Provider):
         grps = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
+            LOG.info("Removing static member's port.path '%s' from %s SGs", port_meta.path, len(grps))
             for grp in grps:
-                exp = grp["expression"][4]  # the PathExpression is always the 5th element
-                if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
-                    exp["paths"].remove(port_meta.path)
-                    if len(exp["paths"]) == 0:
-                        # If no more paths, remove the PathExpression and the ConjunctionOperator
-                        grp["expression"] = grp["expression"][:-2]  # remove the last two elements
-                    with LockManager.get_lock("member-{}".format(grp["display_name"])):
-                        sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
-                        sg_meta.sg_members.remove(port_meta.path)
-                        del grp["status"]
-                        self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
+                try:
+                    exp = grp["expression"][4]  # the PathExpression is always the 5th element
+                    if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
+                        exp["paths"].remove(port_meta.path)
+                        if len(exp["paths"]) == 0:
+                            # If no more paths, remove the PathExpression and the ConjunctionOperator
+                            grp["expression"] = grp["expression"][:-2]  # remove the last two elements
+                        with LockManager.get_lock("member-{}".format(grp["display_name"])):
+                            sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
+                            if port_meta.path in sg_meta.sg_members:
+                                sg_meta.sg_members.remove(port_meta.path)
+                            del grp["status"]
+                            self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
+                except IndexError as e:
+                    LOG.warning("Error while removing port.path '%s' from SG '%s': %s",
+                                port_meta.path, grp["display_name"], e)
 
     # overrides
     def port_realize(self, os_port: dict, delete=False):
@@ -763,8 +769,8 @@ class Provider(base.Provider):
         port_sgs = os_port.get("security_groups")
         max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
         if len(port_sgs) > max_sg_tags:
-            LOG.debug("Port:%s has %s security groups which is more than the maximum allowed %s.",
-                      port_id, len(port_sgs), max_sg_tags)
+            LOG.info("Port:%s has %s security groups which is more than the maximum allowed %s. \
+                The port will be added to the security groups as a static member.", port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
 
             # In case the port already exists, realize the static group membership before the port is updated
