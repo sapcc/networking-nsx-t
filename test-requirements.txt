@@ -32,3 +32,5 @@ neutron-lib
 eventlet
 pyopenssl
 python-memcached
+python-neutronclient
+python-novaclient

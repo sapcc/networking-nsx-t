@@ -9,6 +9,8 @@ from oslo_config import cfg
 from oslo_log import helpers as log_helpers
 from oslo_log import log
 from osprofiler.profiler import trace_cls
+from neutron.plugins.ml2.plugin import Ml2Plugin
+from neutron_lib.callbacks import events
 
 LOG = log.getLogger(__name__)
 
@@ -117,6 +119,9 @@ class NSXv3AgentRpcClient(object):
         else:
             LOG.debug("NSXv3AgentRpcClient: (no rpc call triggered): pass security_group_id or port_id as tupe ")
 
+    def update_address_group(self, plugin: Ml2Plugin, payload: events.DBEventPayload):
+        address_group = payload.states[1]
+        self._get_call_context().cast(self.context, 'address_group_updated', address_group=address_group)
 
 class NSXv3ServerRpcApi(object):
     """Agent-side RPC (stub) for agent-to-plugin interaction.
@@ -220,6 +225,18 @@ class NSXv3ServerRpcApi(object):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'has_security_group_logging',
                           security_group_id=security_group_id)
+
+    @log_helpers.log_method_call
+    def get_addresses_for_address_group_id(self, address_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_addresses_for_address_group_id',
+                          address_group_id=address_group_id)
+
+    @log_helpers.log_method_call
+    def get_address_group_revision_number(self, address_group_id):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'get_address_group_revision_number',
+                          address_group_id=address_group_id)
 
 
 class NSXv3ServerRpcCallback(object):
@@ -331,6 +348,14 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def get_port_logging(self, context, port_id):
         return db.get_port_logging(context, port_id)
+
+    @log_helpers.log_method_call
+    def get_addresses_for_address_group_id(self, context, address_group_id):
+        return db.get_addresses_for_address_group_id(context, address_group_id)
+    
+    @log_helpers.log_method_call
+    def get_address_group_revision_number(self, context, address_group_id):
+        return db.get_address_group_revision_number(context, address_group_id)
 
     @log_helpers.log_method_call
     def has_security_group_logging(self, context, security_group_id):

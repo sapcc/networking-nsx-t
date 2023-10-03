@@ -2,6 +2,7 @@ from neutron import service
 from neutron.agent import securitygroups_rpc
 from neutron.db import provisioning_blocks
 from neutron.plugins.ml2.drivers import mech_agent
+from neutron.plugins.ml2.plugin import Ml2Plugin
 from neutron_lib.services.trunk import constants as trunk_consts
 from neutron_lib import context as ctx, rpc
 from neutron_lib.api.definitions import portbindings
@@ -70,6 +71,9 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         importutils.import_module('neutron.services.logapi.common.sg_validate')
         manager.register(resources.SECURITY_GROUP, self.logging.register_callback_handler)
         LOG.info("Successfully registered NSXV3 log driver.")
+
+        registry.subscribe(self.address_group_after_update, resources.ADDRESS_GROUP, events.AFTER_UPDATE)
+        LOG.info("Successfully subscribed to address group updates.")
 
         super(VMwareNSXv3MechanismDriver, self).__init__(
                 self.agent_type,
@@ -154,7 +158,7 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
             # readd bb
             bb = 'bb{}'.format(bb)
 
-            if not(physical_network in transport_zone or physical_network == bb):
+            if not (physical_network in transport_zone or physical_network == bb):
                 LOG.warn("No segment found for physical_network=" + str(physical_network))
                 return False
 
@@ -233,6 +237,10 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 # Set status to ACTIVE
                 provisioning_blocks.provisioning_complete(
                     context._plugin_context, port['id'], resources.PORT, provisioning_blocks.L2_AGENT_ENTITY)
+
+    def address_group_after_update(self, resource: str, event: str, plugin: Ml2Plugin, payload: events.DBEventPayload):
+        LOG.debug("Address group after update: %s", payload.__dict__)
+        self.rpc.update_address_group(plugin, payload)
 
     def trigger_sync(self, id, type):
         self.rpc.trigger_manual_update(id=id, type=type)
