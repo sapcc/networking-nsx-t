@@ -1,17 +1,16 @@
 import eventlet
 eventlet.monkey_patch()
-
-import time
-import json
-import itertools
-from typing import Callable, List, Set, Tuple
-from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES, NSXV3_MIGRATION_SUCCESS_TAG, NSXV3_MP_MIGRATION_SCOPE, ONLY_POLICY_API_NSX_VERSION
-from networking_nsxv3.common.locking import LockManager
+from oslo_log import log as logging
+from oslo_config import cfg
+from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider,\
     provider_nsx_mgmt as m_prvdr, provider_nsx_policy as p_prvdr, mp_to_policy_migration as mi_prvdr
-from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
-from oslo_config import cfg
-from oslo_log import log as logging
+from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.common.constants import MP2POLICY_NSX_MIN_VERSION, MP2POLICY_STATES, NSXV3_MIGRATION_SUCCESS_TAG, NSXV3_MP_MIGRATION_SCOPE
+from typing import Callable, List, Set, Tuple
+import itertools
+import json
+import time
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
@@ -248,6 +247,11 @@ class AgentRealizer(object):
                     if remote_id:
                         self.security_group_members(remote_id, reference=True)
 
+                    addr_grp_id = os_rule.get("remote_address_group_id")
+                    if addr_grp_id:
+                        # Realize the remote address group first
+                        self.address_group_members(addr_grp_id)
+
                 logged = self.rpc.has_security_group_logging(os_id)
                 LOG.info(f"Neutron DB logged flag for {os_id}: rpc.has_security_group_logging(os_id): {logged}")
                 self.plcy_provider.sg_rules_realize(os_sg, logged=logged)
@@ -386,6 +390,42 @@ class AgentRealizer(object):
         """
         with LockManager.get_lock("rules-{}".format(log_obj['resource_id'])):
             self.plcy_provider.update_policy_logging(log_obj)
+
+    def address_group_members(self, addr_grp_id: str, revision_number: int = 0, addresses: List = None):
+        """
+        Realize address group members state.
+        :addr_grp_id: -- OpenStack Address Group ID
+        :return: -- None
+        """
+        with LockManager.get_lock("address-group-{}".format(addr_grp_id)):
+            addr_grp_rev = self.rpc.get_address_group_revision_number(addr_grp_id) if not revision_number else [revision_number]
+            addr_grp_members = self.rpc.get_addresses_for_address_group_id(addr_grp_id) or []
+            self.plcy_provider.address_group_realize(
+                {"id": addr_grp_id,
+                 "revision_number": addr_grp_rev[0] if addr_grp_rev else 0,
+                 "addresses": [ip[0] for ip in addr_grp_members] if not addresses else addresses})
+
+    def address_group_update(self, address_group: dict):
+        """
+        Realize address group state.
+        :address_group: -- OpenStack address group
+        {
+            'id': '<uuid>',
+            'name': '<str>',
+            'project_id': '<str>',
+            'shared': <bool>,
+            'addresses': [
+                '<cidr>',
+            ],
+            'revision_number': <int>,
+            'description': '<str>',
+            'created_at': '<timestamp>',
+            'updated_at': '<timestamp>',
+            'tenant_id': '<str>'
+        }
+        :return: -- None
+        """
+        return self.address_group_members(address_group['id'], address_group['revision_number'], address_group['addresses'])
 
     def _qos_realize(self, os_qos: dict, delete=False):
         # TODO: mngr has to be removed after POLICY is fully supported

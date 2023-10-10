@@ -65,6 +65,7 @@ class API(provider_nsx_mgmt.API):
     RULES_CREATE = RULES + "/{}"
 
     SEARCH_QUERY = POLICY_BASE + "/search/query"
+    SEARCH = POLICY_BASE + "/search"
     SEARCH_Q_TRANSPORT_ZONES = "resource_type:PolicyTransportZone AND display_name:{}"
     SEARCH_Q_SEG_PORT = "resource_type:SegmentPort AND marked_for_delete:false AND attachment.id:{}"
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
@@ -362,6 +363,21 @@ class Payload(provider_nsx_mgmt.Payload):
             "tags": self.tags(None)
         }
 
+    def address_group(self, os_ag: dict, provider_ag: dict) -> dict:
+        tags = self.tags(os_ag)
+        tags.append({"scope": NSXV3_ADDR_GRP_SCOPE, "tag": os_ag.get("id")})
+        return {
+            "id": provider_ag.get("id"),
+            "display_name": provider_ag.get("display_name"),
+            "path": provider_ag.get("path"),
+            "_revision": provider_ag.get("_revision"),
+            "tags": tags,
+            "expression": [{
+                "resource_type": "IPAddressExpression",
+                "ip_addresses": provider_ag.get("addresses")
+            }]
+        }
+
     # Distributed Firewall Security Policy
     def sg_rules_container(self, os_sg: dict, provider_sg: dict) -> dict:
         os_id = os_sg.get("id")
@@ -389,6 +405,9 @@ class Payload(provider_nsx_mgmt.Payload):
         current = ["ANY"]
         if os_rule.get("remote_group_id"):
             target = [group_ref(provider_rule.get("remote_group_id"))]
+        elif os_rule.get("remote_address_group_id"):
+            target = [group_ref(os_rule.get("remote_address_group_id"))]
+            ethertype = "IPv4-IPv6"
         elif provider_rule.get("remote_ip_prefix_id"):
             target = [group_ref(provider_rule.get("remote_ip_prefix_id"))]
         elif os_rule.get("remote_ip_prefix"):
@@ -441,6 +460,7 @@ class Provider(base.Provider):
     NETWORK = "Segment"
     PORT = "SegmentPort"
     RESCHEDULE_WARN_MSG = "Resource: %s with ID: %s deletion is rescheduled due to dependency."
+    ADDR_GROUPS = "Address Group"
 
     def __init__(self, payload: Payload = Payload(), zone_id: str = ""):
         super(Provider, self).__init__(client=Client(), zone_id=zone_id)
@@ -517,7 +537,8 @@ class Provider(base.Provider):
             Provider.QOS: mp(API.QOS_PROFILES),
             Provider.SG_MEMBERS: mp(API.GROUPS),
             Provider.SG_RULES: mp(API.POLICIES),
-            Provider.SG_RULES_REMOTE_PREFIX: mp(API.GROUPS)
+            Provider.SG_RULES_REMOTE_PREFIX: mp(API.GROUPS),
+            Provider.ADDR_GROUPS: mp(API.GROUPS)
         }
 
     def _create_provider_sg(self, os_sg: dict, os_id: str, logged=False):
@@ -528,7 +549,6 @@ class Provider(base.Provider):
             revision = meta.rules.get(rule["id"], {}).get("_revision") if meta else None
             provider_rule = self._get_sg_provider_rule(rule, revision)  # TODO: this could be optimized
             provider_rule = self.payload.sg_rule(rule, provider_rule, logged=logged, sp_id=os_sg.get("id"))
-
             if provider_rule:
                 provider_rules.append(provider_rule)
 
@@ -569,6 +589,8 @@ class Provider(base.Provider):
         if resource_type == Provider.SG_RULES:
             path = API.POLICY.format(os_id)
         elif resource_type == Provider.SG_MEMBERS:
+            path = API.GROUP.format(os_id)
+        elif resource_type == Provider.ADDR_GROUPS:
             path = API.GROUP.format(os_id)
         else:
             return
@@ -686,23 +708,50 @@ class Provider(base.Provider):
             return self.client.delete(
                 path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
 
+    def address_group_realize(self, os_ag, delete=False):
+        ag_id = os_ag.get("id")
+        ag_meta = self.metadata(Provider.ADDR_GROUPS, ag_id)
+
+        provider_ag = {
+            "id": ag_id,
+            "display_name": ag_id,
+            "path": API.GROUP_PATH.format(ag_id),
+            "addresses": os_ag.get("addresses", []),
+            "_revision": None
+        }
+
+        if delete:
+            if not ag_meta:
+                LOG.info("Address Group:%s already deleted.", ag_id)
+                return
+            return self._realize(Provider.ADDR_GROUPS, True, self.payload.address_group, os_ag, provider_ag)
+
+        if not ag_meta or str(ag_meta.rev) != str(os_ag.get("revision_number")):
+            return self._realize(Provider.ADDR_GROUPS, False, self.payload.address_group, os_ag, provider_ag)
+
     def _clear_all_static_memberships_for_port(self, port_meta: PolicyResourceMeta):
         # Get all SGs where the port might have been a static member
         grps = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
+            LOG.info("Removing static member's port.path '%s' from %s SGs", port_meta.path, len(grps))
             for grp in grps:
-                exp = grp["expression"][4]  # the PathExpression is always the 5th element
-                if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
-                    exp["paths"].remove(port_meta.path)
-                    if len(exp["paths"]) == 0:
-                        # If no more paths, remove the PathExpression and the ConjunctionOperator
-                        grp["expression"] = grp["expression"][:-2]  # remove the last two elements
-                    with LockManager.get_lock("member-{}".format(grp["display_name"])):
-                        sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
-                        sg_meta.sg_members.remove(port_meta.path)
-                        del grp["status"]
-                        self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
+                try:
+                    exp = grp["expression"][4]  # the PathExpression is always the 5th element
+                    if exp["resource_type"] == "PathExpression" and port_meta.path in exp["paths"]:
+                        exp["paths"].remove(port_meta.path)
+                        if len(exp["paths"]) == 0:
+                            # If no more paths, remove the PathExpression and the ConjunctionOperator
+                            grp["expression"] = grp["expression"][:-2]  # remove the last two elements
+                        with LockManager.get_lock("member-{}".format(grp["display_name"])):
+                            sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
+                            if port_meta.path in sg_meta.sg_members:
+                                sg_meta.sg_members.remove(port_meta.path)
+                            del grp["status"]
+                            self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
+                except IndexError as e:
+                    LOG.warning("Error while removing port.path '%s' from SG '%s': %s",
+                                port_meta.path, grp["display_name"], e)
 
     # overrides
     def port_realize(self, os_port: dict, delete=False):
@@ -756,8 +805,8 @@ class Provider(base.Provider):
         port_sgs = os_port.get("security_groups")
         max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
         if len(port_sgs) > max_sg_tags:
-            LOG.debug("Port:%s has %s security groups which is more than the maximum allowed %s.",
-                      port_id, len(port_sgs), max_sg_tags)
+            LOG.info("Port:%s has %s security groups which is more than the maximum allowed %s. \
+                The port will be added to the security groups as a static member.", port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
 
             # In case the port already exists, realize the static group membership before the port is updated
@@ -913,15 +962,18 @@ class Provider(base.Provider):
                     res = Resource(o)
                     if not res.is_managed:
                         continue
-                    if resource_type == Provider.SG_MEMBERS and NSXV3_REVISION_SCOPE not in res.tags:
+                    if resource_type == Provider.SG_MEMBERS and (NSXV3_REVISION_SCOPE not in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
                         continue
+
                     if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
-                        if NSXV3_REVISION_SCOPE in res.tags:
+                        if (NSXV3_REVISION_SCOPE in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
                             # This will filter-out Provider.SG_MEMBERS as they use the same endpoint
                             continue
                         if res.resource.get("display_name") == DEFAULT_MALICIOUS_GROUP_NAME:
                             # This will filter-out the default malicious group
                             continue
+                    if resource_type == Provider.ADDR_GROUPS and NSXV3_ADDR_GRP_SCOPE not in res.tags:
+                        continue
                     if resource_type == Provider.PORT and not self._is_valid_vlan(res):
                         continue
 
@@ -936,6 +988,7 @@ class Provider(base.Provider):
 
         if resource_type == Provider.SG_RULES:
             self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
+            self.metadata_refresh(Provider.ADDR_GROUPS)
 
         meta = self._metadata.get(resource_type).meta
 
@@ -990,15 +1043,24 @@ class Provider(base.Provider):
         def remove_orphan_service(provider_id):
             self.client.delete(path=API.SERVICE.format(provider_id))
 
+        def remove_orphan_addr_grps(provider_id):
+            self.client.delete(path=API.GROUP.format(provider_id))
+            self.metadata_delete(Provider.ADDR_GROUPS, provider_id)
+
         self.metadata_refresh(Provider.SG_RULES_REMOTE_PREFIX)
-        meta = self._metadata.get(Provider.SG_RULES_REMOTE_PREFIX).meta
+        self.metadata_refresh(Provider.ADDR_GROUPS)
+
+        rrp_meta = self._metadata.get(Provider.SG_RULES_REMOTE_PREFIX).meta
+        ag_meta = self._metadata.get(Provider.ADDR_GROUPS).meta
 
         sanitize = []
-        for os_id in meta.keys():
+
+        # Sanitize orphaned remote prefix rules
+        for os_id in rrp_meta.keys():
             # After all sections meet certain NSXV3_AGE_SCOPE all their rules
             # are going to reference static IPSets, thus remove the rest
             if "0.0.0.0/" not in os_id and "::/" not in os_id:
-                resource = meta.get(os_id)
+                resource = rrp_meta.get(os_id)
                 if resource.get_all_ambiguous():
                     for res in resource.get_all_ambiguous():
                         sanitize.append((res.id, remove_orphan_remote_prefixes))
@@ -1008,6 +1070,25 @@ class Provider(base.Provider):
                     sanitize = sanitize[0:slice]
                     break
 
+        # Sanitize orphaned address groups
+        if len(sanitize) < slice:
+            for ag_id in ag_meta.keys():
+                resource = ag_meta.get(ag_id)
+                # Search for rules where this address group is used
+                search_resp = self.client.get(path=API.SEARCH, params={
+                    "query": "resource_type:Rule",
+                    "dsl": resource.id,
+                    "exclude_internal_types": True
+                })
+                if search_resp.ok and search_resp.json().get("result_count") < 1:
+                    # No rules found, remove the address group
+                    sanitize.append((resource.id, remove_orphan_addr_grps))
+
+                if len(sanitize) >= slice:
+                    sanitize = sanitize[0:slice]
+                    break
+
+        # Sanitize orphaned services
         if len(sanitize) < slice:
             services = self.client.get_all(path=API.SERVICES, params={"default_service": False})
             # Mitigating bug with 3.0.1 which ignores default_service = False

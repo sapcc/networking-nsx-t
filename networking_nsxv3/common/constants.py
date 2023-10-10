@@ -17,6 +17,7 @@ NSXV3_SECURITY_GROUP_SCOPE = "security_group"
 NSXV3_SECURITY_GROUP_REMOTE_SCOPE = "security_group_remote_id"
 NSXV3_SECURITY_GROUP_RULE_BATCH_SIZE = 265
 NSXV3_REVISION_SCOPE = "revision_number"
+NSXV3_ADDR_GRP_SCOPE = "address_group"
 NSXV3_AGE_SCOPE = "age"
 DEFAULT_MALICIOUS_GROUP_NAME = "DefaultMaliciousIpGroup"
 

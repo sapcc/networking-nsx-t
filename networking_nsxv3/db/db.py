@@ -3,6 +3,7 @@ import json
 from networking_nsxv3.common import constants as nsxv3_constants
 from neutron.db.models import allowed_address_pair
 from neutron.db.models import securitygroup as sg_db
+from neutron.db.models import address_group as ag_db
 from neutron.db.models import tag as tag_model
 from neutron.db.models.loggingapi import Log
 from neutron.db.models.allowed_address_pair import AllowedAddressPair
@@ -356,7 +357,6 @@ def get_security_group_port_ids(context, host, security_group_id):
     ses: Session = context.session
     res = ses.query(
         sg_db.SecurityGroupPortBinding.port_id
-    ).distinct(
     ).join(
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
@@ -364,6 +364,8 @@ def get_security_group_port_ids(context, host, security_group_id):
         sg_db.SecurityGroupPortBinding.security_group_id == security_group_id,
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).group_by(
+        sg_db.SecurityGroupPortBinding.port_id
     ).all()
 
     port_ids = [port_id for (port_id,) in res]
@@ -372,18 +374,18 @@ def get_security_group_port_ids(context, host, security_group_id):
 
     # For each port get the number of the security groups it is a member of
     port_ids_str = [f"'{port_id}'" for port_id in port_ids]
-    ports_with_sg_count = ses.execute(text(
+    sql = text(
         "SELECT port_id, COUNT(port_id) as sg_count " +
         "FROM securitygroupportbindings " +
-        f"WHERE port_id IN ({', '.join(port_ids_str)})" +
+        f"WHERE port_id IN ({', '.join(port_ids_str)}) " +
         "GROUP BY port_id"
-    ))
+    )
 
+    ports_with_sg_count = ses.execute(sql)
     return ports_with_sg_count
 
 
-def get_security_group_members_address_bindings_ips(context,
-                                                    security_group_id):
+def get_security_group_members_address_bindings_ips(context, security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
     return context.session.query(
@@ -415,3 +417,23 @@ def has_security_group_logging(context, security_group_id):
         Log.enabled
     ).count()
     return True if result else False
+
+
+def get_addresses_for_address_group_id(context, addr_group_id):
+    return context.session.query(
+        ag_db.AddressAssociation.address
+    ).filter(
+        ag_db.AddressAssociation.address_group_id == addr_group_id
+    ).all()
+
+
+def get_address_group_revision_number(context, addr_group_id):
+    return context.session.query(
+        StandardAttribute.revision_number
+    ).select_from(
+        ag_db.AddressGroup
+    ).join(
+        StandardAttribute
+    ).filter(
+        ag_db.AddressGroup.id == addr_group_id
+    ).one_or_none()
