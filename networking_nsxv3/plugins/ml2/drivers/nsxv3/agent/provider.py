@@ -1,12 +1,9 @@
 import abc
 import time
-import netaddr
 from oslo_config import cfg
 from oslo_log import log as logging
 from typing import Callable, Dict, List, Set, Tuple
 
-from networking_nsxv3.common.constants import NSXV3_MP_MIGRATION_SCOPE
-from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
@@ -192,12 +189,16 @@ class Provider(abc.ABC):
     """Provider interface used for realization of OpenStack objects
     """
 
+    QOS = "Segment QoS"
+    NETWORK = "Segment"
+    PORT = "SegmentPort"
+    ADDR_GROUPS = "Address Group"
     SG_MEMBERS = "Security Group (Members)"
     SG_RULES = "Security Group (Rules)"
     SG_RULE = "Rule"
     SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
 
-    def __init__(self, client: Client, zone_id: str):
+    def __init__(self, client: Client):
         super(Provider, self).__init__()
 
         self.provider: str = ""
@@ -208,6 +209,10 @@ class Provider(abc.ABC):
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
 
+    def orphan_ports_tmout_passed(self, stamp: int) -> bool:
+        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
+        return (time.time() - int(stamp)) / 3600 > delay
+
     @abc.abstractmethod
     def _load_zones(self) -> Tuple[str, List[Dict[str, str]]]:
         """Load Transport Zone ID and zone tags
@@ -215,42 +220,6 @@ class Provider(abc.ABC):
         Returns:
             str: Transport Zone ID, TZ tags list
         """
-
-    @abc.abstractmethod
-    def tag_transport_zone(self, scope: str, tag: str) -> dict:
-        """Add/Update tag on Transport Zone
-
-        Args:
-            scope (str): Tag scope
-            tag (str): Tag value
-        Returns:
-            dict: Transport Zone
-        """
-
-    def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
-        provider_rule = dict()
-        if os_rule.get("remote_ip_prefix"):
-            net = netaddr.IPNetwork(os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
-            meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
-            if net.ip in meta_addr:
-                cidr = str(net)
-                with LockManager.get_lock(cidr):
-                    meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
-                    if not meta:
-                        o = self._create_sg_provider_rule_remote_prefix(cidr)
-                        meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
-                provider_rule["remote_ip_prefix_id"] = meta.id
-        elif os_rule.get("remote_group_id"):
-            meta = self.metadata(Provider.SG_MEMBERS, os_rule["remote_group_id"])
-            if meta:
-                provider_rule["remote_group_id"] = meta.id
-
-        provider_rule["_revision"] = revision
-        return provider_rule
-
-    def orphan_ports_tmout_passed(self, stamp: int) -> bool:
-        delay = cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after
-        return (time.time() - int(stamp)) / 3600 > delay
 
     @abc.abstractclassmethod
     def get_port(self, os_id: str) -> Tuple[ResourceMeta, dict] or None:
@@ -427,23 +396,44 @@ class Provider(abc.ABC):
         :returns: list(id, callback) - where callback is a function accepting the ID
         """
 
+    @abc.abstractmethod
+    def enable_policy_logging(self, log_obj: dict):
+        """
+        Enable policy logging in provider
 
-class MigrationTracker(object):
-    def __init__(self, provider: Provider) -> None:
-        self._migration_in_progress = False
-        self.mutex = "migration-tracking"
-        self.provider = provider
+        :log_obj: dict - policy logging object
+        """
 
-    def set_migration_in_progress(self, in_progress: bool):
-        with LockManager.get_lock(self.mutex):
-            self._migration_in_progress = in_progress
+    @abc.abstractmethod
+    def disable_policy_logging(self, log_obj: dict):
+        """
+        Disable policy logging in provider
 
-    def is_migration_in_progress(self):
-        with LockManager.get_lock(self.mutex):
-            return self._migration_in_progress
+        :log_obj: dict - policy logging object
+        """
 
-    def persist_migration_status(self, migration_scope: str, migration_result: str):
-        self.provider.tag_transport_zone(scope=migration_scope, tag=migration_result)
+    @abc.abstractmethod
+    def update_policy_logging(self, log_obj: dict):
+        """
+        Update policy logging in provider
 
-    def unpersist_migration_status(self):
-        self.provider.tag_transport_zone(scope=NSXV3_MP_MIGRATION_SCOPE, tag="run-migration-again")
+        :log_obj: dict - policy logging object
+        """
+
+    @abc.abstractmethod
+    def address_group_realize(self, os_ag: dict, delete=False):
+        """
+        Realize OpenStack Address Group in provider
+
+        :os_ag: dict - OpenStack Address Group
+        :delete: bool - If True will remove Address Group
+        """
+
+    @abc.abstractmethod
+    def get_port_meta_by_ids(self, port_ids: Set[str]) -> Set[ResourceMeta]:
+        """
+        Get Port metadata by IDs
+
+        :port_ids: set - Port IDs
+        :return: set - Port metadata
+        """

@@ -3,6 +3,7 @@ import json
 import re
 import time
 import uuid
+import requests
 
 import responses
 from networking_nsxv3.common import config
@@ -39,6 +40,13 @@ class TestProviderPolicy(base.BaseTestCase):
             if item.get("scope") == scope:
                 return item.get("tag")
 
+    def get_all_tags_from_scope(self, resource, scope):
+        l = []
+        for item in resource.get("tags", {}):
+            if item.get("scope") == scope:
+                l.append(item.get("tag"))
+        return l
+
     def setUp(self):
         super(TestProviderPolicy, self).setUp()
 
@@ -54,6 +62,11 @@ class TestProviderPolicy(base.BaseTestCase):
     def tearDown(self):
         super(TestProviderPolicy, self).tearDown()
         responses.reset()
+
+    @responses.activate
+    def test_provider_initialization(self):
+        provider_nsx_policy.Provider()
+        self.assertTrue(True, "Provider initialization successful")
 
     @responses.activate
     def test_security_group_members_creation_diverse_cidrs(self):
@@ -789,3 +802,448 @@ class TestProviderPolicy(base.BaseTestCase):
         self.assertEqual(drop_rules[sg["id"]]["destination_groups"], ["ANY"])
         self.assertEqual(drop_rules[sg["id"]]["services"], ["ANY"])
         self.assertEqual(drop_rules[sg["id"]]["scope"], ["/infra/domains/default/groups/{}".format(sg["id"])])
+
+    def port_fixture(self):
+        vlan = "1000"
+        zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        segment_id = str(uuid.uuid5(uuid.NAMESPACE_OID, "1234"))
+        port_id = str(uuid.uuid5(uuid.NAMESPACE_OID, "12345"))
+
+        provider_network = {
+            "type": "DISCONNECTED",
+            "vlan_ids": [
+                vlan
+            ],
+            # "transport_zone_path": API.TRANSPORT_ZONES_PATH.format(tr_zone_id),
+            "advanced_config": {
+                "hybrid": False
+            },
+            "admin_state": "UP",
+            "resource_type": "Segment",
+            "id": segment_id,
+            "display_name": f"{zone_name}-{vlan}",
+            "path": provider_nsx_policy.API.SEGMENT_PATH.format(segment_id),
+            # "_revision": provider_net.get("_revision")
+        }
+
+        provider_port = {
+            "id": port_id,
+            "display_name": port_id,
+            "resource_type": "SegmentPort",
+            "admin_state": "UP",
+            "attachment": {
+                "id": port_id,
+                "type": "PARENT",
+                "traffic_tag": vlan
+            },
+            "address_bindings": ["172.24.4.3", "172.24.4.4"],
+            "tags": [],
+            "parent_path": provider_nsx_policy.API.SEGMENT_PATH.format(segment_id),
+            "path": provider_nsx_policy.API.SEGMENT_PORT_PATH.format(segment_id, port_id),
+            "_revision": None
+        }
+
+        os_sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [{
+                "id": "1",
+                "ethertype": "IPv4",
+                "direction": "ingress",
+                "remote_group_id": "",
+                "remote_ip_prefix": "192.168.10.0/24",
+                "security_group_id": "",
+                "port_range_min": "5",
+                "port_range_max": "1",
+                "protocol": "icmp"
+            }]
+        }
+
+        os_sg_second = {
+            "id": "FB8B899A-2DAF-4DFA-9E6A-D2869C16BCD0",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [{
+                "id": "1",
+                "ethertype": "IPv4",
+                "direction": "ingress",
+                "remote_group_id": "",
+                "remote_ip_prefix": "192.168.11.0/24",
+                "security_group_id": "",
+                "port_range_min": "5",
+                "port_range_max": "1",
+                "protocol": "icmp"
+            }]
+        }
+
+        os_qos = {
+            "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
+            "revision_number": "3",
+            "name": "test",
+            "rules": [{"dscp_mark": "5"}]
+        }
+
+        os_port_parent = {
+            "id": port_id,
+            "revision_number": "2",
+            "parent_id": "",
+            "mac_address": "fa:16:3e:e4:11:f1",
+            "admin_state_up": "UP",
+            "qos_policy_id": os_qos.get("id"),
+            "security_groups": [os_sg.get("id"), os_sg_second.get("id")],
+            "address_bindings": ["172.24.4.3", "172.24.4.4"],
+            "vif_details": {
+                "nsx-logical-switch-id": segment_id,
+                "segmentation_id": vlan
+            },
+            "_last_modified_time": time.time()
+        }
+
+        os_port_child = {
+            "id": "CAB0602E-6E2D-4483-A7A8-E0FCDBF5E49D",
+            "revision_number": "4",
+            "parent_id": os_port_parent.get("id"),
+            "mac_address": "fa:16:3e:e4:11:f1",
+            "admin_state_up": "UP",
+            "qos_policy_id": os_qos.get("id"),
+            "security_groups": [os_sg.get("id")],
+            "address_bindings": ["172.24.4.3", "172.24.4.4"],
+            "vif_details": {
+                "nsx-logical-switch-id": segment_id,
+                "segmentation_id": vlan
+            }
+        }
+
+        return (provider_network, provider_port, os_sg, os_sg_second, os_qos, os_port_parent, os_port_child)
+
+    @responses.activate
+    def test_port_parent_create(self):
+        provider_network, _, os_sg, _, os_qos, os_port_parent, _ = self.port_fixture()
+
+        # Precreate network
+        provider_network = requests.put(get_url(provider_nsx_policy.API.SEGMENT.format(
+            provider_network.get("id"))), data=json.dumps(provider_network)).json()
+
+        provider = provider_nsx_policy.Provider()
+        provider.metadata_refresh(provider_nsx_policy.Provider.NETWORK)
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        provider.port_realize(os_port_parent)
+
+        meta_port = provider.metadata(provider.PORT, os_port_parent.get("id"))
+
+        self.assertEquals(meta_port.rev, os_port_parent.get("revision_number"))
+        self.assertEquals(meta_port.id, os_port_parent.get("id"))
+        self.assertEquals(meta_port.real_id, os_port_parent.get("id"))
+        self.assertEquals(meta_port.unique_id, os_port_parent.get("id"))
+
+        provider_port_results = requests.get(get_url(
+            f"{provider_nsx_policy.API.SEARCH_QUERY}?query={provider_nsx_policy.API.SEARCH_Q_SEG_PORT.format(os_port_parent.get('id'))}")).json()
+        self.assertEquals(1, len(provider_port_results.get("results", [])))
+        provider_port = provider_port_results.get("results")[0]
+        LOG.critical(json.dumps(provider_port, indent=4))
+
+        self.assertListEqual(provider_port.get("address_bindings"), os_port_parent.get("address_bindings"))
+        self.assertEqual(provider_port.get("attachment").get("type"), "PARENT")
+        self.assertEqual(provider_port.get("attachment").get("traffic_tag"),
+                         os_port_parent.get("vif_details").get("segmentation_id"))
+
+        self.assertListEqual(os_port_parent.get("security_groups"),
+                             self.get_all_tags_from_scope(provider_port, "security_group"))
+
+    @responses.activate
+    def test_port_child_create(self):
+        p_net, p_port, os_sg, _, os_qos, os_port_parent, os_port_child = self.port_fixture()
+        api = provider_nsx_policy.API
+
+        # Port crated via Nova machine provisioning
+        p_net = requests.put(get_url(api.SEGMENT.format(p_net.get("id"))), json=p_net).json()
+        p_port = requests.put(get_url(api.SEGMENT_PORT.format(p_net.get("id"), p_net.get("id"))), json=p_port).json()
+
+        provider = provider_nsx_policy.Provider()
+        provider.metadata_refresh(provider_nsx_policy.Provider.NETWORK)
+
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        provider.port_realize(os_port_parent)
+        provider.port_realize(os_port_child)
+
+        meta_port = provider.metadata(provider.PORT, os_port_child.get("id"))
+
+        self.assertEquals(meta_port.rev, os_port_child.get("revision_number"))
+        _, provider_port = provider.get_port(os_port_child.get("id"))
+
+        self.assertEquals(provider_port.get("attachment").get("id"), os_port_child.get("id"))
+        self.assertEquals(provider_port.get("address_bindings"), os_port_child.get("address_bindings"))
+
+        self.assertEquals([self.get_tag(provider_port, "security_group")], os_port_child.get("security_groups"))
+        self.assertEquals(self.get_tag(provider_port, "revision_number"), os_port_child.get("revision_number"))
+
+    @responses.activate
+    def test_port_bound_multiple_security_groups(self):
+        p_net, p_port, _, _, _, os_port, _ = self.port_fixture()
+        api = provider_nsx_policy.API
+
+        p_net = requests.put(get_url(api.SEGMENT.format(p_net.get("id"))), json=p_net).json()
+
+        provider = provider_nsx_policy.Provider()
+        provider.metadata_refresh(provider_nsx_policy.Provider.NETWORK)
+        provider.port_realize(os_port)
+
+        _, p_port = provider.get_port(os_port.get("id"))
+
+        self.assertEquals(len(self.get_all_tags_from_scope(p_port, "security_group")), 2)
+        self.assertLessEqual(self.get_all_tags_from_scope(p_port, "security_group"), os_port.get("security_groups"))
+
+    @responses.activate
+    def test_port_delete(self):
+        p_net, p_port, os_sg, _, os_qos, os_port_parent, os_port_child = self.port_fixture()
+        api = provider_nsx_policy.API
+
+        p_net = requests.put(get_url(api.SEGMENT.format(p_net.get("id"))), json=p_net).json()
+
+        provider = provider_nsx_policy.Provider()
+        provider.metadata_refresh(provider_nsx_policy.Provider.NETWORK)
+
+        provider.sg_rules_realize(os_sg)
+        provider.qos_realize(os_qos)
+        provider.port_realize(os_port_parent)
+        provider.port_realize(os_port_child)
+
+        meta_parent_port = provider.metadata(provider.PORT, os_port_parent.get("id")).id
+        meta_child_port = provider.metadata(provider.PORT, os_port_child.get("id")).id
+
+        self.assertListEqual(list(self.inventory.inv[Inventory.SEGMENT_PORTS].keys()), [
+                             meta_parent_port, meta_child_port])
+
+        provider.port_realize(os_port_child, delete=True)
+        provider.port_realize(os_port_parent, delete=True)
+
+        self.assertEquals(list(self.inventory.inv[Inventory.SEGMENT_PORTS].keys()), [])
+
+    @responses.activate
+    def test_qos_create(self):
+        os_qos = {
+            "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
+            "revision_number": "3",
+            "name": "test",
+            "rules": [
+                {
+                    "dscp_mark": "5"
+                },
+                {
+                    "direction": "ingress",
+                    "max_kbps": "6400",
+                    "max_burst_kbps": "128000"
+                },
+                {
+                    "direction": "egress",
+                    "max_kbps": "7200",
+                    "max_burst_kbps": "256000"
+                },
+            ]
+        }
+        provider = provider_nsx_policy.Provider()
+        provider.qos_realize(os_qos)
+
+        result = requests.get(get_url("/{}".format(Inventory.SEGMENT_QOS))).json()
+        qos = self.get_result_by_name(result, os_qos.get("id"))
+
+        self.assertDictEqual(qos.get("dscp"), {'mode': 'UNTRUSTED', 'priority': 5})
+        self.assertListEqual(qos.get("shaper_configurations"), [
+            {
+                'resource_type': 'IngressRateLimiter',
+                'enabled': True,
+                'average_bandwidth': 6,
+                'peak_bandwidth': 12,
+                'burst_size': 16384000
+            },
+            {
+                'resource_type': 'EgressRateLimiter',
+                'enabled': True, 'average_bandwidth': 7,
+                'peak_bandwidth': 14,
+                'burst_size': 32768000
+            }
+        ])
+
+    @responses.activate
+    def test_qos_update(self):
+        os_qos = {
+            "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
+            "revision_number": "3",
+            "name": "test",
+            "rules": [
+                {
+                    "dscp_mark": "5"
+                }
+            ]
+        }
+
+        rule = {
+            "direction": "ingress",
+            "max_kbps": "6400",
+            "max_burst_kbps": "128000"
+        }
+
+        provider = provider_nsx_policy.Provider()
+        provider.qos_realize(os_qos)
+
+        os_qos.get("rules").append(rule)
+        provider.qos_realize(os_qos)
+
+        result = requests.get(get_url("/{}".format(Inventory.SEGMENT_QOS))).json()
+        qos = self.get_result_by_name(result, os_qos.get("id"))
+
+        self.assertDictEqual(qos.get("dscp"), {"priority": 5, "mode": "UNTRUSTED"})
+
+        self.assertListEqual(qos.get("shaper_configurations"), [
+            {
+                "average_bandwidth": 6,
+                "peak_bandwidth": 12,
+                "enabled": True,
+                "burst_size": 16384000,
+                "resource_type": "IngressRateLimiter"
+            }
+        ])
+
+    @responses.activate
+    def test_qos_delete(self):
+        os_qos = {
+            "id": "628722EC-B0AA-4AF8-8045-3071BEE00EB2",
+            "revision_number": "3",
+            "name": "test",
+            "rules": [
+                {
+                    "dscp_mark": "5"
+                }
+            ]
+        }
+
+        provider = provider_nsx_policy.Provider()
+
+        provider.qos_realize(os_qos)
+        result = requests.get(get_url("/{}".format(Inventory.SEGMENT_QOS))).json()
+        qos = self.get_result_by_name(result, os_qos.get("id"))
+        self.assertNotEqual(qos, None)
+
+        provider.qos_realize(os_qos, delete=True)
+        result = requests.get(get_url("/{}".format(Inventory.SEGMENT_QOS))).json()
+        qos = self.get_result_by_name(result, os_qos.get("id"))
+        self.assertEquals(qos, None)
+
+    @responses.activate
+    def test_create_network(self):
+        segmentation_id = "3200"
+        provider = provider_nsx_policy.Provider()
+        meta = provider.network_realize(segmentation_id)
+
+        inv = self.inventory.inv
+        net = inv[Inventory.SEGMENTS].get(meta.id)
+
+        self.assertListEqual(net.get("vlan_ids"), [segmentation_id])
+        self.assertEquals(net.get("transport_zone_path"),
+                          f"/infra/sites/default/enforcement-points/default/transport-zones/{provider.zone_id}")
+        self.assertEquals(net.get("display_name"), "{}-{}".format(provider.zone_name, segmentation_id))
+
+    @responses.activate
+    def test_reuse_network(self):
+        segmentation_id = "3200"
+        segmentation_id2 = "3201"
+        provider = provider_nsx_policy.Provider()
+
+        inv = self.inventory.inv
+
+        meta = provider.network_realize(segmentation_id)
+        self.assertEquals(len(inv[Inventory.SEGMENTS]), 1)
+
+        meta1 = provider.network_realize(segmentation_id)
+        self.assertEquals(len(inv[Inventory.SEGMENTS]), 1)
+
+        self.assertEquals(meta.id, meta1.id)
+
+        provider.network_realize(segmentation_id2)
+        self.assertEquals(len(inv[Inventory.SEGMENTS]), 2)
+
+    @responses.activate
+    def test_outdated(self):
+        sg = [
+            {"id": str(uuid.uuid4()), "revision_number": 1, "tags": [], "rules": []},
+            {"id": str(uuid.uuid4()), "revision_number": 2, "tags": [], "rules": []},
+            {"id": str(uuid.uuid4()), "revision_number": 3, "tags": [], "rules": []},
+            {"id": str(uuid.uuid4()), "revision_number": 4, "tags": [], "rules": []}
+        ]
+
+        meta = {
+            sg[0]['id']: "1",  # same
+            sg[1]['id']: "3",  # updated
+            sg[2]['id']: "8"  # updated
+            # 4th was removed => orphaned
+        }
+
+        provider = provider_nsx_policy.Provider()
+        provider.sg_rules_realize(sg[0])
+        provider.sg_rules_realize(sg[1])
+        provider.sg_rules_realize(sg[2])
+        provider.sg_rules_realize(sg[3])
+
+        outdated, current = provider.outdated(provider.SG_RULES, meta)
+
+        LOG.info(json.dumps(self.inventory.inv, indent=4))
+
+        self.assertItemsEqual(outdated, [sg[1]['id'], sg[2]['id'], sg[3]['id']])
+        self.assertItemsEqual(current, [sg[0]['id']])
+
+    @responses.activate
+    def test_outdated_with_filtered_deletions(self):
+        _, _, _, _, _, os_port_parent, _ = self.port_fixture()
+
+        provider = provider_nsx_policy.Provider()
+        meta = provider.network_realize(os_port_parent['vif_details']['segmentation_id'])
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        provider.port_realize(os_port_parent)
+
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 1000
+        outdated, _ = provider.outdated(provider.PORT, {os_port_parent['id']: os_port_parent['revision_number']})
+        self.assertEquals(len(outdated), 0)
+
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 0)
+
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 1)
+
+        provider.port_realize(os_port_parent, delete=True)
+        self.assertIsNone(provider.metadata(provider.PORT, os_port_parent.get("id")))
+
+    @responses.activate
+    def test_priveleged_ports(self):
+        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
+        vmk_n, vmk_p, _, _, _, os_port_parent, _ = self.port_fixture()
+        api = provider_nsx_policy.API
+
+        # Create non-agent managed port/segment
+        vmk_n["id"] = vmk_n["display_name"] = "vmotion"
+        vmk_n = requests.post(url=get_url(api.SEGMENTS), json=vmk_n).json()
+        vmk_p["parent_path"] = provider_nsx_policy.API.SEGMENT_PATH.format(vmk_n['id'])
+        vmk_p["path"] = provider_nsx_policy.API.SEGMENT_PORT_PATH.format(vmk_n['id'], vmk_p["id"])
+        vmk_p = requests.put(url=get_url(api.SEGMENT_PORT.format(vmk_n["id"], vmk_p["id"])), json=vmk_p).json()
+
+        provider = provider_nsx_policy.Provider()
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 0)
+
+        # Create agent-managed port/switch
+        meta = provider.network_realize("1234")
+        os_port_parent['id'] = str(uuid.uuid1())
+        os_port_parent['vif_details']['nsx-logical-switch-id'] = meta.id
+        os_port_parent['vif_details']['segmentation_id'] = "1234"
+        provider.port_realize(os_port_parent)
+
+        # Assert to clean it up
+        outdated, _ = provider.outdated(provider.PORT, {})
+        self.assertEquals(len(outdated), 1)
+
+        vmk_port = requests.get(get_url(api.SEGMENT_PORT.format(vmk_n["id"], vmk_p["id"]))).json()
+        self.assertIsNotNone(vmk_port)

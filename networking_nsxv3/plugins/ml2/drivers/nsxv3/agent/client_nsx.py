@@ -25,10 +25,6 @@ def is_atomic_request_error(response):
     return response.status_code == 400 and re.search("The object AtomicRequest", response.text)
 
 
-def is_migration_bussy_error(response):
-    return response.status_code == 400 and re.search("Migration coordinator backend is busy", response.text)
-
-
 def is_revision_error(response):
     return response.status_code == 412 and re.search("Fetch the latest copy of the object and retry", response.text)
 
@@ -109,7 +105,7 @@ class RetryPolicy(object):
 
                     # Retry for The object AtomicRequest/10844 is already present in the system.
                     # Retry for Migration coordinator backend is busy. Please try again after some time.
-                    if not is_atomic_request_error(response) or not is_migration_bussy_error(response):
+                    if not is_atomic_request_error(response):
                         # skip retry on the ramaining NSX errors
                         sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs.get("path", '')),
                                                        response.request.method]
@@ -127,30 +123,6 @@ class RetryPolicy(object):
                 eventlet.sleep(pause)
 
             raise RuntimeError(msg, last_err)
-
-        return decorator
-
-
-class MigrationRetryPolicy(object):
-
-    def __call__(self, func):
-
-        def decorator(self, *args, **kwargs):
-            until = cfg.CONF.NSXV3.mp_to_policy_retry_count
-            pause = cfg.CONF.NSXV3.mp_to_policy_retry_sleep
-
-            method = "{}.{}".format(self.__class__.__name__, func.__name__)
-
-            for attempt in range(1, until + 1):
-                response = func(self, *args, **kwargs)
-
-                if is_migration_bussy_error(response):
-                    LOG.info("Will retry due to: Code=%s Message=%s", response.status_code, response.content)
-                else:
-                    return response
-
-                LOG.debug("Retrying request ({}/{}) with timeout {}s for {}".format(attempt, until, pause, method))
-                eventlet.sleep(pause)
 
         return decorator
 
@@ -230,7 +202,6 @@ class Client(metaclass=Singleton):
         return kwargs
 
     @RetryPolicy()
-    @MigrationRetryPolicy()
     def post(self, path: str, data: dict) -> Response:
         with self._api_scheduler:
             return self._session.post(**self._params(path=path, json=data))

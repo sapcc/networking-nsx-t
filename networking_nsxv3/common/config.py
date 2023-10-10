@@ -216,16 +216,6 @@ nsxv3_opts = [
         default=False,
         help="Enable create of default infrastructure rules like ICMP allow, "
              "DHCP and Metadata Agent access"
-    ),
-    cfg.IntOpt(
-        'mp_to_policy_retry_count',
-        default=10,
-        help="NSX-T Mp-to-Policy client migration request retry-count."
-    ),
-    cfg.IntOpt(
-        'mp_to_policy_retry_sleep',
-        default=2,
-        help="NSX-T Mp-to-Policy client migration request retry-sleep in seconds."
     )
 ]
 

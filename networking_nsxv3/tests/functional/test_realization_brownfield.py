@@ -7,7 +7,6 @@ from neutron.tests import base
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.tests.datasets import coverage
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
-from networking_nsxv3.common.constants import ONLY_POLICY_API_NSX_VERSION
 import copy
 import os
 import re
@@ -53,11 +52,7 @@ class TestAgentRealizer(base.BaseTestCase):
             eventlet.sleep(TestAgentRealizer.cleanup_sleep)
             mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
             for type, meta in plcy_meta.items():
-                p = env.manager.realizer.plcy_provider
-                if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
-                    TestAgentRealizer.instance.assertEquals(dict(), meta["meta"])
-            for type, meta in mngr_meta.items():
-                p = env.manager.realizer.mngr_provider
+                p = env.manager.realizer.nsx_provider
                 if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
                     TestAgentRealizer.instance.assertEquals(dict(), meta["meta"])
 
@@ -235,7 +230,7 @@ class TestAgentRealizer(base.BaseTestCase):
         mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         m = {**mgmt_meta, **plcy_meta}
 
-        p = environment.manager.realizer.mngr_provider if environment.version < ONLY_POLICY_API_NSX_VERSION else environment.manager.realizer.plcy_provider
+        p = environment.manager.realizer.nsx_provider
 
         # Validate network creation
         TestAgentRealizer.instance.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -284,7 +279,7 @@ class TestAgentRealizer(base.BaseTestCase):
         c = os_inventory
         mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         m = {**mgmt_meta, **plcy_meta}
-        p = environment.manager.realizer.mngr_provider if environment.version < ONLY_POLICY_API_NSX_VERSION else environment.manager.realizer.plcy_provider
+        p = environment.manager.realizer.nsx_provider
 
         # Validate network creation
         TestAgentRealizer.instance.assertEquals("1000" in m[p.NETWORK]["meta"], True)
@@ -340,7 +335,7 @@ class TestAgentRealizer(base.BaseTestCase):
 
     @staticmethod
     def _pollute(env, index):
-        p = env.manager.realizer.mngr_provider
+        p = env.manager.realizer.nsx_provider
         _id = "00000000-0000-0000-0000-00000000000{}".format(index)
 
         ipv4 = "192.168.0.0/{}".format(index)
