@@ -1,11 +1,13 @@
 import eventlet
 eventlet.monkey_patch()
 
-from typing import Callable, Dict, List, Set
+from typing import Callable, Dict, List, Set, Tuple
 import uuid
 from requests.exceptions import HTTPError
 import re
 import json
+import time
+import netaddr
 import functools
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -13,7 +15,6 @@ from oslo_utils import excutils
 from networking_nsxv3.common.constants import *
 from networking_nsxv3.common.locking import LockManager
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.client_nsx import Client
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider as base
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.constants_nsx import *
 from networking_nsxv3.prometheus import exporter
@@ -48,7 +49,7 @@ def refresh_and_retry(func):
     return wrapper
 
 
-class API(provider_nsx_mgmt.API):
+class API(object):
     POLICY_BASE = "/policy/api/v1"
 
     INFRA = POLICY_BASE + "/infra"
@@ -106,13 +107,14 @@ class API(provider_nsx_mgmt.API):
     STATUS = INFRA + "/realized-state/status"
     TRANSPORT_ZONES_PATH = "/infra/sites/default/enforcement-points/default/transport-zones/{}"
     TRANSPORT_ZONE = POLICY_BASE + TRANSPORT_ZONES_PATH
+    TRANSPORT_ZONES = POLICY_BASE + "/infra/sites/default/enforcement-points/default/transport-zones"
 
     POLICY_MNG_PREFIX = "default:"
 
     INFRA = "/policy/api/v1/infra"
 
 
-class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
+class PolicyResourceMeta(base.ResourceMeta):
     def __init__(self, id, unique_id, rev, age, revision, last_modified_time,
                  rules,
                  static_sg_members,
@@ -135,9 +137,9 @@ class PolicyResourceMeta(provider_nsx_mgmt.ResourceMeta):
         self.real_id: str = real_id
 
 
-class Resource(provider_nsx_mgmt.Resource):
+class Resource(base.Resource):
     def __init__(self, resource: dict):
-        super(Resource, self).__init__(resource)
+        self.resource = resource
 
     @property
     def is_managed(self):
@@ -156,13 +158,49 @@ class Resource(provider_nsx_mgmt.Resource):
         return True
 
     @property
-    def os_id(self):
+    def type(self) -> str:
+        return self.resource.get("resource_type")
+
+    @property
+    def id(self) -> str:
+        return self.resource.get("id")
+
+    @property
+    def unique_id(self) -> str:
+        return self.resource.get("id")
+
+    @property
+    def has_valid_os_uuid(self) -> bool:
+        try:
+            uuid.UUID(self.os_id)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    @property
+    def os_id(self) -> str:
         os_id = self.resource.get("display_name")
         if self.type == "Segment":
             os_id = os_id.split("-")[-1]
         if self.type == "SegmentPort":
             os_id = self.resource.get("attachment", {}).get("id")
         return os_id
+
+    @property
+    def tags(self):
+        tags = {}
+        for item in self.resource.get("tags", []):
+            scope = item.get("scope")
+            tag = item.get("tag")
+
+            if scope in tags:
+                if type(tags[scope]) != list:
+                    tags[scope] = [tags[scope]]
+                tags[scope].append(tag)
+            else:
+                tags[scope] = tag
+
+        return tags
 
     @property
     def meta(self):
@@ -206,7 +244,7 @@ class Resource(provider_nsx_mgmt.Resource):
         return self.resource.get("path")
 
 
-class Payload(provider_nsx_mgmt.Payload):
+class Payload(object):
 
     def infra(self, target_obj: dict, child_objs: List[dict]) -> dict:
         return {
@@ -445,6 +483,25 @@ class Payload(provider_nsx_mgmt.Payload):
         }
         return res
 
+    @staticmethod
+    def tags(os_obj, more=dict()) -> list:
+        tags = {
+            NSXV3_AGE_SCOPE: int(time.time())
+        }
+        if os_obj:
+            tags[NSXV3_REVISION_SCOPE] = os_obj.get("revision_number")
+        tags.update(more)
+
+        provider_tags = []
+        for scope, tag in tags.items():
+            if type(tag) == list:
+                for value in tag:
+                    provider_tags.append({"scope": scope, "tag": value})
+            else:
+                provider_tags.append({"scope": scope, "tag": tag})
+
+        return provider_tags
+
     def _filter_out_ipv4_mapped_ipv6_nets(self, target):
         for cidr in target:
             t = cidr.split("/")
@@ -453,17 +510,87 @@ class Payload(provider_nsx_mgmt.Payload):
                 target.remove(cidr)
                 LOG.warning(f"Not supported CIDR target rule: IPv4-mapped IPv6 with prefix ({cidr}).")
 
+    @staticmethod
+    def _sg_rule_service(os_rule, provider_rule, subtype="NSService") -> Tuple[dict, str]:
+        _min = os_rule.get("port_range_min")
+        _max = os_rule.get("port_range_max")
+        protocol = os_rule.get("protocol")
+        ethertype = os_rule.get("ethertype")
+
+        if protocol == "icmp":
+            _min = int(_min) if str(_min).isdigit() else _min
+            _max = int(_max) if str(_max).isdigit() else _max
+
+            if _min and VALID_ICMP_RANGES[ethertype].get(_min) is None:
+                return None, "Not supported ICMP Range {}-{}".format(_min, _max)
+            if _max and _max not in VALID_ICMP_RANGES[ethertype].get(_min, []):
+                return None, "Not supported ICMP Range {}-{}".format(_min, _max)
+
+            icmp_type = str(_min) if _min is not None else ""
+            icmp_code = str(
+                _max) if _max is not None and _min is not None and VALID_ICMP_RANGES[ethertype][_min] else ""
+            return (
+                {
+                    "resource_type": "ICMPType{}".format(subtype),
+                    "icmp_type": icmp_type,
+                    "icmp_code": icmp_code,
+                    "protocol": {"IPv4": "ICMPv4", "IPv6": "ICMPv6"}.get(ethertype),
+                },
+                None,
+            )
+
+        if protocol in ["tcp", "udp"]:
+            if not _min and not _max:
+                _min = "1"
+                _max = "65535"
+            return (
+                {
+                    "resource_type": "L4PortSet{}".format(subtype),
+                    "l4_protocol": {"tcp": "TCP", "udp": "UDP"}.get(protocol),
+                    "destination_ports": ["{}-{}".format(_min, _max) if _min != _max and _max else str(_min)],
+                    "source_ports": ["1-65535"],
+                },
+                None,
+            )
+
+        if str(protocol).isdigit():
+            return ({"resource_type": "IPProtocol{}".format(subtype), "protocol_number": int(protocol)}, None)
+
+        if protocol and protocol in IP_PROTOCOL_NUMBERS:
+            return (
+                {
+                    "resource_type": "IPProtocol{}".format(subtype),
+                    "protocol_number": int(IP_PROTOCOL_NUMBERS.get(protocol)),
+                },
+                None,
+            )
+
+        if not protocol:  # ANY
+            return None, None
+
+        return None, "Unsupported protocol {}.".format(protocol)
+
+    @staticmethod
+    def get_compacted_cidrs(os_cidrs) -> dict:
+        """Reduce number of CIDRs based on the netmask overlapping
+        """
+        compacted_cidrs = []
+        for cidr in netaddr.IPSet(os_cidrs).iter_cidrs():
+            if cidr.version == 4 and cidr.prefixlen == 32:
+                compacted_cidrs.append(str(cidr.ip))
+            elif cidr.version == 6 and cidr.prefixlen == 128:
+                compacted_cidrs.append(str(cidr.ip))
+            else:
+                compacted_cidrs.append(str(cidr))
+        return compacted_cidrs
+
 
 class Provider(base.Provider):
 
-    QOS = "Segment QoS"
-    NETWORK = "Segment"
-    PORT = "SegmentPort"
     RESCHEDULE_WARN_MSG = "Resource: %s with ID: %s deletion is rescheduled due to dependency."
-    ADDR_GROUPS = "Address Group"
 
-    def __init__(self, payload: Payload = Payload(), zone_id: str = ""):
-        super(Provider, self).__init__(client=Client(), zone_id=zone_id)
+    def __init__(self, payload: Payload = Payload()):
+        super(Provider, self).__init__(client=Client())
         LOG.info("Activating Policy API Provider.")
         self.provider = "Policy"
         self.payload = payload
@@ -712,6 +839,27 @@ class Provider(base.Provider):
             return self.client.delete(
                 path=API.RULES_CREATE.format(DEFAULT_APPLICATION_DROP_POLICY["id"], is_logged[0]["id"]))
 
+    def _get_sg_provider_rule(self, os_rule: dict, revision: int) -> dict:
+        provider_rule = dict()
+        if os_rule.get("remote_ip_prefix"):
+            net = netaddr.IPNetwork(os_rule["remote_ip_prefix"], flags=netaddr.NOHOST)
+            meta_addr = [netaddr.IPAddress("0.0.0.0"), netaddr.IPAddress("::")]
+            if net.ip in meta_addr:
+                cidr = str(net)
+                with LockManager.get_lock(cidr):
+                    meta = self.metadata(Provider.SG_RULES_REMOTE_PREFIX, cidr)
+                    if not meta:
+                        o = self._create_sg_provider_rule_remote_prefix(cidr)
+                        meta = self.metadata_update(Provider.SG_RULES_REMOTE_PREFIX, o)
+                provider_rule["remote_ip_prefix_id"] = meta.id
+        elif os_rule.get("remote_group_id"):
+            meta = self.metadata(Provider.SG_MEMBERS, os_rule["remote_group_id"])
+            if meta:
+                provider_rule["remote_group_id"] = meta.id
+
+        provider_rule["_revision"] = revision
+        return provider_rule
+
     def address_group_realize(self, os_ag, delete=False):
         ag_id = os_ag.get("id")
         ag_meta = self.metadata(Provider.ADDR_GROUPS, ag_id)
@@ -735,7 +883,7 @@ class Provider(base.Provider):
 
     def _clear_all_static_memberships_for_port(self, port_meta: PolicyResourceMeta):
         # Get all SGs where the port might have been a static member
-        grps = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
+        grps:List[dict] = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
             LOG.info("Removing static member's port.path '%s' from %s SGs", port_meta.path, len(grps))
@@ -751,7 +899,10 @@ class Provider(base.Provider):
                             sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
                             if port_meta.path in sg_meta.sg_members:
                                 sg_meta.sg_members.remove(port_meta.path)
-                            del grp["status"]
+                            grp.pop("status", None)
+                            grp.pop("_meta", None)
+                            grp.pop("_protection", None)
+                            grp.pop("_last_modified_time", None)
                             self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
                 except IndexError as e:
                     LOG.warning("Error while removing port.path '%s' from SG '%s': %s",
@@ -788,7 +939,7 @@ class Provider(base.Provider):
         else:
             LOG.info("Segment Port %s not found, creating...", port_id)
 
-        segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details").get("segmentation_id"))
+        segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details", {}).get("segmentation_id"))
         if not segment_meta:
             raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
 
@@ -1047,7 +1198,7 @@ class Provider(base.Provider):
                 sanitize.append((service.get("id"), remove_orphan_service))
         return sanitize
 
-    def set_policy_logging(self, log_obj, enable_logging):
+    def _set_policy_logging(self, log_obj, enable_logging):
         LOG.debug(f"PROVIDER: set_policy_logging: {json.dumps(log_obj, indent=2)} as {enable_logging}")
 
         # Check for a valid request
@@ -1074,26 +1225,12 @@ class Provider(base.Provider):
 
     def enable_policy_logging(self, log_obj):
         LOG.debug(f"PROVIDER: enable_policy_logging")
-        return self.set_policy_logging(log_obj, True)
+        return self._set_policy_logging(log_obj, True)
 
     def disable_policy_logging(self, log_obj):
         LOG.debug(f"PROVIDER: disable_policy_logging")
-        return self.set_policy_logging(log_obj, False)
+        return self._set_policy_logging(log_obj, False)
 
     def update_policy_logging(self, log_obj):
         LOG.debug(f"PROVIDER: update_policy_logging")
-        return self.set_policy_logging(log_obj, log_obj['enabled'])
-
-    def tag_transport_zone(self, scope, tag):
-        tz = self._get_tz()
-        tags = tz.get("tags", [])
-        updated_tag_list = []
-
-        if len(tags) < 1:
-            updated_tag_list = [{"scope": scope, "tag": tag}]
-        else:
-            updated_tag_list = list([t for t in tags if t.get("scope") != scope])
-            updated_tag_list.append({"scope": scope, "tag": tag})
-
-        tz["tags"] = updated_tag_list
-        self.client.put(path=API.TRANSPORT_ZONE.format(tz.get("id")), data=tz)
+        return self._set_policy_logging(log_obj, log_obj['enabled'])

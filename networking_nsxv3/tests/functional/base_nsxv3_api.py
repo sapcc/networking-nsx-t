@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 from networking_nsxv3.tests.environment import Environment
 from oslo_log import log as logging
 from oslo_config import cfg
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_mgmt, provider_nsx_policy, provider
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx, provider_nsx_policy
 from networking_nsxv3.tests.datasets import coverage
 import copy
 import functools
@@ -144,60 +144,9 @@ class BaseNsxTest(base.BaseTestCase):
             eventlet.sleep(sleep_time)
             mngr_meta, plcy_meta = env.dump_provider_inventory(printable=False)
             for type, meta in plcy_meta.items():
-                p = env.manager.realizer.plcy_provider
+                p = env.manager.realizer.nsx_provider
                 if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
                     self.assertEquals(expected=dict(), observed=meta["meta"])
-            for type, meta in mngr_meta.items():
-                p = env.manager.realizer.mngr_provider
-                if type != p.NETWORK and type != p.SG_RULES_REMOTE_PREFIX:
-                    self.assertEquals(expected=dict(), observed=meta["meta"])
-
-    @classmethod
-    def unpersist_migration_status(cls):
-        LOG.info(f"Remove Tags persisting mp-to--policy migration")
-        migration_tracker = provider.MigrationTracker(provider_nsx_policy.Provider())
-        migration_tracker.unpersist_migration_status()
-
-    @classmethod
-    def enable_nsxtside_m2policy_migration(cls):
-        LOG.info(f"Enable Driver Side MP2Policy Migration")
-        cl = client_nsx.Client()
-        mp_service_status = cl.get(path="/api/v1/node/services/migration-coordinator/status").json()
-        if (mp_service_status.get("monitor_runtime_state") == "running") and (
-                mp_service_status.get("runtime_state") == "running"):
-            LOG.info("Migration coordinator is UP and RUNNING.")
-        else:
-            LOG.info("Migration coordinator is NOT running. Enabling ...")
-            cl.post(path="/api/v1/node/services/migration-coordinator?action=start", data={})
-            eventlet.sleep(240)
-
-    @classmethod
-    def _start_agent_with_migration(cls):
-        LOG.info("Starting MP-to-Policy Migration Hapy Path Scenario functional test ...")
-        eventlet.sleep(10)
-        cls.TEST_ENV = Environment(inventory=copy.deepcopy(cls.MIGR_INVENTORY))
-        deleted_ports = []
-        with cls.TEST_ENV:
-            i = cls.TEST_ENV.openstack_inventory
-            eventlet.sleep(10)
-            delete_count = 3
-            update_count = 3
-            for k, v in cls.MIGR_INVENTORY.get("port").items():
-                delete_count -= 1
-                if delete_count > 0:
-                    # Delete some port(s)
-                    # i.port_delete(k)
-                    # deleted_ports.append((k, v))
-                    continue
-                update_count -= 1
-                if update_count > 0:
-                    # Update some port(s)
-                    # i.port_update(k, v)
-                    continue
-                break
-            eventlet.sleep(260)
-
-        LOG.info("Finished MP-to-Policy Migration Hapy Path Scenario functional test.")
 
     @staticmethod
     def get_transport_zone_id():
@@ -214,11 +163,8 @@ class BaseNsxTest(base.BaseTestCase):
         BaseNsxTest.clean_domain_objects("SecurityPolicy")
         BaseNsxTest.clean_domain_objects("Group")
         BaseNsxTest.clean_segment_ports()
-        BaseNsxTest.clean_logical_ports()
         BaseNsxTest.clean_segments()
-        BaseNsxTest.clean_logical_switches()
         BaseNsxTest.clean_all_segment_profiles()
-        BaseNsxTest.clean_switching_profiles()
 
     @staticmethod
     def clean_domain_objects(obj_type: str):
@@ -292,34 +238,6 @@ class BaseNsxTest(base.BaseTestCase):
         # BaseNsxTest.clean_segment_profiles("SpoofGuardProfile")
 
     @staticmethod
-    def clean_logical_ports():
-        zone_id = BaseNsxTest.get_transport_zone_id()
-        LOG.info("Cleaning logical ports ...")
-        cl = client_nsx.Client()
-        ports = cl.get_all(path=provider_nsx_mgmt.API.PORTS, params={"transport_zone_id": zone_id})
-        for p in ports:
-            cl.delete(path=provider_nsx_mgmt.API.PORT.format(p.get("id")), params={"detach": True})
-
-    @staticmethod
-    def clean_logical_switches():
-        zone_id = BaseNsxTest.get_transport_zone_id()
-        LOG.info("Cleaning logical switches ...")
-        cl = client_nsx.Client()
-        switches = cl.get_all(path=provider_nsx_mgmt.API.SWITCHES, params={"transport_zone_id": zone_id})
-        for sw in switches:
-            cl.delete(path=provider_nsx_mgmt.API.SWITCH.format(sw.get("id")), params={"cascade": True, "detach": True})
-
-    @staticmethod
-    def clean_switching_profiles():
-        LOG.info("Cleaning switching profiles ...")
-        cl = client_nsx.Client()
-        qos_profiles = cl.get_all(path=provider_nsx_mgmt.API.PROFILES,
-                                  params=provider_nsx_mgmt.API.PARAMS_GET_QOS_PROFILES)
-
-        for p in qos_profiles:
-            cl.delete(path=f"{provider_nsx_mgmt.API.PROFILES}/{p.get('id')}", params={"unbind": True})
-
-    @staticmethod
     def _await_clean(obj_type: str, system_owned: bool = False):
         cl = client_nsx.Client()
         while True:
@@ -357,9 +275,7 @@ class BaseNsxTest(base.BaseTestCase):
     @staticmethod
     def _polute_nsx(os_inventory: dict):
         cl = client_nsx.Client()
-        mngr_payload = provider_nsx_mgmt.Payload()
         plcy_payload = provider_nsx_policy.Payload()
-        mngr_api = provider_nsx_mgmt.API
         plcy_api = provider_nsx_policy.API
         zone_id = BaseNsxTest.get_transport_zone_id()
 
@@ -373,10 +289,10 @@ class BaseNsxTest(base.BaseTestCase):
         for k in nets:
             seg_id = nets[k].get("segmentation_id")
             _id = f"{cfg.CONF.NSXV3.nsxv3_transport_zone_name}-{seg_id}"
-            net_payload = mngr_payload.network(os_net={"id": _id, "segmentation_id": seg_id},
+            net_payload = plcy_payload.segment(os_net={"id": _id, "segmentation_id": seg_id},
                                         provider_net={"transport_zone_id": zone_id})
             net_payload["_revision"] = 0
-            sw = cl.post(path=mngr_api.SWITCHES, data=net_payload).json()
+            sw = cl.post(path=plcy_api.SEGMENTS, data=net_payload).json()
             nets[k]["nsx_id"] = sw["id"]
 
         n = 0
@@ -414,18 +330,18 @@ class BaseNsxTest(base.BaseTestCase):
 
         LOG.info(f"Poluting with {len(qos)} QOS Profiles ...")
         for k in qos:
-            qos_payload = mngr_payload.qos(os_qos=qos[k], provider_qos={})
-            q = cl.post(path=mngr_api.PROFILES, data=qos_payload).json()
+            qos_payload = plcy_payload.qos(os_qos=qos[k], provider_qos={})
+            q = cl.post(path=plcy_api.QOS_PROFILES, data=qos_payload).json()
             qos[k]["nsx_id"] = q.get("id")
 
         LOG.info(f"Poluting with {len(ports)} Logical Ports ...")
         for k in ports:
             p = ports[k]
             p["vif_details"]["nsx-logical-switch-id"] = nets[p.get("network_id")]["nsx_id"]
-            port_payload = mngr_payload.port(os_port=p, provider_port={
+            port_payload = plcy_payload.segment_port(os_port=p, provider_port={
                     "switching_profile_ids": [],
                     "qos_policy_id": qos[p.get("qos_policy_id")]["nsx_id"],
                     "parent_id": p.get("parent_id"),
                     })
-            p = cl.post(path=mngr_api.PORTS, data=port_payload).json()
+            p = cl.post(path=plcy_api.SEGMENT_PORTS.format(p["vif_details"]["nsx-logical-switch-id"]), data=port_payload).json()
             p["nsx_id"] = p.get("id")
