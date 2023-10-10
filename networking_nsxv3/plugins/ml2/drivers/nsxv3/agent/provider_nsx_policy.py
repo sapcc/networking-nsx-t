@@ -107,6 +107,7 @@ class API(object):
     STATUS = INFRA + "/realized-state/status"
     TRANSPORT_ZONES_PATH = "/infra/sites/default/enforcement-points/default/transport-zones/{}"
     TRANSPORT_ZONE = POLICY_BASE + TRANSPORT_ZONES_PATH
+    TRANSPORT_ZONES = POLICY_BASE + "/infra/sites/default/enforcement-points/default/transport-zones"
 
     POLICY_MNG_PREFIX = "default:"
 
@@ -878,7 +879,7 @@ class Provider(base.Provider):
 
     def _clear_all_static_memberships_for_port(self, port_meta: PolicyResourceMeta):
         # Get all SGs where the port might have been a static member
-        grps = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
+        grps:List[dict] = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
             LOG.info("Removing static member's port.path '%s' from %s SGs", port_meta.path, len(grps))
@@ -894,7 +895,10 @@ class Provider(base.Provider):
                             sg_meta = self.metadata(self.SG_MEMBERS, grp["display_name"])
                             if port_meta.path in sg_meta.sg_members:
                                 sg_meta.sg_members.remove(port_meta.path)
-                            del grp["status"]
+                            grp.pop("status", None)
+                            grp.pop("_meta", None)
+                            grp.pop("_protection", None)
+                            grp.pop("_last_modified_time", None)
                             self.client.patch(path=API.GROUP.format(grp["id"]), data=grp)
                 except IndexError as e:
                     LOG.warning("Error while removing port.path '%s' from SG '%s': %s",
@@ -931,7 +935,7 @@ class Provider(base.Provider):
         else:
             LOG.info("Segment Port %s not found, creating...", port_id)
 
-        segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details").get("segmentation_id"))
+        segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details", {}).get("segmentation_id"))
         if not segment_meta:
             raise Exception(f"Not found NSX-T Segment for port with ID: {port_id}")
 

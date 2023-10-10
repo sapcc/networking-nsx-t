@@ -205,7 +205,6 @@ class Inventory(object):
                         inventory[real_id] = o
                         return self.resp(417, "SG with ID: {} cannot be deleted as either it has children or it is being referenced.".format(real_id))
             return self.resp(200) if o else self.resp(404)
-# TODO: Add support for creation of Segments and SegmentPorts
 
     def api(self, request: Request):
         policy_status = self._policy_status(request)

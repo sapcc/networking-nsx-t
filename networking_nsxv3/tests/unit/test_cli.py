@@ -27,6 +27,10 @@ class TestCLI(base.BaseTestCase):
         for m in [r.GET, r.POST, r.PUT, r.DELETE]:
             r.add_callback(m, re.compile(r".*"), callback=self.inventory.api)
 
+    def tearDown(self):
+        super(TestCLI, self).tearDown()
+        responses.reset()
+
     def test_cli_initialization(self):
         sys_exit = self.assertRaises(SystemExit, cli.CLI)
         self.assertEqual(1, sys_exit.code)

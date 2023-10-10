@@ -1,7 +1,6 @@
 import copy
 from select import select
 import uuid
-from networking_nsxv3.common.constants import ONLY_POLICY_API_NSX_VERSION
 
 from oslo_log import log as logging
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import agent
@@ -263,24 +262,14 @@ class NeutronMock(object):
         if not vif or not vif.get("external-id"):
             raise Exception("Unable to bind Port:{} VIF:{}".format(name, vif))
 
-        client = self.notifier.rpc.realizer.mngr_provider.client
-        if client.version < ONLY_POLICY_API_NSX_VERSION:
-            client.post("/api/v1/logical-ports", data={
-                "logical_switch_id": vif.get("external-id"),
-                "display_name": port.get("id"),
-                "attachment": {
-                    "attachment_type": "VIF",
-                    "id": port.get("id")
-                },
-                "admin_state": "UP"
-            })
-        else:
-            self.notifier.rpc.realizer.port(port.get("id"))
+        self.notifier.rpc.realizer.port(port.get("id"))
 
         port["vif_details"] = vif
 
     def test_synchronous_port_create(self, name, segmentation_id):
+        vif = self.notifier.rpc.realizer.network(segmentation_id)
         port = self._get_by_name(NeutronMock.PORT, name)
+        port["vif_details"] = vif
         network_segments = [
             {
                 "id": "57a75c56-5c77-4650-a93c-d9e66e0316af",
