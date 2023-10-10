@@ -1,7 +1,309 @@
 CHANGES
 =======
 
+* Resolved conflicts
+* remove todo
+* dont realize to-be-migrated port in realization.port() to safeguard live migration (duplication)
+* realize port for multiple binding based on active binding from other host
+* test fix
+* Fixed group membership on port creation
+* Added a test scenario for SG static memberships cleanup
+* test fix
+* Fix: Small modifications
+* Fix: Cleanup of static memberships when it is not needed anymore
+* fetching metadata if we detect port double binding
+* Address group feature done
+* Feature: Update address groups
+* More e2e tests for address groups
+* E2E Test case for AddressGroup Rules added
+* Initial setup for address groups
+* Make nsxt managed objects findable in opensearch
+* Introduce unit test for metadata management
+* Unpersist MP-TO-POLICY migration before running the brownfield tests
+* Use the "connectivity" property of "MechanismDriver" for l2 connectivity support
+* Revert mgmt-behaviour for \`is\_managed\`
+* Port update on binding failed
+* Persisting the result of successful MP-to-Policy migration (#113)
+* Fix: mp2policy unhappy path functional tests
+* Fix: mp2policy unhappy path functional tests
+* Fix: restrealization unit test
+* set max\_sg\_tags\_per\_segment\_port for each test case
+* fix mp2policy functional tests
+* Fix functional tests
+* Fix functional tests
+* try fix functional tests
+* Decrease the port tags count prior MP-to-Policy promotion
+* Fix: Realize SGs on port realization with static group membership
+* revert to parralel synchronization
+* Test improvements
+* reworked is\_managed for policy promotion
+* remove accident debug log
+* fix unit tests by adapting skew, introduce wait\_all\_workers for faster tests
+* make agent sync skew configurable so it can be disabled in the tests
+* [synchronzation] fix Priority enum comparing
+* Fix network() realizer during migration: return (empty) dict where expected
+* Added missing test dependency
+* tox.ini merge & trunk service unit tests fix
+* fix tox.ini for tox>=4.0
+* adapt github tests using yoga branch
+* nsx\_client typo fix
+* Revert back ussuri test constraint
+* Try fix yoga eventlet monkey\_patch
+* Fix failing functional tests: Pilicy aways used for SGs
+* Resolved PR review comments & improvements
+* Added PR review comments & small improvements
+* Resolving PR review comments
+* do not convert sql results to set
+* use python version 3.8 in tox, update neutron version to yoga in test-requirements
+* slow query performance tuning for queries fetching revision information
+* Add random skew for agent sync start
+* Fix test version
+* Fix: transport-zone path in segment creation
+* MP-to-Policy fixes and tests
+* Realization Integration tests
+* Realization Integration tests
+* Fix trunk RPC handlers
+* WIP: MP-to-Policy NSX 3.2
+* Init: MP-to-Policy Happy/Unhappy path functional tests
+* yoga compatibility: import standard\_attr from neutron\_lib
+* Introduced Generic MP-to-Policy promotion for NSX-T 3.2.2
+* Functional tests improvements
+* Added functionality for generating functional test data
+* Prevent child ports from standalone binding
+* restructure brownfield test for policy migration
+* Removed unused rpc/db methods
+* Fixed: Trunk subports pre-creation & unbin/rebind
+* fix error in nsxtopersations method description about api usage
+* nsxt client change logs to format string
+* change argument processing for list input
+* add short api call documemntation
+* implement access handling
+* change sentry fingerprinting for error logs produced by nsxv3 api calls
+* improve logging, remove none neede print statement
+* change trigger method in driver
+* implement logging
+* implement skeleton for api extension manual sync, enable auto api load on neutron server boot
+* fix ubuntu-version in unittest.yml to 22.04
+* fix ubuntu-version in coverage.yml to 22.04
+* Change NSX-T REST client user
+* Fix github actions [Version 3.6 with arch x64 not found]
+* Add warning comment for hardcoded infrastructure rules
+* Tighten DEFAULT\_INFRASTRUCTURE\_POLICIES metadata policy
+* MP-to-Policy test fixes
+* Fixed trunk port migration
+* Skip migrated but deleted QOS from duplicate migration
+* Mute functional test execution log
+* Migrate QoS after realization
+* MP-to-Policy QoS and Trunk functional tests
+* More improvements on Segment Ports deletion and realization
+* Added more MP-to-Policy functional tests
+* Migrate parent trunk port before realizing migrated child
+* Fix: Missing ChildSegmentPort IDs & SegmentPort Deletions
+* Fix: Force port  realization after migration
+* Fix tests & added docstring
+* Fully exclude policy from manager objects and vice versa
+* Fully exclude policy from manager objects and vice versa
+* Added tests for port migrations
+* Don't process segment ports before migration
+* Added checks for created Policy Ports
+* Added MP-TO-POLICY Test Cases
+* Fixing Policy Logging for NSX-T v3.0.x
+* Split functional tests - fix 2
+* Split functional tests - fix
+* Split functional tests
+* Tests for Logging of dropped traffic
+* Refactored default policy for logging of dropped traffic
+* Added default policy and group for logging of dropped traffic
+* Revert "Feature: Logging of dropped traffic"
+* Feature: Logging of dropped traffic
+* remove pw from agent metadata
+* get\_security\_groups\_with\_revisions db query optimization
+* Fix brownfield integration test, remove legacy mgmt-based security group tests
+* Update Security group members in case of changed port to ensure allowed\_address\_pairs are processed instantly
+* remove redis, logstash can access mysql directly
+* Added DB tests
+* DB tests - initial commit
+* MP-to\_policy realization tests & improvements
+* MP-to\_policy realization tests & fixes
+* Unit tests fixes
+* Test fixes
+* MP-to-Policy realization tests
+* Merged with feature/selective-logging
+* MP-to-Policy provider unit tests
+* Added MP-to-Policy support to the testing framework
+* selective logging:Unit tests - provider side, new tests
+* Allow more than 27 SGs per SegmentPort managed by the Policy API
+* selective logging:Unit tests - provider side
+* selective logging:Class NSXv3LogDriver:Unit tests
+* selective logging: Readme
+* selective logging: fix 2
+* selective logging: fix
+* selective logging update
+* Separate NSX Providers for Policy and Manager API & Testing framework improved
+* WIP: selective logging
+* selective logging: temp save
+* Migration API completed
+* Testing framework modified to support the new Policy API calls
+* Policy Provider to support Segments and SegmentPorts
+* Code quality improvements: Added typings
+* selective logging: temp save
+* MP-to-Policy: Initial migration provider framework
+* added fixture for test\_priveleged\_ports
+* added test for Fix: vmk ports deletions in the policy provider
+* Fix: vmk ports deletions in the policy provider
+* [WIP] Migrate to Policy: Switching profiles
+* [WIP] Migrate to Policy: Switching profiles
+* mp-to-policy migration provider introduced
+* Legacy API calls removed
+* Enhance unit tests isolation by grouping the tests by classes
+* Remove Ovs-Hybrid-Plug flag
+* CLI test coverage
+* Test synchronous port creation
+* merged with master
+* minor logging change
+* Workaround for glitch with IPv4-mapped IPv6 targets used in rules
+* agent-cli added back to coverage
+* Merged with stable/ussuri-m3
+* Ignore exceptions on double group creation (#78)
+* agent\_id tag removed
+* Fix slow queries by splitting remote-sg group check and local sg check for has\_security\_group\_used\_by\_host
+* Revert "Removed legacy api calls of realizing security rules"
+* Merged with stable/ussuri-m3
+* Reduce error to warning for missing parent ports
+* Add safeguard to legacy\_sg\_rules\_realize for not removing SGs that are used but not realized yet
+* Fix has\_security\_group\_used\_by\_host query, fix indentation
+* Fix ICMP code check and wrong tests, old one could case keyerrors
+* has\_security\_group\_used\_by\_host should evaluate true if security group has no rules
+* For sync loop, ignore "maybe" orphaned groups (security group members), since they could lead to a slice-starvation, because the sync-loop cannot ensure that they are really orphaned
+* Ignore ports and therefor deletion of ports that have non-agent logical switches
+* agent.py code reformatting
+* Added more realistic port\_binding unit tests
+* CLI tool excluded from coverage & added unit tests for \_revision retry mechanism
+* merged with fix-trunking
+* fixed tests
+* Rules metadata
+* Fix trunk support, also add support for vlan-tag remapping
+* Removed legacy api calls of realizing security rules
+* Code reformat using 'black formatter' with max-line-length=119
+* Use response after policy realization to update metadata cache
+* Fix handling of PUT security group updates
+* Fix unit tests
+* Fix PUT in case of manual changes, use metadata.get for rule \_revisions
+* fixed tests
+* Policy API to use PUT instead of PATCH requests to NSX-T
+* Revert autoformatting
+* revert: not creating the parent trunk ports
+* Pre-create port on first binding request
+* Synchronous port creation on binding request
+* If \_wait\_to\_realize timeouts, raise exception instead of return silently
+* Move realization of Security Group Members after Rule realiziation
+* Remove SG Members orphans if they still in use
+* Fix allowed\_address\_pairs query
+* boolean algebra is hard
+* Don't crash on invalid objects, improve tests
+* Fix unit test cases
+* Fix refresh and sanitizing phase, improve log messages
+* Omit non-security-groups in refresh, cosmetic cleanups
+* Reworked scheduled deletions of ports filter
+* Fix trunk constants import
+* Allow binding trunk subport device
+* Fix coverage github action
+* Bug fixes: Filter-out the already scheduled ports from outdated
+* Run coverage only for pull requests
+* run \_ensure\_default\_l3\_policy only with NSX-T 3.0 onwards
+* Fix nsxv3\_default\_policy\_infrastructure\_rules config parsing
+* start\_rpc\_listeners should be called by service worker, not on init
+* Fix unit tests
+* Check for default drop/reject rule, auto-create default infrastructure rules
+* Fix CLI restore for policy-only dumps
+* Allow port bindings without correct segment and detect it from transport\_zone
+* Reduce 404s to warning
+* Fix remote ip prefixes like 10.0.0.0/0
+* Fix tox tests by forcing lower version of virtualenv/setuptools
+* Ping setuptools < 58 in requirements.txt
+* Pin setuptools < 58
+* Added trunk driver unit tests
+* Added qos driver unit tests
+* Detect inactive bindings and pro-activly sync port and it's security groups
+* minor cleanup, support for multiple-bindings per port
+* Port binding realization: If missing - Create port with attachment\_id equal to the openstack iface ID
+* Rename / remove unused config options, use default ip discovery and spoofguard profiles
+* Fix exception due to missing logical port: TypeError: int() argument must be a string, a bytes-like object or a number, not 'NoneType'
+* Improve prometheus exporter, fix for python3, added realiziation metrics
+* On port update, also ensure sync assigned (new) security groups
+* Support for (non) stateful firewall sections
+* Fix access of logical switch id (int) from metadata cache
+* get\_port: Avoid race condition if port is not existing, causing TypeError: 'NoneType' object is not subscriptable
+* Only create network bridge if neutron has allocated a valid vlan
+* Add updateDatabaseExport operation for agent cli
+* fix: Support generic ICMP rules after reimporting neutron db with port\_range\_min/port\_range\_max = NULL
+* ml2\_conf.ini - minor fix
+* Fix unit test
+* Fix CLI export of ports, adapt logging severity, fix sanitize cleanup, skip not-found ports
+* Add list of pending tasks
+* Bugfix - CLI NSX-T inventory load rules
+* Filter out unsupported by NSX-T ICMP types and codes
+* Bugfix - keep ambiguous elements in track when updating metadata
+* Keep track of ambiguous resources and clean them up on sanitize phase
+* CLI - split load and run commands
+* Fix wrong merge
+* Inventory load will skip target\_id resolution of local rules references
+* Report NSX-T objects with duplicate name in the Management API
+* CLI to export and load Neutron and NSX-T inventories
+* Fix Exception for double-binded ports (only uses the active one)
+* Lock Neutron version to Ussuri releases
+* Fix int conversion in unit test
+* Update the code to ussuri release
+* Mitigating bug with 3.0.1 which ignores default\_service service property
+* Fix trunk constants for Ussuri
+* Ensure rpc\_response\_max\_timeout config option is registered
+* fix coverage report, added commentor and parallize tox tests
+* Use correct pytest-coverage report output
+* Added Coverage github action comment
+* Sanitze orphaned services: unconditionally filter default rules to mitigate NSX-T Bug
+* Fix unit functional tests for 2.4 and 3.0
+* Fix unwrap bug in clean up unit test
+* End-to-End functional test with polluted environment
+* Cleanup user define policy services during sanitize phase
+* Add code coveradge as part of the CI
+* Bugfix - attach multiple security groups to a port
+* Fix functional tests, run with pytest instead stestr
+* Fix unit test for CI
+* Query only ports bound by the agent for SG Rules container RPC
+* Fix unit test for SG rule service with non-defined min and max ports
+* Bugfix - Expect None values for SG rule attributes
+* Remove leftover test
+* Set default values to the tox envrionment variables
+* Bugfix - handle rules without port min and max properties
+* Fix unit tests to use new model of provider metadata
+* Bugfixes - Policy API mode
+* Reuse code for service creation for both Management and Policy APIs
+* Do not filter out ports created by vCenter (system user)
+* Bugfix - handle properly Securit Group ANY target and service
+* Normalize DB query results for port bindings
+* Use row result for DB get SG members instead of wrapping it in list
+* Bugfix - RPC get port ambiguous
+* Remove unnecessary columns from port addresses db query
+* Remove leftover of the unnecessary configurations
+* Bugfix - ambiguous fetch port with parent
+* Refactor - NSX-T client raise properly on login failure
+* Bigfix - RPC query fetch
+* Improve metadata, cleanup and introduce functinal tests
+* Improve correctness and performance of DB queries realted to the outdated resources
+* Rename OpenStack mock inventory to Neutron to better describe its purpose
+* Improve DB query precision replacing offset with created\_after
+* Normalize IPv6 with prefix 128 addresses for security groups memebrs
+* Refactor misspelled rpc method name
+* Github actions typo fix on hook push branches
+* Prevent Runner to take new job while not in state "started"
+* Revert "adapt github workflow for ussuri"
+* Make neutron constraint floating to newer versions
+* Add network creation code and sanitize of IPSets
+* adapt github workflow for ussuri
+* Port code to python 3.6.9 and Neutron Ussuri
 * General rename and refactoring
+* Fix requirements and python3 specifics
+* Port the code to Ussuri release
 * Really ignore order in test\_provider\_initialization
 * Fix test\_provider\_initialization by comparing to an unsorted list
 * Test all unit tests

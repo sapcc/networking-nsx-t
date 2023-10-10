@@ -19,7 +19,7 @@ from networking_nsxv3.api import rpc as nsxv3_rpc
 from networking_nsxv3.common import config  # noqa
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.common import synchronization as sync
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_mgmt, provider_nsx_policy, realization
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy, realization
 from networking_nsxv3.prometheus import exporter
 from neutron_lib.agent import topics
 from neutron_lib.api.definitions import portbindings
@@ -141,15 +141,13 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
     def __init__(self, rpc: nsxv3_rpc.NSXv3ServerRpcApi, synchronization=True, monitoring=True):
         super(NSXv3Manager, self).__init__()
 
-        self.mngr_provider = provider_nsx_mgmt.Provider()
         self.plcy_provider = provider_nsx_policy.Provider()
 
         self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
         self.runner.start()
 
         self.realizer = realization.AgentRealizer(
-            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi,
-            mngr_provider=self.mngr_provider, plcy_provider=self.plcy_provider)
+            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi, nsx_provider=self.plcy_provider)
 
         self.synchronization = synchronization
         self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)

@@ -33,7 +33,7 @@ class Environment(object):
 
     @property
     def version(self):
-        return self.manager.realizer.plcy_provider.client.version
+        return self.manager.realizer.nsx_provider.client.version
 
     def is_management_api_mode(self):
         return False
@@ -56,8 +56,8 @@ class Environment(object):
                 k: v.__dict__ for k, v in meta.items()
             }
 
-        mngr_metadata = self.manager.realizer.mngr_provider._metadata
-        plcy_metadata = self.manager.realizer.plcy_provider._metadata
+        mngr_metadata = {}
+        plcy_metadata = self.manager.realizer.nsx_provider._metadata
 
         mngr_meta = {r: provider_dict(m) for r, m in mngr_metadata.items()}
         plcy_meta = {r: provider_dict(m) for r, m in plcy_metadata.items()}

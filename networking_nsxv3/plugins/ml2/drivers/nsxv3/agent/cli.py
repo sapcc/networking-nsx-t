@@ -31,8 +31,7 @@ class NsxInventory(object):
         self.client = client_nsx.Client()
         self.api = provider_nsx_policy.API
         self.paths = [
-            self.api.ZONES, self.api.SWITCHES, self.api.PROFILES, self.api.PORTS,
-            self.api.IPSETS, self.api.NSGROUPS, self.api.SECTIONS,
+            self.api.TRANSPORT_ZONES, self.api.SEGMENTS, self.api.QOS_PROFILES,
             self.api.GROUPS, self.api.SERVICES, self.api.POLICIES
         ]
 
@@ -119,28 +118,18 @@ class NsxInventory(object):
 
             with open(file_path, "w") as file:
                 data = self._export_filter(path, self.client.get_all(path=path))
-                if path == self.api.SECTIONS:
-                    self._export_section_rules(data, folder_path)
                 if path == self.api.POLICIES:
                     self._export_policy_rules(data, folder_path)
                 file.writelines(json.dumps(data, indent=2))
 
     def _export_filter(self, path, data):
-        if path in [self.api.SWITCHES, self.api.PORTS]:
+        if path in [self.api.SEGMENTS]:
             data = [o for o in data if o["_create_user"] != "nsx_policy"]
         elif path == self.api.SERVICES:
             data = [o for o in data if not o["is_default"]]
         else:
             data = [o for o in data if o["_create_user"] == "admin"]
         return data
-
-    def _export_section_rules(self, data, folder_path):
-        for o in data:
-            child_path = self.api.RULES.format(o["id"])
-            child_file_path = os.path.join(folder_path, o["id"])
-            with open(child_file_path, "w") as child_file:
-                child_data = self.client.get_all(path=child_path)
-                child_file.writelines(json.dumps(child_data, indent=2))
 
     def _export_policy_rules(self, data, folder_path):
         for o in data:
@@ -178,8 +167,7 @@ class NsxInventory(object):
                     if id in meta:
                         LOG.info("Object with ID: %s already processed.", id)
                         if isinstance(meta[id], dict) and not meta[id]["rules_processed"]:
-                            self._load_section_rules(full_meta, id, self.api.RULES_CREATE.format(
-                                meta[id]["id"]), os.path.join(folder_path, id))
+                            pass
                         continue
                     self._preprocess(full_meta, o, path)
                     LOG.info(json.dumps(o, indent=2))
@@ -190,28 +178,8 @@ class NsxInventory(object):
                     else:
                         resp = self.client.post(path=path, data=o).json()
 
-                    if self.api.SECTIONS in path:
-                        meta[id] = {
-                            "id": resp["id"],
-                            "_revision": resp["_revision"],
-                            "rules_processed": False
-                        }
-                        full_meta.update({path: meta})
-                        self._load_section_rules(full_meta, id, self.api.RULES_CREATE.format(
-                            meta[id]["id"]), os.path.join(folder_path, id))
-                    else:
-                        meta[id] = resp["id"]
+                    meta[id] = resp["id"]
             full_meta[path] = meta
-
-    def _load_section_rules(self, full_meta, id, path, file_path):
-        if os.path.isfile(file_path):
-            with open(file_path, "r") as file:
-                data = {"rules": json.load(file)}
-                for o in data["rules"]:
-                    self._preprocess(full_meta, o, path, full_meta[self.api.SECTIONS][id]["_revision"])
-                LOG.info("%s %s", path, json.dumps(data, indent=2))
-                self.client.post(path=path, data=data)
-                full_meta[self.api.SECTIONS][id]["rules_processed"] = True
 
     def _get_policy_rules(self, file_path):
         if os.path.isfile(file_path):
@@ -238,26 +206,18 @@ class NsxInventory(object):
         if revision is not None:
             o["_revision"] = revision
 
-        if self.api.ZONES in path:
+        if self.api.TRANSPORT_ZONES in path:
             del o["host_switch_id"]
             del o["transport_zone_profile_ids"]
 
-        if self.api.SWITCHES in path:
-            o["transport_zone_id"] = meta[self.api.ZONES][o["transport_zone_id"]]
+        if self.api.SEGMENTS in path:
+            o["transport_zone_id"] = meta[self.api.TRANSPORT_ZONES][o["transport_zone_id"]]
             o["switching_profile_ids"] = []
 
-        if self.api.PROFILES in path:
+        if self.api.QOS_PROFILES in path:
             pass
 
-        if self.api.PORTS in path:
-            o["logical_switch_id"] = meta[self.api.SWITCHES][o["logical_switch_id"]]
-            o["switching_profile_ids"] = []
-            del o["internal_id"]
-
-        if self.api.IPSETS in path:
-            pass
-
-        if self.api.NSGROUPS in path:
+        if self.api.SEGMENT_PORTS in path:
             pass
 
         if self.api.SERVICES in path:
@@ -268,15 +228,6 @@ class NsxInventory(object):
                 del e["parent_path"]
                 del e["relative_path"]
                 remove_system_information(e)
-
-        if self.api.SECTIONS in path:
-            if "applied_tos" in o:
-                for target in o["applied_tos"]:
-                    target["target_id"] = meta[self.api.SECTIONS][target["target_id"]]
-            if "sources" in o:
-                substitute_id(meta[self.api.SECTIONS], o, "sources")
-            if "destinations" in o:
-                substitute_id(meta[self.api.SECTIONS], o, "destinations")
 
 
 class NeutronInventory(object):
