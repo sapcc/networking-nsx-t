@@ -1,15 +1,13 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
-import enum
-
 import eventlet
 eventlet.monkey_patch()
 
 import networking_nsxv3.prometheus.exporter as EXPORTER
 from oslo_log import log as logging
 from oslo_config import cfg
-from enum import Enum
+import enum
 import time
 import json
 import heapq
