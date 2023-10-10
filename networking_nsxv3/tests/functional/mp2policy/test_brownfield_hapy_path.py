@@ -145,3 +145,4 @@ class TestMp2PolicyMigr(BaseNsxTest):
                 else:
                     self.assertTrue(migrated_port_path not in self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"],
                                     f"Port '{k}' with path '{migrated_port_path}' must NOT be static member of SG '{sg}', because it belongs to {len(os_sgs)} SGS which is less than {self.TEST_CONFIG.AGENT.max_sg_tags_per_segment_port}!")
+

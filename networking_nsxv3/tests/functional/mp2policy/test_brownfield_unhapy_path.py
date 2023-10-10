@@ -138,3 +138,4 @@ class TestMp2PolicyMigr(BaseNsxTest):
                                 f"SG Members '{sg}' must exists in the policy metadata!")
                 self.assertEqual(0, len(self.plcy_meta[self.plcy.SG_MEMBERS]["meta"][sg]["sg_members"]),
                                  f"SG '{sg}' must have no static members in the policy metadata!")
+
