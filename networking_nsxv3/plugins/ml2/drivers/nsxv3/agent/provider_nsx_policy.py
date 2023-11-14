@@ -72,18 +72,12 @@ class API(object):
     SEARCH_Q_SEG_PORTS = {"query": "resource_type:SegmentPort AND marked_for_delete:false"}
     SEARCH_Q_QOS_PROFILES = {
         "query": "resource_type:QoSProfile AND NOT display_name:*default* AND marked_for_delete:false"}
-    SEARCH_Q_ALL_SEG_PROFILES = {
-        "query":
-        "resource_type:QoSProfile" +
-        " OR resource_type:SpoofGuardProfile" +
-        " OR resource_type:SegmentSecurityProfile" +
-        " OR resource_type:PortMirroringProfile" +
-        " OR resource_type:MacDiscoveryProfile" +
-        " OR resource_type:IPDiscoveryProfile"
-    }
+    SEARCH_Q_QOS_BIND = "resource_type:PortQoSProfileBindingMap AND qos_profile_path:\"/infra/qos-profiles/{}\""
+    SEARCH_Q_QOS_BIND_BY_PPATH = "resource_type:PortQoSProfileBindingMap AND parent_path:\"{}\""
 
     SEARCH_DSL = POLICY_BASE + "/search"
-    SEARCH_DSL_QUERY = lambda res_type, dsl: {
+
+    def SEARCH_DSL_QUERY(res_type, dsl): return {
         "query": f"resource_type:{res_type}",
         "dsl": f"{dsl}",
         "data_source": "INTENT",
@@ -96,6 +90,7 @@ class API(object):
     SEGMENT_PORTS = INFRA + "/segments/{}/ports"
     SEGMENT_PORT_PATH = "/infra/segments/{}/ports/{}"
     SEGMENT_PORT = POLICY_BASE + SEGMENT_PORT_PATH
+    SEGMENT_PORT_QOS = SEGMENT_PORT + "/port-qos-profile-binding-maps/{}"
 
     GROUP_PATH = "/infra/domains/default/groups/{}"
     GROUPS = INFRA + "/domains/default/groups"
@@ -355,9 +350,15 @@ class Payload(object):
 
         return segment_port
 
-    def qos_profile_binding(self) -> dict:
-        # TODO: QOS Profile Binding
-        return {}
+    def qos_profile_binding(self, qos_id: str, nsx_seg_id: str, nsx_port_id: str) -> dict:
+        return {
+            "qos_profile_path": f"/infra/qos-profiles/{qos_id}",
+            "resource_type": "PortQoSProfileBindingMap",
+            "id": qos_id,
+            "display_name": qos_id,
+            "path": f"/infra/segments/{nsx_seg_id}/ports/{nsx_port_id}/port-qos-profile-binding-maps/{qos_id}",
+            "parent_path": f"/infra/segments/{nsx_seg_id}/ports/{nsx_port_id}"
+        }
 
     # NSX-T Group Members
     def sg_members_container(self, os_sg: dict, provider_sg: dict) -> dict:
@@ -879,7 +880,8 @@ class Provider(base.Provider):
 
     def _clear_all_static_memberships_for_port(self, port_meta: PolicyResourceMeta):
         # Get all SGs where the port might have been a static member
-        grps:List[dict] = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
+        grps: List[dict] = self.client.get_all(
+            path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
             LOG.info("Removing static member's port.path '%s' from %s SGs", port_meta.path, len(grps))
@@ -966,7 +968,6 @@ class Provider(base.Provider):
 
             # Realize the port with empty security groups tags
             updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
-            # TODO: Realize qos_profile_binding
             self.realize_qos_profile_binding(segment_meta=segment_meta, port_meta=updated_port_meta, os_port=os_port)
 
             # If the port was not existing, realize the static group membership after the port was created
@@ -976,26 +977,68 @@ class Provider(base.Provider):
                 self._clear_all_static_memberships_for_port(port_meta)
 
         updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
-        # TODO: Realize qos_profile_binding
         self.realize_qos_profile_binding(segment_meta=segment_meta, port_meta=updated_port_meta, os_port=os_port)
         return updated_port_meta
+
+    # def realize_qos_profile_binding(self, segment_meta: PolicyResourceMeta, port_meta: PolicyResourceMeta, os_port: dict):
+    #     if not segment_meta or not port_meta:
+    #         LOG.debug("QoS Profile Binding Segment: '%s', Port: '%s'", segment_meta, port_meta)
+    #         LOG.info("Skipping QoS Profile Binding for Port:%s", os_port.get("id"))
+    #         return
+
+    #     qos_meta = self.metadata(Provider.QOS, os_qos_id)
+    #     os_qos_id = os_port.get("qos_policy_id")
+    #     if os_qos_id:
+    #         if not qos_meta:
+    #             LOG.warning("Not found. QoS:%s for Port:%s. QoS Profile Binding skipped.", os_qos_id, os_port.get("id"))
+    #             return
+    #         try:
+    #             qos_bind = self.payload.qos_profile_binding(qos_meta.real_id, segment_meta.real_id, port_meta.real_id)
+    #             api_path = API.SEGMENT_PORT_QOS.format(segment_meta.real_id, port_meta.real_id, qos_meta.real_id)
+    #             self.client.patch(api_path, data=qos_bind)
+    #         except Exception as e:
+    #             LOG.warning(f"Unable to bind a QOS Policy: '{qos_meta.real_id}' to SegmentPort: '{port_meta.real_id}'")
+    #             LOG.debug(e)
+    #     else:
+    #         if not qos_meta:
+    #             # qos was deleted no need to delete the mappings
+    #             return
+    #         try:
+    #             qos_maps: list[Dict] = self.client.get_all(
+    #             API.SEARCH_QUERY, {"query": API.SEARCH_Q_QOS_BIND_BY_PPATH.format(port_meta.path)})
+    #             for qm in qos_maps:
+    #                 self.client.delete(API.POLICY_BASE + qm["path"])
+    #         except Exception as e:
+    #             LOG.warning(f"Unable to delete QOS Binding for QOS: '{qos_meta.real_id}' and SegmentPort: '{port_meta.real_id}'")
+    #             LOG.debug(e)
 
     def realize_qos_profile_binding(self, segment_meta: PolicyResourceMeta, port_meta: PolicyResourceMeta, os_port: dict):
         if not segment_meta or not port_meta:
             LOG.debug("QoS Profile Binding Segment: '%s', Port: '%s'", segment_meta, port_meta)
             LOG.info("Skipping QoS Profile Binding for Port:%s", os_port.get("id"))
             return
-        
-        meta_qos = None
-        os_qos_id = os_port.get("qos_policy_id")
-        if os_qos_id:
-            meta_qos = self.metadata(Provider.QOS, os_qos_id)
-            if not meta_qos:
-                LOG.warning("Not found. QoS:%s for Port:%s. QoS Profile Binding skipped.", os_qos_id, os_port.get("id"))
-                return
 
-        # TODO: QOS Profile Binding
-        pass
+        os_qos_id = os_port.get("qos_policy_id")
+
+        try:
+            if os_qos_id:
+                qos_meta = self.metadata(Provider.QOS, os_qos_id)
+                if not qos_meta:
+                    LOG.warning("Not found. QoS:%s for Port:%s. QoS Profile Binding skipped.",
+                                os_qos_id, os_port.get("id"))
+                    return
+                qos_bind = self.payload.qos_profile_binding(qos_meta.real_id, segment_meta.real_id, port_meta.real_id)
+                api_path = API.SEGMENT_PORT_QOS.format(segment_meta.real_id, port_meta.real_id, qos_meta.real_id)
+                self.client.patch(api_path, data=qos_bind)
+            else:
+                qos_maps = self.client.get_all(
+                    API.SEARCH_QUERY, {"query": API.SEARCH_Q_QOS_BIND_BY_PPATH.format(port_meta.path)})
+                for qm in qos_maps:
+                    self.client.delete(API.POLICY_BASE + qm["path"])
+        except Exception as e:
+            b = "bind" if os_qos_id else "unbind"
+            LOG.warning(f"Unable to {b} a QOS: '{os_qos_id}' for Port: '{os_port.get('id')}'")
+            LOG.debug(e)
 
     def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
         for sg_id in port_sgs:
@@ -1037,11 +1080,6 @@ class Provider(base.Provider):
             segment = self._realize(Provider.NETWORK, False, self.payload.segment, os_net, provider_net)
         return segment
 
-    def get_non_default_switching_profiles(self) -> list:
-        prfls = self.client.get_all(path=API.SEARCH_QUERY, params=API.SEARCH_Q_ALL_SEG_PROFILES)
-        # filter the list
-        return [p for p in prfls if p and p.get("id").find("default") == -1]
-
     # overrides
     def sg_rules_realize(self, os_sg, delete=False, logged=False):
         os_id = os_sg.get("id")
@@ -1060,6 +1098,11 @@ class Provider(base.Provider):
         meta = self.metadata(Provider.QOS, qos_id)
         provider_o = {"id": qos_id, "_revision": None} if not meta else {
             "id": meta.real_id, "_revision": meta.revision}
+        if delete and meta:
+            qos_maps: list[Dict] = self.client.get_all(
+                API.SEARCH_QUERY, {"query": API.SEARCH_Q_QOS_BIND.format(meta.real_id)})
+            for qm in qos_maps:
+                self.client.delete(API.POLICY_BASE + qm["path"])
         return self._realize(Provider.QOS, delete, self.payload.qos, qos, provider_o)
 
     def sg_members_realize(self, os_sg: dict, delete=False):
