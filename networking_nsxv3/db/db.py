@@ -13,11 +13,13 @@ from neutron.db.qos.models import (QosBandwidthLimitRule, QosDscpMarkingRule,
 from neutron.plugins.ml2.models import PortBinding, PortBindingLevel
 from neutron.services.trunk import models as trunk_model
 from neutron_lib.api.definitions import portbindings
+from neutron_lib.db import api as db_api
 from neutron_lib.db.standard_attr import StandardAttribute
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql import text
 
 
+@db_api.CONTEXT_READER
 def get_ports_with_revisions(context, host, limit, cursor):
     return context.session.query(
         Port.id,
@@ -38,6 +40,7 @@ def get_ports_with_revisions(context, host, limit, cursor):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_qos_policies_with_revisions(context, host, limit, cursor):
     return context.session.query(
         QosPolicy.id,
@@ -62,6 +65,7 @@ def get_qos_policies_with_revisions(context, host, limit, cursor):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_security_groups_with_revisions(context, host, limit, cursor):
     return context.session.query(
         sg_db.SecurityGroup.id,
@@ -86,6 +90,7 @@ def get_security_groups_with_revisions(context, host, limit, cursor):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_security_group_revision(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroup.id,
@@ -98,6 +103,7 @@ def get_security_group_revision(context, security_group_id):
     ).one_or_none()
 
 
+@db_api.CONTEXT_READER
 def get_security_group_tag(context, security_group_id):
     return context.session.query(
         tag_model.Tag.tag
@@ -109,6 +115,7 @@ def get_security_group_tag(context, security_group_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_qos(context, qos_id):
     return context.session.query(
         QosPolicy.name,
@@ -120,6 +127,7 @@ def get_qos(context, qos_id):
     ).one_or_none()
 
 
+@db_api.CONTEXT_READER
 def get_qos_ports_by_host(context, host, qos_id):
     return context.session.query(
         Port.id,
@@ -136,6 +144,7 @@ def get_qos_ports_by_host(context, host, qos_id):
     ).limit(1).one_or_none()
 
 
+@db_api.CONTEXT_READER
 def get_qos_bwl_rules(context, qos_id):
     return context.session.query(
         QosBandwidthLimitRule.direction,
@@ -146,6 +155,7 @@ def get_qos_bwl_rules(context, qos_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_qos_dscp_rules(context, qos_id):
     return context.session.query(
         QosDscpMarkingRule.qos_policy_id,
@@ -155,6 +165,7 @@ def get_qos_dscp_rules(context, qos_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_port(context, host, port_id):
     port = context.session.query(
         Port.id,
@@ -222,6 +233,7 @@ def get_port(context, host, port_id):
     }
 
 
+@db_api.CONTEXT_READER
 def get_port_security_groups(context, port_id):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.security_group_id
@@ -230,6 +242,7 @@ def get_port_security_groups(context, port_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_port_allowed_pairs(context, port_id):
     return context.session.query(
         allowed_address_pair.AllowedAddressPair.ip_address,
@@ -239,6 +252,7 @@ def get_port_allowed_pairs(context, port_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_port_addresses(context, port_id):
     return context.session.query(
         IPAllocation.ip_address
@@ -247,6 +261,7 @@ def get_port_addresses(context, port_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_rules_for_security_group_id(context, security_group_id):
     return context.session.query(
         sg_db.SecurityGroupRule
@@ -255,6 +270,7 @@ def get_rules_for_security_group_id(context, security_group_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_port_id_by_sec_group_id(context, host, security_group_id):
     result = context.session.query(
         sg_db.SecurityGroupPortBinding.port_id
@@ -270,6 +286,7 @@ def get_port_id_by_sec_group_id(context, host, security_group_id):
     return [o[0] for o in result]
 
 
+@db_api.CONTEXT_READER
 def get_security_groups_for_host(context, host, limit, cursor):
     return context.session.query(
         sg_db.SecurityGroupPortBinding.security_group_id,
@@ -286,6 +303,7 @@ def get_security_groups_for_host(context, host, limit, cursor):
     ).distinct().limit(limit).all()
 
 
+@db_api.CONTEXT_READER
 def get_remote_security_groups_for_host(context, host, limit, cursor):
     return context.session.query(
         sg_db.SecurityGroupRule.remote_group_id,
@@ -306,6 +324,7 @@ def get_remote_security_groups_for_host(context, host, limit, cursor):
     ).distinct().limit(limit).all()
 
 
+@db_api.CONTEXT_READER
 def has_security_group_used_by_host(context, host, security_group_id):
     if context.session.query(
         sg_db.SecurityGroup.id
@@ -340,6 +359,7 @@ def has_security_group_used_by_host(context, host, security_group_id):
     return False
 
 
+@db_api.CONTEXT_READER
 def get_security_group_members_ips(context, security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
@@ -353,6 +373,7 @@ def get_security_group_members_ips(context, security_group_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_security_group_port_ids(context, host, security_group_id):
     ses: Session = context.session
     res = ses.query(
@@ -385,6 +406,7 @@ def get_security_group_port_ids(context, host, security_group_id):
     return ports_with_sg_count
 
 
+@db_api.CONTEXT_READER
 def get_security_group_members_address_bindings_ips(context, security_group_id):
     port_id = sg_db.SecurityGroupPortBinding.port_id
     group_id = sg_db.SecurityGroupPortBinding.security_group_id
@@ -398,6 +420,7 @@ def get_security_group_members_address_bindings_ips(context, security_group_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_port_logging(context, port_id):
     return context.session.query(
         Log.project_id,
@@ -408,6 +431,7 @@ def get_port_logging(context, port_id):
     ).one_or_none()
 
 
+@db_api.CONTEXT_READER
 def has_security_group_logging(context, security_group_id):
     result = context.session.query(
         Log.resource_id,
@@ -419,6 +443,7 @@ def has_security_group_logging(context, security_group_id):
     return True if result else False
 
 
+@db_api.CONTEXT_READER
 def get_addresses_for_address_group_id(context, addr_group_id):
     return context.session.query(
         ag_db.AddressAssociation.address
@@ -427,6 +452,7 @@ def get_addresses_for_address_group_id(context, addr_group_id):
     ).all()
 
 
+@db_api.CONTEXT_READER
 def get_address_group_revision_number(context, addr_group_id):
     return context.session.query(
         StandardAttribute.revision_number
