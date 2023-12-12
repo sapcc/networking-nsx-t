@@ -306,9 +306,12 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
 
 
 def main():
+    logging.register_options(cfg.CONF)
+    common_config.register_common_config_options()
+    agent_config.register_agent_state_opts_helper(cfg.CONF)
+
     common_config.init(sys.argv[1:])
     common_config.setup_logging()
-    agent_config.register_agent_state_opts_helper(cfg.CONF)
     profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
     LOG.info("VMware NSXv3 Agent initializing ...")
 
