@@ -6,6 +6,7 @@ import random
 import sys
 from typing import Callable
 
+
 import oslo_messaging
 from neutron.common import config as common_config
 from neutron.common import profiler
@@ -132,7 +133,7 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def resource_update(self, context, log_obj):
         pass
-    
+
     def address_group_updated(self, context, address_group):
         self.callback(address_group, self.realizer.address_group_update)
 
@@ -308,9 +309,12 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
 
 
 def main():
+    logging.register_options(cfg.CONF)
+    common_config.register_common_config_options()
+    agent_config.register_agent_state_opts_helper(cfg.CONF)
+
     common_config.init(sys.argv[1:])
     common_config.setup_logging()
-    agent_config.register_agent_state_opts_helper(cfg.CONF)
     profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
     LOG.info("VMware NSXv3 Agent initializing ...")
 
