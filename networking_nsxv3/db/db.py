@@ -402,8 +402,7 @@ def get_security_group_port_ids(context, host, security_group_id):
         "GROUP BY port_id"
     )
 
-    ports_with_sg_count = ses.execute(sql)
-    return ports_with_sg_count
+    return [row._mapping for row in ses.execute(sql)]
 
 
 @db_api.CONTEXT_READER
