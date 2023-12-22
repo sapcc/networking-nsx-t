@@ -665,6 +665,10 @@ class Provider(base.Provider):
             LOG.info("Resource: %s with ID: %s already deleted.", resource_type, os_id)
 
     def _delete_segment_port(self, os_port: dict, port_meta: PolicyResourceMeta) -> None:
+        '''
+        Delete the port via the Policy API. 
+        If the port has static memberships in SGs, remove them first and wait for the sync loop to delete the port afterwards. 
+        '''
         os_id = os_port.get("id")
         nsx_segment_id = port_meta.parent_path.replace(API.SEGMENT_PATH.format(""), "")
         target_o = {"id": nsx_segment_id, "resource_type": Provider.NETWORK}
@@ -807,47 +811,17 @@ class Provider(base.Provider):
         provider_port["nsx_segment_real_id"] = segment_meta.real_id
 
         # If the port has more than the maximum number of security groups allowed as tags,
-        # we need to realize the port with empty security groups first,
-        # and then add the port to the security groups as a static member.
+        # we need to realize the port SGs as static members.
+        # Previously this was done via here, but this lead to an rpc timeout, resulting in a failed port binding. 
+        # No this needs to be done asynchronously. 
+        # Adding the port as a static member is only done via the security_group_members call after the port binding has been completed.
         port_sgs = os_port.get("security_groups")
         max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
         if len(port_sgs) > max_sg_tags:
-            LOG.info("Port:%s has %s security groups which is more than the maximum allowed %s. \
+            LOG.info("Port: %s has %s security groups which is more than the maximum allowed %s. \
                 The port will be added to the security groups as a static member.", port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
-
-            # In case the port already exists, realize the static group membership before the port is updated
-            if port_meta:
-                self.realize_sg_static_members(port_sgs, port_meta)
-
-            # Realize the port with empty security groups tags
-            updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
-
-            # If the port was not existing, realize the static group membership after the port was created
-            return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
-        else:
-            if port_meta:
-                self._clear_all_static_memberships_for_port(port_meta)
-
         return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
-
-    def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
-        for sg_id in port_sgs:
-            with LockManager.get_lock("member-{}".format(sg_id)):
-                sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
-                if not sg_meta:
-                    # Realize the Security Group if it does not exist with empty members
-                    sg_meta = self.sg_members_realize(
-                        {"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
-                if not port_meta.path:
-                    raise RuntimeError(f"Not found path in Metadata for port: {port_meta.real_id}")
-                if port_meta.path not in sg_meta.sg_members:
-                    sg_meta.sg_members.append(port_meta.path)
-                    self.sg_members_realize({"id": sg_id,
-                                             "cidrs": sg_meta.sg_cidrs,
-                                             "member_paths": sg_meta.sg_members,
-                                             "revision_number": sg_meta.revision or 0})
-
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
         if port:
