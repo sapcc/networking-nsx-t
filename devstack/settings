@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+define_plugin networking-nsx-t
+# plugin_requires
+NETWORKING_NSX_T_DIR="$DEST/networking-nsx-t"
