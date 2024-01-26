@@ -18,6 +18,7 @@ from networking_nsxv3.services.logapi.drivers.nsxv3 import driver as nsxv3_loggi
 from neutron.objects import trunk as trunk_objects
 
 from networking_nsxv3.extensions.nsxtoperations import Nsxtoperations  # auto-loads api on neutron server start
+from networking_nsxv3.extensions.nsxtoperationsv2 import Nsxtoperationsv2  # auto-loads api on neutron server start
 
 from oslo_utils import importutils
 from neutron.services.logapi.drivers import manager
