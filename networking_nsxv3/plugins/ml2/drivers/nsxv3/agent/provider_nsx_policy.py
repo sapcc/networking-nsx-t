@@ -9,6 +9,7 @@ import json
 import time
 import netaddr
 import functools
+from oslo_cache import core as cache
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import excutils
@@ -22,7 +23,6 @@ import ipaddress
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
-
 
 def refresh_and_retry(func):
     @functools.wraps(func)
@@ -618,6 +618,7 @@ class Provider(base.Provider):
             zone_id = tz.get("id")
             zone_tags = tz.get("tags", [])
 
+        LOG.info(f"loading zone with {zone_id} and tags {zone_tags}")
         return zone_id, zone_tags
 
     def _ensure_default_l3_policy(self):
@@ -983,6 +984,9 @@ class Provider(base.Provider):
     # overrides
     def network_realize(self, segmentation_id: int) -> PolicyResourceMeta:
         segment = self.metadata(Provider.NETWORK, segmentation_id)
+        self.zone_id, self.zone_tags = self.zone_cache_region.get_or_create(key=self.ZONE_CACHE_KEY, 
+                                                                            creator=self._load_zones, 
+                                                                            expiration_time=cfg.CONF.NSXV3.nsxv3_transport_zone_id_cache_time)
         if not segment or segment.real_id is None:
             os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}
             provider_net = {"transport_zone_id": self.zone_id}

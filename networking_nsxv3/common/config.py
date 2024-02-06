@@ -216,6 +216,11 @@ nsxv3_opts = [
         default=False,
         help="Enable create of default infrastructure rules like ICMP allow, "
              "DHCP and Metadata Agent access"
+    ),
+    cfg.IntOpt(
+        'nsxv3_transport_zone_id_cache_time',
+        default=86400,
+        help="Timeout for the NSXv3 transport zone ID cache in seconds. Default 86400 seconds (1 day)."
     )
 ]
 
@@ -241,7 +246,6 @@ vsphere_opts = [
         help="vSphere client disables ssl host validattion. [Development Mode]"
     ),
 ]
-
 
 cfg.CONF.register_opts(agent_opts, "AGENT")
 cfg.CONF.register_opts(agent_cli_opts, "AGENT_CLI")
