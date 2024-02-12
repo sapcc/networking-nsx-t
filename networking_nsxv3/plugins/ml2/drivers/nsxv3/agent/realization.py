@@ -163,16 +163,11 @@ class AgentRealizer(object):
         with LockManager.get_lock("member-{}".format(os_id)):
             meta = self.nsx_provider.metadata(self.nsx_provider.SG_MEMBERS, os_id)
             if not (reference and meta):
-                if self.rpc.has_security_group_used_by_host(os_id):
-                    cidrs = self.rpc.get_security_group_members_effective_ips(os_id)
-                    port_ids_with_sg_count = self.rpc.get_security_group_port_ids(os_id)
-                    max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
-
-                    filtered_port_ids = [p["port_id"]
-                        for p in port_ids_with_sg_count if int(p["sg_count"]) > max_sg_tags]
-
+                max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
+                cidrs, ports_with_sg_count = self.rpc.fetch_security_group_information(os_id, max_sg_tags)
+                if cidrs:
                     paths = [p.path for p in self.nsx_provider.get_port_meta_by_ids(
-                        filtered_port_ids)] if filtered_port_ids else []
+                        ports_with_sg_count)] if ports_with_sg_count else []
 
                     # SG Members are not revisionable, use default "0"
                     self.nsx_provider.sg_members_realize(

@@ -16,6 +16,7 @@ from neutron_lib.api.definitions import portbindings
 from neutron_lib.db.standard_attr import StandardAttribute
 from sqlalchemy.orm.session import Session
 from sqlalchemy.sql import text
+from sqlalchemy import func
 
 
 def get_ports_with_revisions(context, host, limit, cursor):
@@ -305,6 +306,91 @@ def get_remote_security_groups_for_host(context, host, limit, cursor):
         StandardAttribute.id > cursor
     ).distinct().limit(limit).all()
 
+def fetch_security_group_information(context, host, security_group_id, max_tags):
+    """
+    Fetch all relevant information for realizing SG Groups on NSX-T.
+    CASE1: At least one Port, bound to host, references SG Group
+    CASE2: No Port bound by host references the SG Group. SG Group might be part of a remote SG Group.
+    :param context:
+    :param host:
+    :param security_group_id:
+    :param max_tags: Maximum number of tags allowed per port (NSX-T limitation)
+    :return: Related CIDRS, Ports SG Group Count referencing security_group_id
+    """
+    ## Case 1: SG needs to be bound by Host
+    ## Case 2: SG not bound by host --> only CIDRs relevant --> no need to check max
+    #if sg is related to the host
+
+    remote_group = False
+    sg_count_per_port = None
+
+    # Case 1
+    ports_on_host = context.session.query(
+            sg_db.SecurityGroupPortBinding.port_id
+    ).join(
+        PortBindingLevel,
+        PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id,
+    ).filter(
+        sg_db.SecurityGroupPortBinding.security_group_id == security_group_id,
+        PortBindingLevel.host == host,
+        PortBindingLevel.driver == nsxv3_constants.NSXV3,
+    ).all()
+
+    port_ids = [port_id for (port_id,) in ports_on_host]
+
+    # Case 2
+    if not port_ids or len(port_ids) == 0:
+        remote_sg = context.session.query(
+            sg_db.SecurityGroupRule.remote_group_id,
+        ).join(
+            sg_db.SecurityGroupPortBinding,
+            sg_db.SecurityGroupPortBinding.security_group_id == sg_db.SecurityGroupRule.security_group_id
+        ).join(
+            PortBindingLevel,
+            PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+        ).filter(
+            sg_db.SecurityGroupRule.remote_group_id == security_group_id,
+            PortBindingLevel.host == host,
+            PortBindingLevel.driver == nsxv3_constants.NSXV3,
+        ).limit(1).first()
+
+        if remote_sg is None:
+            return None, None
+        remote_group = True
+
+    #Fetch all ips related to the SG
+    allowed_address_pairs = context.session.query(
+        AllowedAddressPair.ip_address
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        AllowedAddressPair.port_id ==  sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        security_group_id == sg_db.SecurityGroupRule.security_group_id
+    ).all()
+
+    allocated_ipds = context.session.query(
+        IPAllocation.ip_address
+    ).join(
+        sg_db.SecurityGroupPortBinding,
+        IPAllocation.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).filter(
+        security_group_id == sg_db.SecurityGroupRule.security_group_id
+    ).all()
+
+    cidrs = [ip[0] for ip in allowed_address_pairs] + [ip[0] for ip in allocated_ipds]
+
+    if not remote_group:
+        #Static membership realization is not needed for groups only referenced as remote SG
+        sg_count_per_port = context.session.query(
+            sg_db.SecurityGroupPortBinding.port_id,
+            func.count(sg_db.SecurityGroupPortBinding.port_id)
+        ).filter(
+            sg_db.SecurityGroupPortBinding.port_id.in_(port_ids),
+        ).group_by(
+            sg_db.SecurityGroupPortBinding.port_id
+        ).having(func.count(sg_db.SecurityGroupPortBinding.port_id) > max_tags).all()
+
+    return cidrs, sg_count_per_port
 
 def has_security_group_used_by_host(context, host, security_group_id):
     if context.session.query(

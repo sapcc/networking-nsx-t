@@ -216,6 +216,11 @@ class NSXv3ServerRpcApi(object):
                           host=self.host, security_group_id=security_group_id)
 
     @log_helpers.log_method_call
+    def fetch_security_group_information(self, security_group_id, max_tags):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'fetch_security_group_information',
+                          host=self.host, security_group_id=security_group_id, max_tags=max_tags)
+    @log_helpers.log_method_call
     def get_port_logging(self, port_id):
         cctxt = self.client.prepare()
         return cctxt.call(self.context, 'get_port_logging', port_id=port_id)
@@ -305,6 +310,10 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def has_security_group_used_by_host(self, context, host, security_group_id):
         return db.has_security_group_used_by_host(context, host, security_group_id)
+
+    @log_helpers.log_method_call
+    def  fetch_security_group_information(self, context, host, security_group_id, max_tags):
+        return db.fetch_security_group_information(context, host, security_group_id, max_tags)
 
     @log_helpers.log_method_call
     def get_port(self, context, host, port_id):
