@@ -313,16 +313,18 @@ class NSXv3ServerRpcCallback(object):
         if not port:
             return None
         # NSX-T does not support CIDR as port manual binding - skipping X/X
-
+        used_addres_pairs = set()
         for ip in db.get_port_addresses(context, port_id):
             if "/" in ip:
                 continue
-            port["address_bindings"].append({"ip_address": ip[0], "mac_address": port["mac_address"]})
+            used_addres_pairs.add((ip[0], port["mac_address"]))
 
         for ip, mac in db.get_port_allowed_pairs(context, port_id):
             if "/" in ip:
                 continue
-            port["address_bindings"].append({"ip_address": ip, "mac_address": mac})
+            used_addres_pairs.add((ip, mac))
+
+        port["address_bindings"] = [{"ip_address": ip, "mac_address": mac} for ip, mac in sorted(used_addres_pairs)]
 
         for sg_id in db.get_port_security_groups(context, port_id):
             port["security_groups"].append(sg_id[0])
@@ -352,7 +354,7 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def get_addresses_for_address_group_id(self, context, address_group_id):
         return db.get_addresses_for_address_group_id(context, address_group_id)
-    
+
     @log_helpers.log_method_call
     def get_address_group_revision_number(self, context, address_group_id):
         return db.get_address_group_revision_number(context, address_group_id)
