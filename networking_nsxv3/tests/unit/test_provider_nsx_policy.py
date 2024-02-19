@@ -1219,7 +1219,7 @@ class TestProviderPolicy(base.BaseTestCase):
 
     @responses.activate
     def test_priveleged_ports(self):
-        cfg.CONF.NSXV3.nsxv3_remove_orphan_ports_after = 0
+        cfg.CONF.set_override('nsxv3_remove_orphan_ports_after', 0, group='NSXV3')
         vmk_n, vmk_p, _, _, _, os_port_parent, _ = self.port_fixture()
         api = provider_nsx_policy.API
 
