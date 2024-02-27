@@ -15,8 +15,10 @@ jobs:
   build:
 
     #runs-on: ubuntu-latest
-    #issue https://github.com/actions/setup-python/issues/544
+    #issue https://github.com/actions/setup-python/issues/544i
     runs-on: ubuntu-20.04
+    permissions:
+      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
@@ -36,9 +38,7 @@ jobs:
       - name: Running Tox
         run: tox
       - name: Comment coverage report
-        uses: machine-learning-apps/pr-comment@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: mshick/add-pr-comment@v2
         with:
-          path: pytest-coverage.txt
+          message-path: pytest-coverage.txt
 

@@ -1,5 +1,6 @@
 import abc
 import time
+from oslo_cache import core as cache
 from oslo_config import cfg
 from oslo_log import log as logging
 from typing import Callable, Dict, List, Set, Tuple
@@ -197,6 +198,7 @@ class Provider(abc.ABC):
     SG_RULES = "Security Group (Rules)"
     SG_RULE = "Rule"
     SG_RULES_REMOTE_PREFIX = "Security Group (Rules Remote IP Prefix)"
+    ZONE_CACHE_KEY = 'zone-id'
 
     def __init__(self, client: Client):
         super(Provider, self).__init__()
@@ -205,7 +207,16 @@ class Provider(abc.ABC):
         self.client: Client = client
         self._metadata: Dict[str, MetaProvider] = self._metadata_loader()
         self.zone_name: str = cfg.CONF.NSXV3.nsxv3_transport_zone_name
-        self.zone_id, self.zone_tags = self._load_zones()
+
+        #Configure cache region to cache zone_id and zone_tags 
+        cache.configure(cfg.CONF)
+        self.zone_cache_region = cache.create_region()
+        cache.configure_cache_region(cfg.CONF, self.zone_cache_region)
+        self.zone_id, self.zone_tags = self.zone_cache_region.get_or_create(key=self.ZONE_CACHE_KEY,
+                                                                       creator=self._load_zones,
+                                                                       expiration_time=cfg.CONF.NSXV3.nsxv3_transport_zone_id_cache_time)
+
+
         if not self.zone_id:
             raise Exception("Not found Transport Zone {}".format(self.zone_name))
 

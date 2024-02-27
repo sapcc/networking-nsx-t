@@ -9,6 +9,7 @@ import json
 import time
 import netaddr
 import functools
+from oslo_cache import core as cache
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import excutils
@@ -22,7 +23,6 @@ import ipaddress
 
 
 LOG: logging.KeywordArgumentAdapter = logging.getLogger(__name__)
-
 
 def refresh_and_retry(func):
     @functools.wraps(func)
@@ -619,6 +619,7 @@ class Provider(base.Provider):
             zone_id = tz.get("id")
             zone_tags = tz.get("tags", [])
 
+        LOG.info(f"loading zone with {zone_id} and tags {zone_tags}")
         return zone_id, zone_tags
 
     def _ensure_default_l3_policy(self):
@@ -792,6 +793,10 @@ class Provider(base.Provider):
             LOG.info("Resource: %s with ID: %s already deleted.", resource_type, os_id)
 
     def _delete_segment_port(self, os_port: dict, port_meta: PolicyResourceMeta) -> None:
+        '''
+        Delete the port via the Policy API. 
+        If the port has static memberships in SGs, remove them first and wait for the sync loop to delete the port afterwards. 
+        '''
         os_id = os_port.get("id")
         nsx_segment_id = port_meta.parent_path.replace(API.SEGMENT_PATH.format(""), "")
         target_o = {"id": nsx_segment_id, "resource_type": Provider.NETWORK}
@@ -880,8 +885,7 @@ class Provider(base.Provider):
 
     def _clear_all_static_memberships_for_port(self, port_meta: PolicyResourceMeta):
         # Get all SGs where the port might have been a static member
-        grps: List[dict] = self.client.get_all(
-            path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
+        grps:List[dict] = self.client.get_all(path=API.SEARCH_DSL, params=API.SEARCH_DSL_QUERY("Group", port_meta.real_id))
         if len(grps) > 0:
             # Remove the port path from the SGs PathExpressions
             LOG.info("Removing static member's port.path '%s' from %s SGs", port_meta.path, len(grps))
@@ -953,64 +957,21 @@ class Provider(base.Provider):
         provider_port["nsx_segment_real_id"] = segment_meta.real_id
 
         # If the port has more than the maximum number of security groups allowed as tags,
-        # we need to realize the port with empty security groups first,
-        # and then add the port to the security groups as a static member.
+        # we need to realize the port SGs as static members.
+        # Previously this was done via here, but this lead to an rpc timeout, resulting in a failed port binding. 
+        # No this needs to be done asynchronously. 
+        # Adding the port as a static member is only done via the security_group_members call after the port binding has been completed.
         port_sgs = os_port.get("security_groups")
         max_sg_tags = min(cfg.CONF.AGENT.max_sg_tags_per_segment_port, 27)
         if len(port_sgs) > max_sg_tags:
-            LOG.info("Port:%s has %s security groups which is more than the maximum allowed %s. \
+            LOG.info("Port: %s has %s security groups which is more than the maximum allowed %s. \
                 The port will be added to the security groups as a static member.", port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
-
-            # In case the port already exists, realize the static group membership before the port is updated
-            if port_meta:
-                self.realize_sg_static_members(port_sgs, port_meta)
-
-            # Realize the port with empty security groups tags
-            updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
-            self.realize_qos_profile_binding(segment_meta=segment_meta, port_meta=updated_port_meta, os_port=os_port)
-
-            # If the port was not existing, realize the static group membership after the port was created
-            return updated_port_meta if port_meta is not None else self.realize_sg_static_members(port_sgs, updated_port_meta)
-        else:
-            if port_meta:
-                self._clear_all_static_memberships_for_port(port_meta)
 
         updated_port_meta = self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
         self.realize_qos_profile_binding(segment_meta=segment_meta, port_meta=updated_port_meta, os_port=os_port)
         return updated_port_meta
 
-    # def realize_qos_profile_binding(self, segment_meta: PolicyResourceMeta, port_meta: PolicyResourceMeta, os_port: dict):
-    #     if not segment_meta or not port_meta:
-    #         LOG.debug("QoS Profile Binding Segment: '%s', Port: '%s'", segment_meta, port_meta)
-    #         LOG.info("Skipping QoS Profile Binding for Port:%s", os_port.get("id"))
-    #         return
-
-    #     qos_meta = self.metadata(Provider.QOS, os_qos_id)
-    #     os_qos_id = os_port.get("qos_policy_id")
-    #     if os_qos_id:
-    #         if not qos_meta:
-    #             LOG.warning("Not found. QoS:%s for Port:%s. QoS Profile Binding skipped.", os_qos_id, os_port.get("id"))
-    #             return
-    #         try:
-    #             qos_bind = self.payload.qos_profile_binding(qos_meta.real_id, segment_meta.real_id, port_meta.real_id)
-    #             api_path = API.SEGMENT_PORT_QOS.format(segment_meta.real_id, port_meta.real_id, qos_meta.real_id)
-    #             self.client.patch(api_path, data=qos_bind)
-    #         except Exception as e:
-    #             LOG.warning(f"Unable to bind a QOS Policy: '{qos_meta.real_id}' to SegmentPort: '{port_meta.real_id}'")
-    #             LOG.debug(e)
-    #     else:
-    #         if not qos_meta:
-    #             # qos was deleted no need to delete the mappings
-    #             return
-    #         try:
-    #             qos_maps: list[Dict] = self.client.get_all(
-    #             API.SEARCH_QUERY, {"query": API.SEARCH_Q_QOS_BIND_BY_PPATH.format(port_meta.path)})
-    #             for qm in qos_maps:
-    #                 self.client.delete(API.POLICY_BASE + qm["path"])
-    #         except Exception as e:
-    #             LOG.warning(f"Unable to delete QOS Binding for QOS: '{qos_meta.real_id}' and SegmentPort: '{port_meta.real_id}'")
-    #             LOG.debug(e)
 
     def realize_qos_profile_binding(self, segment_meta: PolicyResourceMeta, port_meta: PolicyResourceMeta, os_port: dict):
         if not segment_meta or not port_meta:
@@ -1040,22 +1001,6 @@ class Provider(base.Provider):
             LOG.warning(f"Unable to {b} a QOS: '{os_qos_id}' for Port: '{os_port.get('id')}'")
             LOG.debug(e)
 
-    def realize_sg_static_members(self, port_sgs: List[str], port_meta: PolicyResourceMeta):
-        for sg_id in port_sgs:
-            with LockManager.get_lock("member-{}".format(sg_id)):
-                sg_meta = self.metadata(self.SG_MEMBERS, sg_id)
-                if not sg_meta:
-                    # Realize the Security Group if it does not exist with empty members
-                    sg_meta = self.sg_members_realize(
-                        {"id": sg_id, "cidrs": [], "revision_number": 0, "member_paths": []})
-                if not port_meta.path:
-                    raise RuntimeError(f"Not found path in Metadata for port: {port_meta.real_id}")
-                if port_meta.path not in sg_meta.sg_members:
-                    sg_meta.sg_members.append(port_meta.path)
-                    self.sg_members_realize({"id": sg_id,
-                                             "cidrs": sg_meta.sg_cidrs,
-                                             "member_paths": sg_meta.sg_members,
-                                             "revision_number": sg_meta.revision or 0})
 
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
@@ -1074,6 +1019,9 @@ class Provider(base.Provider):
     # overrides
     def network_realize(self, segmentation_id: int) -> PolicyResourceMeta:
         segment = self.metadata(Provider.NETWORK, segmentation_id)
+        self.zone_id, self.zone_tags = self.zone_cache_region.get_or_create(key=self.ZONE_CACHE_KEY, 
+                                                                            creator=self._load_zones, 
+                                                                            expiration_time=cfg.CONF.NSXV3.nsxv3_transport_zone_id_cache_time)
         if not segment or segment.real_id is None:
             os_net = {"id": "{}-{}".format(self.zone_name, segmentation_id), "segmentation_id": segmentation_id}
             provider_net = {"transport_zone_id": self.zone_id}
@@ -1158,7 +1106,8 @@ class Provider(base.Provider):
                         continue
                     if resource_type == Provider.SG_MEMBERS and (NSXV3_REVISION_SCOPE not in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
                         continue
-
+                    if resource_type == Provider.ADDR_GROUPS and NSXV3_ADDR_GRP_SCOPE not in res.tags:
+                        continue
                     if resource_type == Provider.SG_RULES_REMOTE_PREFIX:
                         if (NSXV3_REVISION_SCOPE in res.tags or NSXV3_ADDR_GRP_SCOPE in res.tags):
                             # This will filter-out Provider.SG_MEMBERS as they use the same endpoint
@@ -1166,8 +1115,6 @@ class Provider(base.Provider):
                         if res.resource.get("display_name") == DEFAULT_MALICIOUS_GROUP_NAME:
                             # This will filter-out the default malicious group
                             continue
-                    if resource_type == Provider.ADDR_GROUPS and NSXV3_ADDR_GRP_SCOPE not in res.tags:
-                        continue
                     if resource_type == Provider.PORT and not self._is_valid_vlan(res):
                         continue
 
