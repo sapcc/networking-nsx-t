@@ -635,12 +635,26 @@ class Provider(base.Provider):
             path = API.POLICY.format(policy["id"])
             res = self.client.get(path=path)
             if res.ok:
-                continue
+                if self._check_for_infrastructure_changes():
+                    self.client.put(path=path, data=policy).raise_for_status()
             elif res.status_code == 404:
                 LOG.info("Infrastructure Policy %s not found, creating...", policy["display_name"])
                 self.client.put(path=path, data=policy).raise_for_status()
             else:
                 res.raise_for_status()
+
+    def _check_infrastructure_rules_for_updates(self, policies_from_cfg, security_policies):
+        for rule_from_cfg in policies_from_cfg['rules']:
+            for rule_policy in sg_policy["rules"]:
+                if rule_policy['id'] == rule_from_cfg['id']:
+                    shared_keys = set(rule.keys()).intersection(set(rule_policy.keys()))
+                    diff = set(o for o in shared_keys if rule[o] != rule_policy[o])
+                    LOG.info("Infrastructure rule %s has changed in %s - new rule %s" % (rule_from_cfg, diff, rule_from_cfg))
+                    return True
+                else:
+                    LOG.info("New infrastructure rule found %s" % rule_from_cfg)
+                    return True
+        return False
 
     def _setup_default_app_drop_logged_section(self):
         LOG.info("Looking for the Default Layer3 Logged Drop Section.")

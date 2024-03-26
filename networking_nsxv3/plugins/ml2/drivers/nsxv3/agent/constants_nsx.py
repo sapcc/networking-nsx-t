@@ -233,7 +233,7 @@ DEFAULT_INFRASTRUCTURE_POLICIES = [
                 "id": "HTTP",
                 "display_name": "HTTP",
                 "source_groups": ["ANY"],
-                "destination_groups": ["169.254.169.254"],
+                "destination_groups": ["169.254.169.254", "fe80::a9fe:a9fe"],
                 "services": ["/infra/services/HTTP"],
                 "service_entries": [],
                 "profiles": ["ANY"],
