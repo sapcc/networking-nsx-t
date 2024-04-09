@@ -160,7 +160,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         try:
             self.realizer.all()
         except Exception as err:
-            LOG.error("Synchronization has failed. Error: %s", err)
+            LOG.exception("Synchronization has failed. Error: %s", err)
 
     def _sync_immediate(self, os_ids, realizer):
         ids = list(os_ids) if isinstance(os_ids, set) else os_ids

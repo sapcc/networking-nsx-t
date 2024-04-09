@@ -179,7 +179,7 @@ class Runner(object):
                     self.active(), self.passive(), self._workers.running())
             except Exception as err:
                 # Continue on error. Otherwise the agent operation will stop
-                LOG.error(err)
+                LOG.exception("Unknown agent error: %s", err)
             EXPORTER.ACTIVE_QUEUE_SIZE.set(self.active())
             EXPORTER.PASSIVE_QUEUE_SIZE.set(self.passive())
             EXPORTER.JOB_SIZE.set(self._workers.running())
