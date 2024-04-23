@@ -1,23 +1,26 @@
 import eventlet
 eventlet.monkey_patch()
 
-from networking_nsxv3.common import config  # noqa
-from oslo_config import cfg
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
-from oslo_log import log as logging
-import os
-from neutron.tests import base
-from novaclient import client as nova
-from novaclient.v2.client import Client as NovaClient
-from networking_nsxv3.tests.e2e import neutron
-from keystoneauth1 import session
 from keystoneauth1 import identity
+from keystoneauth1 import session
+from networking_nsxv3.tests.e2e import neutron
+from novaclient.v2.servers import Server
+from novaclient.v2.client import Client as NovaClient
+from novaclient import client as nova
+from neutron.tests import base
+import os
+from oslo_log import log as logging
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
+from oslo_config import cfg
+
+from networking_nsxv3.common import config  # noqa
 
 
 LOG = logging.getLogger(__name__)
 
+
 class E2ETestCase(base.BaseTestCase):
-    
+
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
@@ -35,14 +38,14 @@ class E2ETestCase(base.BaseTestCase):
         cfg.CONF.set_override("nsxv3_connection_retry_count", "3", "NSXV3")
         cfg.CONF.set_override("nsxv3_request_timeout", "320", "NSXV3")
 
-        http_p = "https" if g("OS_HTTPS") == 'true' else "http"
+        http_p = "https" if bool(int(g("OS_HTTPS"))) else "http"
         os_auth_url = f"{http_p}://{g('OS_HOSTNAME')}/identity"
         cls.auth = identity.Password(auth_url=os_auth_url,
-                                username=g("OS_USERNAME"),
-                                password=g("OS_PASSWORD"),
-                                project_name=g("OS_PROJECT_NAME"),
-                                project_domain_id=g("OS_PROJECT_DOMAIN_ID"),
-                                user_domain_id=g("OS_USER_DOMAIN_ID"))
+                                     username=g("OS_USERNAME"),
+                                     password=g("OS_PASSWORD"),
+                                     project_name=g("OS_PROJECT_NAME"),
+                                     project_domain_id=g("OS_PROJECT_DOMAIN_ID"),
+                                     user_domain_id=g("OS_USER_DOMAIN_ID"))
         cls.sess = session.Session(auth=cls.auth, verify=False)
 
         cls.nova_client: NovaClient = nova.Client('2.1', session=cls.sess)
@@ -66,7 +69,42 @@ class E2ETestCase(base.BaseTestCase):
                     LOG.info(f"{retry_counter}: Retrying function '{func.__name__}'")
                     retry_counter -= 1
 
-                raise TimeoutError(f"Failed to fetch the desired result of func '{func.__name__}' after {max_retries} retries.")
+                raise TimeoutError(
+                    f"Failed to fetch the desired result of func '{func.__name__}' after {max_retries} retries.")
 
             return wrapper
         return decorator
+
+    @classmethod
+    def create_test_server_no_ports(cls, name, image_id, flavor_id, network_id) -> Server:
+
+        srv: Server = cls.nova_client.servers.create(
+            name=name,
+            image=image_id,
+            flavor=flavor_id,
+            security_groups=["default"],
+            nics=[{'net-id': network_id}],
+            block_device_mapping_v2=[{
+                "uuid": image_id,
+                "source_type": "volume",
+                "destination_type": "volume",
+                "delete_on_termination": False
+            }]
+        )
+
+        # Verify server is created successfully and is in 'ACTIVE' state
+        timeout = 300
+        while True:
+            srv: Server = cls.nova_client.servers.get(srv.id)
+            if srv.status == "ACTIVE":
+                break
+            if srv.status == "ERROR":
+                raise RuntimeError(
+                    f"Test Server creation failed! Code: {srv.fault['code']}, Message: {srv.fault['message']}")
+            timeout -= 10
+            if timeout <= 0:
+                raise RuntimeError("Test Server creation timed out (5 mins)!")
+            LOG.info(
+                f"Waiting for server '{srv.name}' to be ACTIVE. Current status: {srv.status}, Progress: {srv.progress}%")
+            eventlet.sleep(10)
+        return srv
