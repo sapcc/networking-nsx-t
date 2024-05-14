@@ -4,7 +4,7 @@
 3. Openstack Deployment with Agent and Driver running
 4. The Openstack "default" Security Group must exists and at least one realized and active port to be a member of it.
 5. Pre-existing Openstack network and server are required (see the ENV vars: E2E_NETWORK_NAME and E2E_SERVER_NAME).
-6. The following environment variables are needed for the E2E tests:
+6. The following environment variables are needed for the E2E tests (e.g. ../developer/rc):
    ```bash
    # NSX vars
    export NSXV3_LOGIN_HOSTNAME="nsx-l-01a.corp.local" # NSX Hostname or IP address
@@ -37,6 +37,7 @@
 
 # Run the E2E Tests
    ```bash
+   source ../developer/rc
    tox -e e2e
    ```
 
