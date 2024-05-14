@@ -222,6 +222,29 @@ class TestPorts(base.E2ETestCase):
                 self.assertIn(ip['ip_address'], [p['ip_address'] for p in nsx_port['address_bindings']],
                               f"Assigned IP '{ip['ip_address']}' is not in the NSX Port for port '{port['name']}'.")
 
+        # Unassign an IP from the ports
+        for port in self.ports:
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            ip = port_info['fixed_ips'].pop()
+            LOG.info(f"Unassigning IP '{ip['ip_address']}' from port '{port['name']}'.")
+            self.neutron_client.update_port(port['id'], {"port": {"fixed_ips": port_info['fixed_ips']}})
+
+        # Assert the IP is unassigned from the port
+        for port in self.ports:
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            self.assertEqual(len(port_info['fixed_ips']), 1, f"Port '{port['name']}' has more than one IP assigned.")
+
+        # Assert the IP is unassigned from the port in NSX
+        for port in self.ports:
+            eventlet.sleep(10)
+            nsx_port = self.get_nsx_port_by_os_id(port['id'])
+            self.assertIsNotNone(nsx_port)
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            self.assertEquals(len(nsx_port['address_bindings']), 1,
+                              f"NSX Port for port '{port['name']}' has more than one IP assigned.")
+            self.assertEquals(port_info['fixed_ips'][0]['ip_address'], nsx_port['address_bindings'][0]['ip_address'],
+                              f"NSX Port for port '{port['name']}' has different IP assigned.")
+
     def test_assign_unassign_ipv6_to_port(self):
         # TODO: Implement this test
         pass
