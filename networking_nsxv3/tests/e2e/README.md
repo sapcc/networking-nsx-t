@@ -2,7 +2,9 @@
 1. vSphere vCenter 8 with at least one Cluster (Building Block)
 2. NSX 4.x with configured VDS for the vCsphere Cluster from the previous req.
 3. Openstack Deployment with Agent and Driver running
-4. The following environment variables are needed for the E2E tests:
+4. The Openstack "default" Security Group must exists and at least one realized and active port to be a member of it.
+5. Pre-existing Openstack network and server are required (see the ENV vars: E2E_NETWORK_NAME and E2E_SERVER_NAME).
+6. The following environment variables are needed for the E2E tests:
    ```bash
    # NSX vars
    export NSXV3_LOGIN_HOSTNAME="nsx-l-01a.corp.local" # NSX Hostname or IP address
@@ -28,6 +30,9 @@
    # E2E Test specific vars
    export E2E_NETWORK_NAME="test-net-1" # Pre-existing Network used for the E2E Test Scenarios
    export E2E_SERVER_NAME="os-test-vm-1" # Pre-existing VM (server) used for the E2E Test Scenarios
+   export E2E_CREATE_SERVER_NAME_PREFIX="os-e2e-test-" # Prefix for server names, UUID will be appended
+   export E2E_CREATE_SERVER_IMAGE_NAME="cirros-0.3.2-i386-disk" # Image name to use for server creation
+   export E2E_CREATE_SERVER_FLAVOR_NAME="m1.nano" # Flavor name to use for server creation
    ```
 
 # Run the E2E Tests
@@ -38,10 +43,10 @@
 # End-to-End Test Scenarios
 
 ## Ports E2E Tests
-   - Create/Delete a standalone port
-   - Attach/Detach port to/from VM
-   - Create server (auto-create port)
-   - Assign/Unassign IPv4/IPv6 address
+   - Create/Delete a standalone port [implemented]
+   - Attach/Detach port to/from VM [implemented]
+   - Create server (auto-create port) [implemented]
+   - Assign/Unassign IPv4/IPv6 address [implemented]
 ## QOS E2E Tests
    - Create/Delete QoS Policy
    - Assign/Remove QoS Policy to/from port
@@ -56,6 +61,6 @@
    - Add/Remove rules to Security Groups
    - Add/Remove ports to/from Security Group
 ## Address Groups
-   - Create/Delete/Update IPv4/IPv6 address groups
-   - Create mixed IPv4/IPv6 members
-   - Address group in multiple security groups
+   - Create/Delete/Update IPv4/IPv6 address groups [implemented]
+   - Create mixed IPv4/IPv6 members [implemented]
+   - Address group in multiple security groups [implemented]
