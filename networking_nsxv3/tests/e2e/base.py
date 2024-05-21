@@ -61,6 +61,7 @@ class E2ETestCase(base.BaseTestCase):
         cfg.CONF.set_override("nsxv3_login_user", g("NSXV3_LOGIN_USER"), "NSXV3")
         cfg.CONF.set_override("nsxv3_login_password", g("NSXV3_LOGIN_PASSWORD"), "NSXV3")
         cfg.CONF.set_override("nsxv3_transport_zone_name", g("NSXV3_TRANSPORT_ZONE_NAME"), "NSXV3")
+        # cfg.CONF.set_override("nsxv3_default_l3_rule_check", bool(int(g("NSXV3_DEFAULT_L3_RULE_CHECK"))), "NSXV3")
         cfg.CONF.set_override("nsxv3_connection_retry_count", "3", "NSXV3")
         cfg.CONF.set_override("nsxv3_request_timeout", "320", "NSXV3")
 
