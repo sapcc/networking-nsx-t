@@ -61,7 +61,6 @@ class E2ETestCase(base.BaseTestCase):
         cfg.CONF.set_override("nsxv3_login_user", g("NSXV3_LOGIN_USER"), "NSXV3")
         cfg.CONF.set_override("nsxv3_login_password", g("NSXV3_LOGIN_PASSWORD"), "NSXV3")
         cfg.CONF.set_override("nsxv3_transport_zone_name", g("NSXV3_TRANSPORT_ZONE_NAME"), "NSXV3")
-        # cfg.CONF.set_override("nsxv3_default_l3_rule_check", bool(int(g("NSXV3_DEFAULT_L3_RULE_CHECK"))), "NSXV3")
         cfg.CONF.set_override("nsxv3_connection_retry_count", "3", "NSXV3")
         cfg.CONF.set_override("nsxv3_request_timeout", "320", "NSXV3")
 
@@ -80,6 +79,10 @@ class E2ETestCase(base.BaseTestCase):
         cls.nsx_client = client_nsx.Client()
         cls.nsx_client.version  # This will force the client to login
         cls.OS_PROJECT_ID = cls.auth.get_project_id(cls.sess)
+
+    def setUp(self):
+        super().setUp()
+        self.test_network = None
 
     def create_test_server(self, name, image_name, flavor_name, network_id, security_groups=["default"], no_network=False) -> Server:
         # Get the image
@@ -161,3 +164,11 @@ class E2ETestCase(base.BaseTestCase):
                 return None
             return j['results']
         return None
+
+    def set_test_network(self, net_name: str):
+        """ Set the test network (self.test_network) to the network with the name provided.
+        """
+        networks = self.neutron_client.list_networks()
+        self.test_network = next(
+            (n for n in networks['networks'] if n['name'] == net_name), None)
+        self.assertIsNotNone(self.test_network, f"Network '{net_name}' not found!")

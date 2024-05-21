@@ -34,19 +34,16 @@ class TestPorts(base.E2ETestCase):
 
         # Get the server with the name defined in the class
         servers = self.nova_client.servers.list()
-        self.test_server1: Server = next((s for s in servers if s.name == self.test_server1_name), None)
+        self.test_server: Server = next((s for s in servers if s.name == self.test_server1_name), None)
 
         # Get the network with the name defined in the class
-        networks = self.neutron_client.list_networks()
-        self.existing_test_network = next(
-            (n for n in networks['networks'] if n['name'] == self.test_network1_name), None)
+        self.set_test_network(self.test_network1_name)
 
         # Assert the server and network are found
-        self.assertIsNotNone(self.test_server1)
-        self.assertIsNotNone(self.existing_test_network)
+        self.assertIsNotNone(self.test_server)
 
         # Generate a random names for ports
-        self.ports = [
+        self.test_ports = [
             {"name": "test-port-" + str(uuid.uuid4()), "id": None},
             {"name": "test-port-" + str(uuid.uuid4()), "id": None},
             {"name": "test-port-" + str(uuid.uuid4()), "id": None}
@@ -56,81 +53,79 @@ class TestPorts(base.E2ETestCase):
 
     def tearDown(self):
         super().tearDown()
+
         # Clean up & Assert cleanup
         LOG.info("Tearing down test case.")
-
-        # Delete created ports
-        self._cleanup_created_ports()
-
-        # Delete created server
-        self._cleanup_created_server()
+        self.doCleanups()
+        self._assert_ports_cleanup()
+        self._assert_server_cleanup()
 
     def test_create_ports(self):
         # Create a ports on the network
         LOG.info(
-            f"Creating ports {[p['name'] for p in self.ports]} on network '{self.existing_test_network['name']}'.")
+            f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
         self._create_ports()
 
         # Assert created ports are in the list of all ports
         LOG.info(f"Asserting created ports are in the list of all ports (in OpenStack).")
         ports_after_create = self.neutron_client.list_ports()
-        for port in self.ports:
+        for port in self.test_ports:
             self.assertIn(port['id'], [p['id'] for p in ports_after_create['ports']])
 
         # Assert the ports are NOT created on the NSX side as they are not attached to a server
         LOG.info(f"Asserting created ports are NOT created in NSX as they are not attached to a server.")
-        for port in self.ports:
+        for port in self.test_ports:
             nsx_port = self.get_nsx_port_by_os_id(port['id'])
             self.assertIsNone(nsx_port)
 
     def test_create_standalone_ports_and_attach(self):
         # Create a ports on the network
         LOG.info(
-            f"Creating ports {[p['name'] for p in self.ports]} on network '{self.existing_test_network['name']}'.")
+            f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
         self._create_ports()
 
         # Attach the ports to the test server
-        LOG.info(f"Attaching ports to server '{self.test_server1.name}'.")
+        LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
         self._attach_ports()
 
         # Assert the ports are attached to the correct server
         LOG.info(
-            f"Asserting the ports {[p['name'] for p in self.ports]} are attached to server '{self.test_server1.name}' in Openstack.")
-        for port in self.ports:
-            self.assertEqual(self.test_server1.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
+            f"Asserting the ports {[p['name'] for p in self.test_ports]} are attached to server '{self.test_server.name}' in Openstack.")
+        for port in self.test_ports:
+            self.assertEqual(self.test_server.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
 
         # Assert the ports are created on the NSX side
-        LOG.info(f"Asserting the ports {[p['name'] for p in self.ports]} are created in NSX.")
-        for port in self.ports:
+        LOG.info(f"Asserting the ports {[p['name'] for p in self.test_ports]} are created in NSX.")
+        for port in self.test_ports:
             nsx_port = self.get_nsx_port_by_os_id(port['id'])
             self.assertIsNotNone(nsx_port)
 
         # Get Port Security Groups and assert the port participates in them at the NSX side
         LOG.info(
-            f"Asserting the server '{self.test_server1.name}' ports participate in the correct security groups in NSX.")
-        self._assert_server_nsx_ports_sgs(self.test_server1.interface_list())
+            f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
+        self._assert_server_nsx_ports_sgs(self.test_server.interface_list())
 
     def test_detach_port(self):
         # Create a ports on the network
         LOG.info(
-            f"Creating ports {[p['name'] for p in self.ports]} on network '{self.existing_test_network['name']}'.")
+            f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
         self._create_ports()
 
         # First attach the ports
-        LOG.info(f"Attaching ports to server '{self.test_server1.name}'.")
+        LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
         self._attach_ports()
 
         # Assert the ports are attached to the correct server
         LOG.info(
-            f"Asserting the ports {[p['name'] for p in self.ports]} are attached to server '{self.test_server1.name}' in Openstack.")
-        for port in self.ports:
-            self.assertEqual(self.test_server1.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
+            f"Asserting the ports {[p['name'] for p in self.test_ports]} are attached to server '{self.test_server.name}' in Openstack.")
+        for port in self.test_ports:
+            self.assertEqual(self.test_server.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
 
         # Detach the ports from the server
-        for port in self.ports:
+        for port in self.test_ports:
             # Assert that the port deattachment operations is successful
-            LOG.info(f"Detaching port '{port['name']}' from server '{self.test_server1.name}'.")
-            result = self.nova_client.servers.interface_detach(server=self.test_server1.id, port_id=port['id'])
+            LOG.info(f"Detaching port '{port['name']}' from server '{self.test_server.name}'.")
+            result = self.nova_client.servers.interface_detach(server=self.test_server.id, port_id=port['id'])
             self.assertIsNotNone(result, "Port deattachment operation failed.")
 
         # We can not verify the port is removed from NSX as it will be removed after some time,
@@ -141,12 +136,13 @@ class TestPorts(base.E2ETestCase):
         flvr_name = os.environ.get("E2E_CREATE_SERVER_FLAVOR_NAME", "m1.nano")
         srv_name = os.environ.get("E2E_CREATE_SERVER_NAME_PREFIX", "os-e2e-test-") + str(uuid.uuid4())
         sg_name = "default"
-        net = self.existing_test_network
+        net = self.test_network
 
         LOG.info(
             f"Creating a server '{srv_name}' on network '{net['name']}' with image '{img_name}', flavor '{flvr_name}' and security group '{sg_name}'.")
         self.new_server = self.create_test_server(
             srv_name, img_name, flvr_name, net['id'], security_groups=[sg_name])
+        self.addCleanup(self.nova_client.servers.delete, self.new_server.id)
 
         # Assert server has the "default" security group
         LOG.info(f"Asserting server '{self.new_server.name}' has the 'default' security group in OpenStack.")
@@ -167,114 +163,125 @@ class TestPorts(base.E2ETestCase):
     def test_assign_unassign_ipv4_to_port(self):
         # Create a ports on the network
         LOG.info(
-            f"Creating ports {[p['name'] for p in self.ports]} on network '{self.existing_test_network['name']}'.")
+            f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
         self._create_ports()
 
         # Attach the ports to the test server
-        LOG.info(f"Attaching ports to server '{self.test_server1.name}'.")
+        LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
         self._attach_ports()
 
         # Assert the ports are attached to the correct server
         LOG.info(
-            f"Asserting the ports {[p['name'] for p in self.ports]} are attached to server '{self.test_server1.name}' in Openstack.")
-        for port in self.ports:
-            self.assertEqual(self.test_server1.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
+            f"Asserting the ports {[p['name'] for p in self.test_ports]} are attached to server '{self.test_server.name}' in Openstack.")
+        for port in self.test_ports:
+            self.assertEqual(self.test_server.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
 
         # Assert the ports are created on the NSX side
-        LOG.info(f"Asserting the ports {[p['name'] for p in self.ports]} are created in NSX.")
-        for port in self.ports:
+        LOG.info(f"Asserting the ports {[p['name'] for p in self.test_ports]} are created in NSX.")
+        for port in self.test_ports:
             nsx_port = self.get_nsx_port_by_os_id(port['id'])
             self.assertIsNotNone(nsx_port)
 
         # Get Port Security Groups and assert the port participates in them at the NSX side
         LOG.info(
-            f"Asserting the server '{self.test_server1.name}' ports participate in the correct security groups in NSX.")
-        self._assert_server_nsx_ports_sgs(self.test_server1.interface_list())
+            f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
+        self._assert_server_nsx_ports_sgs(self.test_server.interface_list())
 
-        # Get the CIDR from the specified netowkr subnets on the OpenStack side
-        cidr = self.neutron_client.show_subnet(self.existing_test_network['subnets'][0])['subnet']['cidr']
+        # Get the CIDR from the specified netowrk subnets on the OpenStack side
+        cidr = self.neutron_client.show_subnet(self.test_network['subnets'][0])['subnet']['cidr']
         all_ips = [str(ip) for ip in ipaddress.IPv4Network(cidr)]
         ips = copy.deepcopy(all_ips[2:-2])
-        for port in self.ports:
-            # Get random IP from the CIDR
-            ip = random.choice(ips)
-            ips.pop(ips.index(ip))
-            LOG.info(f"Assigning IP '{ip}' to port '{port['name']}'.")
-            p = self.neutron_client.show_port(port['id'])['port']
-            # Append the IP to the port fixed IPs
-            p['fixed_ips'].append({"ip_address": ip})
-            self.neutron_client.update_port(port['id'], {"port": {"fixed_ips": p['fixed_ips']}})
+        self._assign_ips_to_ports(ips)
 
-        # Assert the IP is assigned to the port
-        for port in self.ports:
-            port_info = self.neutron_client.show_port(port['id'])['port']
-            for ip in port_info['fixed_ips']:
-                self.assertIn(
-                    ip['ip_address'], all_ips, f"Assigned IP '{ip['ip_address']}' is not in the CIDR '{cidr}' for port '{port['name']}'.")
-
-        # Assert the IP is assigned to the port in NSX
-        for port in self.ports:
-            eventlet.sleep(10)  # Wait for the NSX to update the port
-            nsx_port = self.get_nsx_port_by_os_id(port['id'])
-            self.assertIsNotNone(nsx_port)
-            port_info = self.neutron_client.show_port(port['id'])['port']
-            for ip in port_info['fixed_ips']:
-                self.assertIn(ip['ip_address'], [p['ip_address'] for p in nsx_port['address_bindings']],
-                              f"Assigned IP '{ip['ip_address']}' is not in the NSX Port for port '{port['name']}'.")
+        # Assert the IPs assigned to the ports
+        self._assert_ips_assigned(cidr, all_ips)
 
         # Unassign an IP from the ports
-        for port in self.ports:
-            port_info = self.neutron_client.show_port(port['id'])['port']
-            ip = port_info['fixed_ips'].pop()
-            LOG.info(f"Unassigning IP '{ip['ip_address']}' from port '{port['name']}'.")
-            self.neutron_client.update_port(port['id'], {"port": {"fixed_ips": port_info['fixed_ips']}})
+        self._unassign_ips_from_ports()
 
-        # Assert the IP is unassigned from the port
-        for port in self.ports:
-            port_info = self.neutron_client.show_port(port['id'])['port']
-            self.assertEqual(len(port_info['fixed_ips']), 1, f"Port '{port['name']}' has more than one IP assigned.")
-
-        # Assert the IP is unassigned from the port in NSX
-        for port in self.ports:
-            eventlet.sleep(10)
-            nsx_port = self.get_nsx_port_by_os_id(port['id'])
-            self.assertIsNotNone(nsx_port)
-            port_info = self.neutron_client.show_port(port['id'])['port']
-            self.assertEquals(len(nsx_port['address_bindings']), 1,
-                              f"NSX Port for port '{port['name']}' has more than one IP assigned.")
-            self.assertEquals(port_info['fixed_ips'][0]['ip_address'], nsx_port['address_bindings'][0]['ip_address'],
-                              f"NSX Port for port '{port['name']}' has different IP assigned.")
+        # Assert the IPs is unassigned from the ports
+        self._assert_ips_unassigned()
 
     def test_assign_unassign_ipv6_to_port(self):
-        # TODO: Implement this test
-        pass
+        # Create an entire new network for this test
+        net_name = "e2e-test-ipv6-" + str(uuid.uuid4())
+        LOG.info(f"Creating a new network '{net_name}' for the test.")
+        self._create_network(net_name)
+
+        # Create an IPv6 subnet for the network
+        LOG.info(f"Creating an IPv6 subnet for the network '{net_name}'.")
+        subnet = self.neutron_client.create_subnet({
+            "subnet": {
+                "network_id": self.test_network['id'],
+                "ip_version": 6,
+                "cidr": "2001:db8::/122"
+            }
+        })
+        self.addCleanup(self.neutron_client.delete_subnet, subnet['subnet']['id'])
+
+        # Create a ports on the network
+        LOG.info(
+            f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
+        self._create_ports()
+
+        # Attach the ports to the test server
+        LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
+        self._attach_ports()
+
+        # Assert the ports are attached to the correct server
+        LOG.info(
+            f"Asserting the ports {[p['name'] for p in self.test_ports]} are attached to server '{self.test_server.name}' in Openstack.")
+        for port in self.test_ports:
+            self.assertEqual(self.test_server.id, self.neutron_client.show_port(port['id'])['port']['device_id'])
+
+        # Assert the ports are created on the NSX side
+        LOG.info(f"Asserting the ports {[p['name'] for p in self.test_ports]} are created in NSX.")
+        for port in self.test_ports:
+            nsx_port = self.get_nsx_port_by_os_id(port['id'])
+            self.assertIsNotNone(nsx_port)
+
+        # Assign an unique random IPv6 from the network subnet to each port
+        cidr = subnet['subnet']['cidr']
+        all_ips = [str(ip) for ip in ipaddress.IPv6Network(cidr)]
+        ips = copy.deepcopy(all_ips[2:-2])
+        self._assign_ips_to_ports(ips)
+
+        # Assert the IPs assigned to the ports
+        self._assert_ips_assigned(cidr, all_ips)
+
+        # Unassign an IP from the ports
+        self._unassign_ips_from_ports()
+
+        # Assert the IPs is unassigned from the ports
+        self._assert_ips_unassigned()
 
     ##############################################################################################
     ##############################################################################################
 
-    def _cleanup_created_ports(self):
-        for port in self.ports:
-            if port['id']:
-                self.neutron_client.delete_port(port['id'])
-
+    def _assert_ports_cleanup(self):
         ports_after_cleanup = self.neutron_client.list_ports()
 
         # Assert deleted ports are not in the list of all ports
-        for port in self.ports:
-            self.assertNotIn(port['id'], [p['id'] for p in ports_after_cleanup.get('ports', [])])
+        if self.test_ports:
+            for port in self.test_ports:
+                self.assertNotIn(port['id'], [p['id'] for p in ports_after_cleanup.get('ports', [])])
 
-    def _cleanup_created_server(self):
+    def _assert_server_cleanup(self):
         if self.new_server:
-            self.nova_client.servers.delete(self.new_server.id)
             # Await server deletion
+            c = 10
             while True:
+                c -= 1
                 try:
                     self.nova_client.servers.get(self.new_server.id)
+                    if c == 0:
+                        self.fail(f"The server '{self.new_server.name}' is not deleted for {c * 10} seconds.")
                     eventlet.sleep(10)
                 except Exception as e:
                     break
             # Assert server is deleted
-            self.assertRaises(Exception, self.nova_client.servers.get, self.new_server.id)
+            self.assertRaises(Exception, self.nova_client.servers.get, self.new_server.id,
+                              f"The server '{self.new_server.name}' is not deleted.")
 
     def _assert_server_nsx_ports(self, server: Server):
         for port in server.interface_list():
@@ -304,21 +311,91 @@ class TestPorts(base.E2ETestCase):
                 nsx_port = next((p for p in nsx_ports_for_sg if p['display_name'] == port.id), None)
                 self.assertIsNotNone(nsx_port, f"Port {port.id} not found in Security Group {sg_id} in NSX.")
 
+    def _assert_ips_assigned(self, cidr, all_ips):
+        # Assert the IP is assigned to the ports in OpenStack
+        for port in self.test_ports:
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            for ip in port_info['fixed_ips']:
+                self.assertIn(
+                    ip['ip_address'], all_ips, f"Assigned IP '{ip['ip_address']}' is not in the CIDR '{cidr}' for port '{port['name']}'.")
+
+        # Assert the IP is assigned to the ports in NSX
+        for port in self.test_ports:
+            eventlet.sleep(10)  # Wait for the NSX to update the port
+            nsx_port = self.get_nsx_port_by_os_id(port['id'])
+            self.assertIsNotNone(nsx_port)
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            for ip in port_info['fixed_ips']:
+                self.assertIn(ip['ip_address'], [p['ip_address'] for p in nsx_port['address_bindings']],
+                              f"Assigned IP '{ip['ip_address']}' is not in the NSX Port for port '{port['name']}'.")
+
+    def _assert_ips_unassigned(self):
+        # Assert the IPs are unassigned from the ports in OpenStack
+        for port in self.test_ports:
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            self.assertEqual(len(port_info['fixed_ips']), 1, f"Port '{port['name']}' has more than one IP assigned.")
+
+        # Assert the IPs are unassigned from the ports in NSX
+        for port in self.test_ports:
+            eventlet.sleep(10)
+            nsx_port = self.get_nsx_port_by_os_id(port['id'])
+            self.assertIsNotNone(nsx_port)
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            self.assertEquals(len(nsx_port['address_bindings']), 1,
+                              f"NSX Port for port '{port['name']}' has more than one IP assigned.")
+            self.assertEquals(port_info['fixed_ips'][0]['ip_address'], nsx_port['address_bindings'][0]['ip_address'],
+                              f"NSX Port for port '{port['name']}' has different IP assigned.")
+
     def _create_ports(self):
-        for port in self.ports:
+        """ Create ports on the test network (self.test_network) and store their IDs (self.test_ports).
+            Also add cleanup for deletion.
+        """
+        for port in self.test_ports:
             result = self.neutron_client.create_port({
                 "port": {
-                    "network_id": self.existing_test_network['id'],
+                    "network_id": self.test_network['id'],
                     "name": port['name']
                 }
             })
             port['id'] = result['port']['id']
+            if port['id']:
+                self.addCleanup(self.neutron_client.delete_port, port['id'])
 
     def _attach_ports(self):
-        for port in self.ports:
+        """ Attach the ports to the test server (self.test_server). Also add cleanup for detachment.
+        """
+        for port in self.test_ports:
             self.nova_client.servers.interface_attach(
-                server=self.test_server1.id,
+                server=self.test_server.id,
                 port_id=port['id'],
                 net_id=None,
                 fixed_ip=None
             )
+            self.addCleanup(self.nova_client.servers.interface_detach, server=self.test_server.id, port_id=port['id'])
+
+    def _assign_ips_to_ports(self, ips):
+        """ Assign the IPs to the ports in self.test_ports, from the list of IPs provided.
+        """
+        for port in self.test_ports:
+            # Get random IP from the CIDR
+            ip = random.choice(ips)
+            ips.pop(ips.index(ip))
+            LOG.info(f"Assigning IP '{ip}' to port '{port['name']}'.")
+            p = self.neutron_client.show_port(port['id'])['port']
+            # Append the IP to the port fixed IPs
+            p['fixed_ips'].append({"ip_address": ip})
+            self.neutron_client.update_port(port['id'], {"port": {"fixed_ips": p['fixed_ips']}})
+
+    def _unassign_ips_from_ports(self):
+        """ Unassign the IPs from the ports in self.test_ports.
+        """
+        for port in self.test_ports:
+            port_info = self.neutron_client.show_port(port['id'])['port']
+            ip = port_info['fixed_ips'].pop()
+            LOG.info(f"Unassigning IP '{ip['ip_address']}' from port '{port['name']}'.")
+            self.neutron_client.update_port(port['id'], {"port": {"fixed_ips": port_info['fixed_ips']}})
+
+    def _create_network(self, net_name):
+        self.neutron_client.create_network({"network": {"name": net_name}})
+        self.set_test_network(net_name)
+        self.addCleanup(self.neutron_client.delete_network, self.test_network['id'])
