@@ -15,6 +15,8 @@ class TestAddressGroups(base.E2ETestCase):
 
     def setUp(self):
         super().setUp()
+        # self.skipTest("Skipping test temporarily.")
+
         self.new_addr_grp_rules = []
         self.new_grp_ids = []
         self.new_sg_ids = []
@@ -37,12 +39,12 @@ class TestAddressGroups(base.E2ETestCase):
         LOG.info("Testing creation of IPv4 address groups...")
         unique_addr_grp_name = str(uuid.uuid4())
         new_addr_grp = self.neutron_client.create_address_group(body={
-                 "address_group": {
-                     "addresses": ["192.168.0.1/32", "192.168.0.2/32", "192.168.0.3/32"],
-                     "name": unique_addr_grp_name,
-                     "description": "e2e test group"
-                 }
-             })
+            "address_group": {
+                "addresses": ["192.168.0.1/32", "192.168.0.2/32", "192.168.0.3/32"],
+                "name": unique_addr_grp_name,
+                "description": "e2e test group"
+            }
+        })
 
         new_grp_id = self._get_assert_new_grp_id(unique_addr_grp_name, new_addr_grp)
 
@@ -224,12 +226,12 @@ class TestAddressGroups(base.E2ETestCase):
 
         unique_addr_grp_name = str(uuid.uuid4())
         new_addr_grp = self.neutron_client.create_address_group(body={
-                 "address_group": {
-                     "addresses": ["192.168.0.1/32", "192.168.0.2/32", "192.168.0.3/32"],
-                     "name": unique_addr_grp_name,
-                     "description": "e2e test group"
-                 }
-             })
+            "address_group": {
+                "addresses": ["192.168.0.1/32", "192.168.0.2/32", "192.168.0.3/32"],
+                "name": unique_addr_grp_name,
+                "description": "e2e test group"
+            }
+        })
 
         new_grp_id = self._get_assert_new_grp_id(unique_addr_grp_name, new_addr_grp)
 
@@ -333,7 +335,7 @@ class TestAddressGroups(base.E2ETestCase):
             for new_grp_id in self.new_grp_ids:
                 self.neutron_client.delete_address_group(new_grp_id)
                 self.assertNotIn(new_grp_id, [ag['id']
-                        for ag in self.neutron_client.list_address_groups()['address_groups']])
+                                              for ag in self.neutron_client.list_address_groups()['address_groups']])
             self.new_grp_ids = []
 
     def _revert_updated_ports(self):
@@ -348,7 +350,7 @@ class TestAddressGroups(base.E2ETestCase):
             for new_addr_grp_rule in self.new_addr_grp_rules:
                 self.neutron_client.delete_security_group_rule(new_addr_grp_rule['security_group_rule']['id'])
                 self.assertNotIn(new_addr_grp_rule['security_group_rule']['id'], [r['id']
-                            for r in self.neutron_client.list_security_group_rules()['security_group_rules']])
+                                                                                  for r in self.neutron_client.list_security_group_rules()['security_group_rules']])
             self.new_addr_grp_rules = []
 
     def _clean_sec_groups(self):
@@ -356,21 +358,21 @@ class TestAddressGroups(base.E2ETestCase):
             for sg_id in self.new_sg_ids:
                 self.neutron_client.delete_security_group(sg_id)
                 self.assertNotIn(sg_id, [sg['id']
-                            for sg in self.neutron_client.list_security_groups()['security_groups']])
+                                         for sg in self.neutron_client.list_security_groups()['security_groups']])
             self.new_sg_ids = []
 
     def _get_os_default_sg(self):
         # Get the default security group
-        lsg = self.neutron_client.list_security_groups()
+        lsg = self.neutron_client.list_security_groups(project_id=self.OS_PROJECT_ID)
         default_sg = [sg for sg in lsg['security_groups'] if sg['name'] == 'default'][0]
 
         # Assert that the default security group exists and has active member ports
-        self.assertIsNotNone(default_sg, "Default security group should exist")
+        self.assertIsNotNone(default_sg, "Default security group must exist")
         sg_ports = self.neutron_client.list_ports(security_groups=[default_sg['id']])
-        self.assertGreater(len(sg_ports), 0, "Default security group should have at least one port")
-        self.assertGreater(len(sg_ports['ports']), 0, "Default security group should have at least one port")
+        self.assertGreater(len(sg_ports), 0, "Default security group must have at least one port")
+        self.assertGreater(len(sg_ports['ports']), 0, "Default security group must have at least one port")
         self.assertTrue(any([p['status'] == 'ACTIVE' and p['admin_state_up'] for p in sg_ports['ports']]),
-                        "Default security group should have at least one active port")
+                        "Default security group must have at least one active port")
 
         return default_sg
 
@@ -399,7 +401,7 @@ class TestAddressGroups(base.E2ETestCase):
             self.assertTrue(rule and rule.get('security_group_rule', {}).get('id'))
             self.new_addr_grp_rules.append(rule)
 
-    @base.E2ETestCase.retry(max_retries=5, sleep_duration=5)
+    @base.RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=5)
     def _fetch_nsx_policy(self, sg_id):
         nsx_sg_policy = self.nsx_client.get_unique(
             f"{API.SEARCH_QUERY}?query=resource_type:SecurityPolicy AND category:Application AND display_name:{sg_id}")
@@ -407,7 +409,7 @@ class TestAddressGroups(base.E2ETestCase):
             return nsx_sg_policy
         return None
 
-    @base.E2ETestCase.retry(max_retries=5, sleep_duration=5)
+    @base.RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=5)
     def _get_rules_after_clean(self, rule_ids, sg_id):
         rules = self.nsx_client.get_all(
             "/policy/api/v1/infra/domains/default/security-policies/{}/rules".format(sg_id))
@@ -416,7 +418,7 @@ class TestAddressGroups(base.E2ETestCase):
             return None
         return nsx_addr_grp_rules
 
-    @base.E2ETestCase.retry(max_retries=5, sleep_duration=30)
+    @base.RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=30)
     def _get_addr_grps_after_clean(self, addr_grp_ids):
         grps = self.nsx_client.get_all(API.GROUPS)
         nsx_addr_grps = [r for r in grps if r.get("display_name") in addr_grp_ids]
@@ -424,7 +426,7 @@ class TestAddressGroups(base.E2ETestCase):
             return None
         return nsx_addr_grps
 
-    @base.E2ETestCase.retry(max_retries=5, sleep_duration=5)
+    @base.RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=5)
     def _get_rules_after_create(self, new_addr_grp_rules, sg_id=None):
         sg_id = sg_id or self.def_os_sg['id']
         rules = self.nsx_client.get_all(
@@ -445,7 +447,7 @@ class TestAddressGroups(base.E2ETestCase):
 
         return nsx_addr_grp_rule1, nsx_addr_grp_rule2
 
-    @base.E2ETestCase.retry(max_retries=5, sleep_duration=5)
+    @base.RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=5)
     def _fetch_nsx_group(self, new_addr_grp):
         resp = self.nsx_client.get(API.GROUP.format(new_addr_grp["address_group"]["id"]))
         if resp.ok:
