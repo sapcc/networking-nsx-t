@@ -33,14 +33,10 @@ class TestPorts(base.E2ETestCase):
             self.fail("E2E_SERVER_NAME is not set. Please set it to the name of the server to use for testing.")
 
         # Get the server with the name defined in the class
-        servers = self.nova_client.servers.list()
-        self.test_server: Server = next((s for s in servers if s.name == self.test_server1_name), None)
+        self.set_test_server(self.test_server1_name)
 
         # Get the network with the name defined in the class
         self.set_test_network(self.test_network1_name)
-
-        # Assert the server and network are found
-        self.assertIsNotNone(self.test_server)
 
         # Generate a random names for ports
         self.test_ports = [

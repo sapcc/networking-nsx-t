@@ -13,7 +13,6 @@ from oslo_log import log as logging
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
 from oslo_config import cfg
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
-from urllib.parse import quote
 
 from networking_nsxv3.common import config  # noqa
 
@@ -38,7 +37,8 @@ class RetryDecorator(object):
                     retry_counter -= 1
 
                 total_time = max_retries * sleep_duration
-                LOG.debug(f"No result from func '{func.__name__}' after {max_retries} retries in {total_time} seconds.")
+                LOG.debug(
+                    f"No result from func '{func.__name__}' after {max_retries} retries in {total_time} seconds.")
                 return None
 
             return wrapper
@@ -172,3 +172,10 @@ class E2ETestCase(base.BaseTestCase):
         self.test_network = next(
             (n for n in networks['networks'] if n['name'] == net_name), None)
         self.assertIsNotNone(self.test_network, f"Network '{net_name}' not found!")
+
+    def set_test_server(self, server_name: str):
+        """ Set the test server (self.test_server) to the server with the name provided.
+        """
+        servers = self.nova_client.servers.list()
+        self.test_server: Server = next((s for s in servers if s.name == server_name), None)
+        self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")

@@ -49,8 +49,8 @@
    - Create server (auto-create port) [implemented]
    - Assign/Unassign IPv4/IPv6 address [implemented]
 ## QOS E2E Tests
-   - Create/Delete QoS Policy
-   - Assign/Remove QoS Policy to/from port
+   - Create/Delete QoS Policy [implemented]
+   - Assign/Remove QoS Policy to/from port [partially] (depends on https://github.com/sapcc/networking-nsx-t/pull/135)
 ## Trunk E2E Tests
    - Create/Delete trunk
    - Add/Remove ports to/from trunk
