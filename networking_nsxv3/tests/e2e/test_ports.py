@@ -60,7 +60,7 @@ class TestPorts(base.E2ETestCase):
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
-        self._create_ports()
+        self.create_test_ports()
 
         # Assert created ports are in the list of all ports
         LOG.info(f"Asserting created ports are in the list of all ports (in OpenStack).")
@@ -78,7 +78,7 @@ class TestPorts(base.E2ETestCase):
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
-        self._create_ports()
+        self.create_test_ports()
 
         # Attach the ports to the test server
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
@@ -105,7 +105,7 @@ class TestPorts(base.E2ETestCase):
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
-        self._create_ports()
+        self.create_test_ports()
 
         # First attach the ports
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
@@ -160,7 +160,7 @@ class TestPorts(base.E2ETestCase):
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
-        self._create_ports()
+        self.create_test_ports()
 
         # Attach the ports to the test server
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
@@ -218,7 +218,7 @@ class TestPorts(base.E2ETestCase):
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
-        self._create_ports()
+        self.create_test_ports()
 
         # Attach the ports to the test server
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
@@ -341,21 +341,6 @@ class TestPorts(base.E2ETestCase):
                               f"NSX Port for port '{port['name']}' has more than one IP assigned.")
             self.assertEquals(port_info['fixed_ips'][0]['ip_address'], nsx_port['address_bindings'][0]['ip_address'],
                               f"NSX Port for port '{port['name']}' has different IP assigned.")
-
-    def _create_ports(self):
-        """ Create ports on the test network (self.test_network) and store their IDs (self.test_ports).
-            Also add cleanup for deletion.
-        """
-        for port in self.test_ports:
-            result = self.neutron_client.create_port({
-                "port": {
-                    "network_id": self.test_network['id'],
-                    "name": port['name']
-                }
-            })
-            port['id'] = result['port']['id']
-            if port['id']:
-                self.addCleanup(self.neutron_client.delete_port, port['id'])
 
     def _attach_ports(self):
         """ Attach the ports to the test server (self.test_server). Also add cleanup for detachment.

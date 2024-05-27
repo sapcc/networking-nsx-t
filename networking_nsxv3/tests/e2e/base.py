@@ -180,3 +180,18 @@ class E2ETestCase(base.BaseTestCase):
         servers = self.nova_client.servers.list()
         self.test_server: Server = next((s for s in servers if s.name == server_name), None)
         self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")
+
+    def create_test_ports(self):
+        """ Create ports on the test network (self.test_network) and store their IDs (self.test_ports).
+            Also add cleanup for deletion.
+        """
+        for port in self.test_ports:
+            result = self.neutron_client.create_port({
+                "port": {
+                    "network_id": self.test_network['id'],
+                    "name": port['name']
+                }
+            })
+            port['id'] = result['port']['id']
+            if port['id']:
+                self.addCleanup(self.neutron_client.delete_port, port['id'])
