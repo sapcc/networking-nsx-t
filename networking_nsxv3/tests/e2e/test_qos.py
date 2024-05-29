@@ -35,6 +35,8 @@ class TestQoS(base.E2ETestCase):
         super().tearDown()
 
     def test_create_qos(self):
+        LOG.info(f"Testing QoS Policy creation and deletion")
+
         # Create QoS Policy
         LOG.info(f"Creating QoS Policy '{self.qos_policy_name}'")
         qos_policy = self.neutron_client.create_qos_policy({'policy': {'name': self.qos_policy_name}})

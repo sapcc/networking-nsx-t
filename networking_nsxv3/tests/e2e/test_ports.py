@@ -38,11 +38,20 @@ class TestPorts(base.E2ETestCase):
         # Get the network with the name defined in the class
         self.set_test_network(self.test_network1_name)
 
+        ports = self.neutron_client.list_ports(network_id=self.test_network['id'])['ports']
+        if ports and len(ports) > 0:
+            self.fail(f"Network '{self.test_network['name']}' has ports. Please use a network without ports.")
+
+        self.test_network['subnets'] = [s['id'] for s in self.neutron_client.list_subnets(
+            network_id=self.test_network['id'])['subnets']]
+        if not self.test_network['subnets'] or len(self.test_network['subnets']) < 1:
+            self.fail(f"Network '{self.test_network['name']}' has no subnets. Please use a network with subnets.")
+
         # Generate a random names for ports
         self.test_ports = [
-            {"name": "test-port-" + str(uuid.uuid4()), "id": None},
-            {"name": "test-port-" + str(uuid.uuid4()), "id": None},
-            {"name": "test-port-" + str(uuid.uuid4()), "id": None}
+            {"name": "e2e-port-" + str(uuid.uuid4()), "id": None},
+            {"name": "e2e-port-" + str(uuid.uuid4()), "id": None},
+            {"name": "e2e-port-" + str(uuid.uuid4()), "id": None}
         ]
 
         self.new_server: Server = None
@@ -57,6 +66,8 @@ class TestPorts(base.E2ETestCase):
         self._assert_server_cleanup()
 
     def test_create_ports(self):
+        LOG.info("Testing port creation and deletion.")
+
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
@@ -75,6 +86,8 @@ class TestPorts(base.E2ETestCase):
             self.assertIsNone(nsx_port)
 
     def test_create_standalone_ports_and_attach(self):
+        LOG.info("Testing port creation, attachment and detachment.")
+
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
@@ -99,9 +112,11 @@ class TestPorts(base.E2ETestCase):
         # Get Port Security Groups and assert the port participates in them at the NSX side
         LOG.info(
             f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
-        self._assert_server_nsx_ports_sgs(self.test_server.interface_list())
+        self.assert_server_nsx_ports_sgs(self.test_server.interface_list())
 
     def test_detach_port(self):
+        LOG.info("Testing port detachment.")
+
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
@@ -128,6 +143,8 @@ class TestPorts(base.E2ETestCase):
         # defined by the "nsxv3_remove_orphan_ports_after" setting of the agent.
 
     def test_create_server(self):
+        LOG.info("Testing server creation and deletion.")
+
         img_name = os.environ.get("E2E_CREATE_SERVER_IMAGE_NAME", "cirros-0.3.2-i386-disk")
         flvr_name = os.environ.get("E2E_CREATE_SERVER_FLAVOR_NAME", "m1.nano")
         srv_name = os.environ.get("E2E_CREATE_SERVER_NAME_PREFIX", "os-e2e-test-") + str(uuid.uuid4())
@@ -154,9 +171,11 @@ class TestPorts(base.E2ETestCase):
 
         # Assert the server's ports are members of the correct security groups in NSX
         LOG.info(f"Asserting server '{self.new_server.name}' ports are members of the correct security groups in NSX.")
-        self._assert_server_nsx_ports_sgs(self.new_server.interface_list())
+        self.assert_server_nsx_ports_sgs(self.new_server.interface_list())
 
     def test_assign_unassign_ipv4_to_port(self):
+        LOG.info("Testing IPv4 assignment and unassignment to ports.")
+
         # Create a ports on the network
         LOG.info(
             f"Creating ports {[p['name'] for p in self.test_ports]} on network '{self.test_network['name']}'.")
@@ -181,7 +200,7 @@ class TestPorts(base.E2ETestCase):
         # Get Port Security Groups and assert the port participates in them at the NSX side
         LOG.info(
             f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
-        self._assert_server_nsx_ports_sgs(self.test_server.interface_list())
+        self.assert_server_nsx_ports_sgs(self.test_server.interface_list())
 
         # Get the CIDR from the specified netowrk subnets on the OpenStack side
         cidr = self.neutron_client.show_subnet(self.test_network['subnets'][0])['subnet']['cidr']
@@ -199,6 +218,8 @@ class TestPorts(base.E2ETestCase):
         self._assert_ips_unassigned()
 
     def test_assign_unassign_ipv6_to_port(self):
+        LOG.info("Testing IPv6 assignment and unassignment to ports.")
+
         # Create an entire new network for this test
         net_name = "e2e-test-ipv6-" + str(uuid.uuid4())
         LOG.info(f"Creating a new network '{net_name}' for the test.")
@@ -210,7 +231,7 @@ class TestPorts(base.E2ETestCase):
             "subnet": {
                 "network_id": self.test_network['id'],
                 "ip_version": 6,
-                "cidr": "2001:db8::/122"
+                "cidr": "2002:db8::/122"
             }
         })
         self.addCleanup(self.neutron_client.delete_subnet, subnet['subnet']['id'])
@@ -295,17 +316,6 @@ class TestPorts(base.E2ETestCase):
 
     def _assert_os_server_default_sg(self, server: Server):
         self.assertIn("default", [sg.name for sg in server.list_security_group()])
-
-    def _assert_server_nsx_ports_sgs(self, ports: list):
-        for port in ports:
-            port_sgs = self.neutron_client.show_port(port.id)['port']['security_groups']
-            # For each SG get the Group from NSX and its members
-            for sg_id in port_sgs:
-                nsx_ports_for_sg = self.get_nsx_sg_effective_members(sg_id)
-                self.assertIsNotNone(nsx_ports_for_sg, f"Security Group {sg_id} not found in NSX.")
-                # Assert the port is a member of the SG
-                nsx_port = next((p for p in nsx_ports_for_sg if p['display_name'] == port.id), None)
-                self.assertIsNotNone(nsx_port, f"Port {port.id} not found in Security Group {sg_id} in NSX.")
 
     def _assert_ips_assigned(self, cidr, all_ips):
         # Assert the IP is assigned to the ports in OpenStack

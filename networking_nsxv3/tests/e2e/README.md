@@ -4,7 +4,9 @@
 3. Openstack Deployment with Agent and Driver running
 4. The Openstack "default" Security Group must exists and at least one realized and active port to be a member of it.
 5. Pre-existing Openstack network and server are required (see the ENV vars: E2E_NETWORK_NAME and E2E_SERVER_NAME).
-6. The following environment variables are needed for the E2E tests (e.g. ../developer/rc):
+6. No ports have to be provisioned on the pre-existing test network prior the tests.
+7. At least one subnet have to be available on the pre-existing test network.
+8. The following environment variables are needed for the E2E tests (e.g. ../developer/rc):
    ```bash
    # NSX vars
    export NSXV3_LOGIN_HOSTNAME="nsx-l-01a.corp.local" # NSX Hostname or IP address
@@ -52,10 +54,10 @@
    - Create/Delete QoS Policy [implemented]
    - Assign/Remove QoS Policy to/from port [partially] (depends on https://github.com/sapcc/networking-nsx-t/pull/135)
 ## Trunk E2E Tests
-   - Create/Delete trunk
-   - Add/Remove ports to/from trunk
-   - Add/Remove trunk to/from server
-   - Provision server with trunk
+   - Create/Delete trunk [implemented]
+   - Add/Remove ports to/from trunk [implemented]
+   - Add/Remove trunk to/from server [implemented]
+   - Provision server with trunk [implemented]
 ## Security Groups & Policies
    - Create/Delete/Update Security Groups (Remote IP)
    - Create/Delete/Update Security Groups (Remote Group)
