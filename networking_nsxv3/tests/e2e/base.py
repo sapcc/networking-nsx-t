@@ -13,7 +13,7 @@ from oslo_log import log as logging
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
 from oslo_config import cfg
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
-from urllib.parse import quote
+import uuid
 
 from networking_nsxv3.common import config  # noqa
 
@@ -38,7 +38,8 @@ class RetryDecorator(object):
                     retry_counter -= 1
 
                 total_time = max_retries * sleep_duration
-                LOG.debug(f"No result from func '{func.__name__}' after {max_retries} retries in {total_time} seconds.")
+                LOG.debug(
+                    f"No result from func '{func.__name__}' after {max_retries} retries in {total_time} seconds.")
                 return None
 
             return wrapper
@@ -81,7 +82,14 @@ class E2ETestCase(base.BaseTestCase):
         cls.nsx_client.version  # This will force the client to login
         cls.OS_PROJECT_ID = cls.auth.get_project_id(cls.sess)
 
-    def create_test_server(self, name, image_name, flavor_name, network_id, security_groups=["default"], no_network=False) -> Server:
+    def setUp(self):
+        super().setUp()
+        self.test_network = None
+
+    def create_test_server(self, name, image_name, flavor_name, network_id=None, security_groups=["default"], nic_ports=[]) -> Server:
+        if not network_id and not nic_ports:
+            raise ValueError("Either 'network_id' or 'nic_ports' must be provided.")
+
         # Get the image
         images = self.nova_client.glance.list()
         image = next((i for i in images if i.name == image_name), None)
@@ -102,7 +110,7 @@ class E2ETestCase(base.BaseTestCase):
             min_count=1,
             max_count=1,
             security_groups=security_groups,
-            nics=[{'net-id': network_id}] if not no_network else None,
+            nics=[{'net-id': network_id}] if len(nic_ports) < 1 else nic_ports,
             block_device_mapping_v2=[{
                 "uuid": image.id,
                 "boot_index": 0,
@@ -161,3 +169,60 @@ class E2ETestCase(base.BaseTestCase):
                 return None
             return j['results']
         return None
+
+    def set_test_network(self, net_name: str):
+        """ Set the test network (self.test_network) to the network with the name provided.
+        """
+        networks = self.neutron_client.list_networks()
+        self.test_network = next(
+            (n for n in networks['networks'] if n['name'] == net_name), None)
+        self.assertIsNotNone(self.test_network, f"Network '{net_name}' not found!")
+
+    def set_test_server(self, server_name: str):
+        """ Set the test server (self.test_server) to the server with the name provided.
+        """
+        servers = self.nova_client.servers.list()
+        self.test_server: Server = next((s for s in servers if s.name == server_name), None)
+        self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")
+
+    def create_test_ports(self):
+        """ Create ports on the test network (self.test_network) and store their IDs (self.test_ports).
+            Also add cleanup for deletion.
+        """
+        for port in self.test_ports:
+            result = self.neutron_client.create_port({
+                "port": {
+                    "network_id": self.test_network['id'],
+                    "name": port['name']
+                }
+            })
+            port['id'] = result['port']['id']
+            if port['id']:
+                self.addCleanup(self.neutron_client.delete_port, port['id'])
+
+    def create_new_port(self) -> dict:
+        """ Create a new port on the test network.
+            :return: The created port {'name': str, 'id': str}
+        """
+        new_port = {"name": "e2e-trunk-subport3-" + str(uuid.uuid4()), "id": None}
+        LOG.info(f"Creating new subport '{new_port['name']}'")
+        result = self.neutron_client.create_port({
+            "port": {
+                "network_id": self.test_network['id'],
+                "name": new_port['name']
+            }
+        })
+        new_port['id'] = result['port']['id']
+        self.addCleanup(self.neutron_client.delete_port, new_port['id'])
+        return new_port
+
+    def assert_server_nsx_ports_sgs(self, ports: list):
+        for port in ports:
+            port_sgs = self.neutron_client.show_port(port.id)['port']['security_groups']
+            # For each SG get the Group from NSX and its members
+            for sg_id in port_sgs:
+                nsx_ports_for_sg = self.get_nsx_sg_effective_members(sg_id)
+                self.assertIsNotNone(nsx_ports_for_sg, f"Security Group {sg_id} not found in NSX.")
+                # Assert the port is a member of the SG
+                nsx_port = next((p for p in nsx_ports_for_sg if p['display_name'] == port.id), None)
+                self.assertIsNotNone(nsx_port, f"Port {port.id} not found in Security Group {sg_id} in NSX.")
