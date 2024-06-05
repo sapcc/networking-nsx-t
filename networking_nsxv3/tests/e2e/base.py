@@ -1,10 +1,12 @@
 import eventlet
 eventlet.monkey_patch()
 
+from typing import List
 from keystoneauth1 import identity
 from keystoneauth1 import session
 from networking_nsxv3.tests.e2e import neutron
 from novaclient.v2.servers import Server
+from novaclient.v2.servers import NetworkInterface
 from novaclient.v2.client import Client as NovaClient
 from novaclient import client as nova
 from neutron.tests import base
@@ -154,21 +156,30 @@ class E2ETestCase(base.BaseTestCase):
             return resp.json()
         return None
 
-    @RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=5)
-    def get_nsx_sg_effective_members(self, sg_id) -> list:
-        res = self.nsx_client.get(path=API.SEARCH_DSL, params={
-            "query": "resource_type:SegmentPort",
-            "dsl": sg_id,
-            "page_size": 100,
-            "data_source": "INTENT",
-            "exclude_internal_types": True
-        })
+    @RetryDecorator.RetryIfResultIsNone(max_retries=10, sleep_duration=15)
+    def get_nsx_sg_effective_members(self, os_sg_id) -> list:
+        res = self.nsx_client.get(API.GROUP.format(os_sg_id) + "/members/segment-ports", {"page_size": 1000})
         if res.ok:
             j = res.json()
             if j['result_count'] == 0:
                 return None
             return j['results']
         return None
+
+    def get_os_default_security_group(self):
+        # Get the default security group
+        lsg = self.neutron_client.list_security_groups(project_id=self.OS_PROJECT_ID)
+        default_sg = [sg for sg in lsg['security_groups'] if sg['name'] == 'default'][0]
+
+        # Assert that the default security group exists and has active member ports
+        self.assertIsNotNone(default_sg, "Default security group must exist")
+        sg_ports = self.neutron_client.list_ports(security_groups=[default_sg['id']])
+        self.assertGreater(len(sg_ports), 0, "Default security group must have at least one port")
+        self.assertGreater(len(sg_ports['ports']), 0, "Default security group must have at least one port")
+        self.assertTrue(any([p['status'] == 'ACTIVE' and p['admin_state_up'] for p in sg_ports['ports']]),
+                        "Default security group must have at least one active port")
+
+        return default_sg
 
     def set_test_network(self, net_name: str):
         """ Set the test network (self.test_network) to the network with the name provided.
@@ -186,8 +197,18 @@ class E2ETestCase(base.BaseTestCase):
         self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")
 
     def create_test_ports(self):
-        """ Create ports on the test network (self.test_network) and store their IDs (self.test_ports).
-            Also add cleanup for deletion.
+        """
+        Creates test ports for the given test network.
+
+        This method iterates over the list of test ports (self.test_ports) and creates a port for each one.
+        The created ports are associated with the test network specified by `self.test_network['id']`.
+        The name of each port is set based on the corresponding `self.port['name']` value.
+
+        Returns:
+            None
+
+        Raises:
+            Any exceptions raised by the `neutron_client.create_port` method.
         """
         for port in self.test_ports:
             result = self.neutron_client.create_port({
@@ -216,7 +237,30 @@ class E2ETestCase(base.BaseTestCase):
         self.addCleanup(self.neutron_client.delete_port, new_port['id'])
         return new_port
 
-    def assert_server_nsx_ports_sgs(self, ports: list):
+    def attach_test_ports_to_test_server(self):
+        """
+        Attach test ports to the test server.
+
+        This method attaches the test ports (self.test_ports) to the test server (elf.test_server),
+        using the `nova_client.servers.interface_attach` method.
+        It also adds a cleanup step to detach the ports using `nova_client.servers.interface_detach` method.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for port in self.test_ports:
+            self.nova_client.servers.interface_attach(
+                server=self.test_server.id,
+                port_id=port['id'],
+                net_id=None,
+                fixed_ip=None
+            )
+            self.addCleanup(self.nova_client.servers.interface_detach, server=self.test_server.id, port_id=port['id'])
+
+    def assert_os_ports_nsx_sg_membership(self, ports: List[NetworkInterface]):
         for port in ports:
             port_sgs = self.neutron_client.show_port(port.id)['port']['security_groups']
             # For each SG get the Group from NSX and its members

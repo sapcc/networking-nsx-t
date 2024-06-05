@@ -117,7 +117,7 @@ class TestTrunk(base.E2ETestCase):
         # Assert the server ports participate in the correct security groups in NSX
         LOG.info(
             f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
-        self.assert_server_nsx_ports_sgs(server_ports)
+        self.assert_os_ports_nsx_sg_membership(server_ports)
 
         # Unattach the parent port from the test server
         LOG.info(
@@ -247,7 +247,7 @@ class TestTrunk(base.E2ETestCase):
 
         # Assert the server ports participate in the correct security groups in NSX
         LOG.info(f"Asserting the server '{server_name}' ports participate in the correct security groups in NSX.")
-        self.assert_server_nsx_ports_sgs(server_ports)
+        self.assert_os_ports_nsx_sg_membership(server_ports)
 
     ###################################################################################
     ###################################################################################

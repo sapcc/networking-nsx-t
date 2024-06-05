@@ -22,7 +22,7 @@ class TestAddressGroups(base.E2ETestCase):
         self.new_sg_ids = []
         self.existing_updated_ports = []
         self.assertGreater(len(self.nova_client.servers.list()), 0, "At least one server should exist!")
-        self.def_os_sg = self._get_os_default_sg()
+        self.def_os_sg = self.get_os_default_security_group()
 
     def tearDown(self):
         super().tearDown()
@@ -360,21 +360,6 @@ class TestAddressGroups(base.E2ETestCase):
                 self.assertNotIn(sg_id, [sg['id']
                                          for sg in self.neutron_client.list_security_groups()['security_groups']])
             self.new_sg_ids = []
-
-    def _get_os_default_sg(self):
-        # Get the default security group
-        lsg = self.neutron_client.list_security_groups(project_id=self.OS_PROJECT_ID)
-        default_sg = [sg for sg in lsg['security_groups'] if sg['name'] == 'default'][0]
-
-        # Assert that the default security group exists and has active member ports
-        self.assertIsNotNone(default_sg, "Default security group must exist")
-        sg_ports = self.neutron_client.list_ports(security_groups=[default_sg['id']])
-        self.assertGreater(len(sg_ports), 0, "Default security group must have at least one port")
-        self.assertGreater(len(sg_ports['ports']), 0, "Default security group must have at least one port")
-        self.assertTrue(any([p['status'] == 'ACTIVE' and p['admin_state_up'] for p in sg_ports['ports']]),
-                        "Default security group must have at least one active port")
-
-        return default_sg
 
     def _get_assert_new_grp_id(self, unique_addr_grp_name, new_addr_grp):
         new_grp_id = None

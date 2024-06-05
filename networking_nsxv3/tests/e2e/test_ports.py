@@ -2,7 +2,6 @@ import eventlet
 eventlet.monkey_patch()
 
 from novaclient.v2.servers import Server
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 from networking_nsxv3.tests.e2e import base
 import os
 import uuid
@@ -95,7 +94,7 @@ class TestPorts(base.E2ETestCase):
 
         # Attach the ports to the test server
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
-        self._attach_ports()
+        self.attach_test_ports_to_test_server()
 
         # Assert the ports are attached to the correct server
         LOG.info(
@@ -112,7 +111,7 @@ class TestPorts(base.E2ETestCase):
         # Get Port Security Groups and assert the port participates in them at the NSX side
         LOG.info(
             f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
-        self.assert_server_nsx_ports_sgs(self.test_server.interface_list())
+        self.assert_os_ports_nsx_sg_membership(self.test_server.interface_list())
 
     def test_detach_port(self):
         LOG.info("Testing port detachment.")
@@ -124,7 +123,7 @@ class TestPorts(base.E2ETestCase):
 
         # First attach the ports
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
-        self._attach_ports()
+        self.attach_test_ports_to_test_server()
 
         # Assert the ports are attached to the correct server
         LOG.info(
@@ -171,7 +170,7 @@ class TestPorts(base.E2ETestCase):
 
         # Assert the server's ports are members of the correct security groups in NSX
         LOG.info(f"Asserting server '{self.new_server.name}' ports are members of the correct security groups in NSX.")
-        self.assert_server_nsx_ports_sgs(self.new_server.interface_list())
+        self.assert_os_ports_nsx_sg_membership(self.new_server.interface_list())
 
     def test_assign_unassign_ipv4_to_port(self):
         LOG.info("Testing IPv4 assignment and unassignment to ports.")
@@ -183,7 +182,7 @@ class TestPorts(base.E2ETestCase):
 
         # Attach the ports to the test server
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
-        self._attach_ports()
+        self.attach_test_ports_to_test_server()
 
         # Assert the ports are attached to the correct server
         LOG.info(
@@ -200,7 +199,7 @@ class TestPorts(base.E2ETestCase):
         # Get Port Security Groups and assert the port participates in them at the NSX side
         LOG.info(
             f"Asserting the server '{self.test_server.name}' ports participate in the correct security groups in NSX.")
-        self.assert_server_nsx_ports_sgs(self.test_server.interface_list())
+        self.assert_os_ports_nsx_sg_membership(self.test_server.interface_list())
 
         # Get the CIDR from the specified netowrk subnets on the OpenStack side
         cidr = self.neutron_client.show_subnet(self.test_network['subnets'][0])['subnet']['cidr']
@@ -243,7 +242,7 @@ class TestPorts(base.E2ETestCase):
 
         # Attach the ports to the test server
         LOG.info(f"Attaching ports to server '{self.test_server.name}'.")
-        self._attach_ports()
+        self.attach_test_ports_to_test_server()
 
         # Assert the ports are attached to the correct server
         LOG.info(
@@ -351,18 +350,6 @@ class TestPorts(base.E2ETestCase):
                               f"NSX Port for port '{port['name']}' has more than one IP assigned.")
             self.assertEquals(port_info['fixed_ips'][0]['ip_address'], nsx_port['address_bindings'][0]['ip_address'],
                               f"NSX Port for port '{port['name']}' has different IP assigned.")
-
-    def _attach_ports(self):
-        """ Attach the ports to the test server (self.test_server). Also add cleanup for detachment.
-        """
-        for port in self.test_ports:
-            self.nova_client.servers.interface_attach(
-                server=self.test_server.id,
-                port_id=port['id'],
-                net_id=None,
-                fixed_ip=None
-            )
-            self.addCleanup(self.nova_client.servers.interface_detach, server=self.test_server.id, port_id=port['id'])
 
     def _assign_ips_to_ports(self, ips):
         """ Assign the IPs to the ports in self.test_ports, from the list of IPs provided.
