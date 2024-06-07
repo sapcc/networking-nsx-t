@@ -156,15 +156,63 @@ class E2ETestCase(base.BaseTestCase):
             return resp.json()
         return None
 
-    @RetryDecorator.RetryIfResultIsNone(max_retries=10, sleep_duration=15)
-    def get_nsx_sg_effective_members(self, os_sg_id) -> list:
+    @RetryDecorator.RetryIfResultIsNone(max_retries=30, sleep_duration=30)
+    def get_nsx_rules(self, os_sg_id, desired_count=None):
+        res = self.nsx_client.get(API.RULES.format(os_sg_id))
+        if res.ok:
+            j = res.json()
+            if j['result_count'] == 0:
+                return None
+            if desired_count is not None:
+                if j['result_count'] != desired_count:
+                    return None
+            return j['results']
+        return None
+
+    def get_nsx_rules_no_retry(self, os_sg_id):
+        res = self.nsx_client.get(API.RULES.format(os_sg_id))
+        if res.ok:
+            j = res.json()
+            if j['result_count'] == 0:
+                return []
+            return j['results']
+        return []
+
+    @RetryDecorator.RetryIfResultIsNone(max_retries=30, sleep_duration=60)
+    def get_nsx_sg_effective_members(self, os_sg_id, ensure_port_names: set = None) -> list:
+        """
+        Retrieves the effective members of an NSX security group.
+        Retries the request up to 30 times with a 60-second delay between retries.
+        If the `ensure_port_names` parameter is provided, the method will ensure that all port names are present in the response before returning.
+
+        Args:
+            os_sg_id (str): The ID of the OpenStack security group.
+            ensure_port_names (set, optional): A set of port names to ensure are present in the response.
+
+        Returns:
+            list: A list of effective members of the NSX security group, or None if the request fails or no members are found.
+        """
         res = self.nsx_client.get(API.GROUP.format(os_sg_id) + "/members/segment-ports", {"page_size": 1000})
         if res.ok:
             j = res.json()
             if j['result_count'] == 0:
                 return None
+            if ensure_port_names is not None:
+                # Ensure all ports are in the response
+                port_names = set([p['display_name'] for p in j['results']])
+                if not set(ensure_port_names).issubset(port_names):
+                    return None
             return j['results']
         return None
+
+    def get_sg_members_no_retry(self, os_sg_id) -> list:
+        res = self.nsx_client.get(API.GROUP.format(os_sg_id) + "/members/segment-ports", {"page_size": 1000})
+        if res.ok:
+            j = res.json()
+            if j['result_count'] == 0:
+                return []
+            return j['results']
+        return []
 
     def get_os_default_security_group(self):
         # Get the default security group
@@ -261,12 +309,31 @@ class E2ETestCase(base.BaseTestCase):
             self.addCleanup(self.nova_client.servers.interface_detach, server=self.test_server.id, port_id=port['id'])
 
     def assert_os_ports_nsx_sg_membership(self, ports: List[NetworkInterface]):
+        LOG.info(f"""Verifying NSX Security Group membership for {len(ports)} ports:
+                ({', '.join([p.id for p in ports])})
+                This may take a while as the test will try to wait for NSX to sync with OpenStack...""")
+        desired_results = []
+        actual_results = []
+
         for port in ports:
             port_sgs = self.neutron_client.show_port(port.id)['port']['security_groups']
+            desired_results.append({"port_id": port.id, "sgs": port_sgs})
+            actual_results.append({"port_id": port.id, "sgs": []})
             # For each SG get the Group from NSX and its members
             for sg_id in port_sgs:
-                nsx_ports_for_sg = self.get_nsx_sg_effective_members(sg_id)
-                self.assertIsNotNone(nsx_ports_for_sg, f"Security Group {sg_id} not found in NSX.")
+                nsx_ports_for_sg = self.get_nsx_sg_effective_members(sg_id, ensure_port_names={port.id})
+                self.assertIsNotNone(nsx_ports_for_sg, f"""Security Group {sg_id} not found in NSX or the port {port.id} is not a member.
+                                     Desired results: {desired_results[-1]}
+                                     NSX Ports in SG {sg_id}: {[p['display_name'] for p in self.get_sg_members_no_retry(sg_id)]}""")
                 # Assert the port is a member of the SG
                 nsx_port = next((p for p in nsx_ports_for_sg if p['display_name'] == port.id), None)
-                self.assertIsNotNone(nsx_port, f"Port {port.id} not found in Security Group {sg_id} in NSX.")
+                if nsx_port:
+                    actual_results[-1]['sgs'].append(sg_id)
+
+        # order 'sgs' sublists for comparison
+        for r in actual_results:
+            r['sgs'].sort()
+        for r in desired_results:
+            r['sgs'].sort()
+
+        self.assertListEqual(desired_results, actual_results, "Security Group membership does not match.")

@@ -18,6 +18,75 @@ LOG = logging.getLogger(__name__)
 
 class TestSecurityGroups(base.E2ETestCase):
 
+    def sg_rules_fixture(self):
+        """
+        Returns a tuple containing different types of security group rules.
+
+        The tuple contains the following rule types:
+        1. Remote IP Prefix rule types
+        2. Remote Group rule types
+        3. ICMP rule types
+        4. Port range rule types
+
+        Each rule type is represented as a dictionary with specific attributes.
+
+        Returns:
+            tuple: A tuple containing different types of security group rules.
+        """
+        # 1. Remote IP Prefix rule types
+        remote_prefix_rules = [
+            {"description": "E2E Test Egress IPv4/TCP rule with random remote IP prefix", "direction": "egress",
+             "ethertype": "IPv4", "protocol": "tcp", "remote_ip_prefix": str(ipaddress.IPv4Address(random.randint(0, 2**32-1)))},
+            {"description": "E2E Test Ingress IPv6/TCP rule with random remote IP prefix", "direction": "ingress",
+             "ethertype": "IPv6", "protocol": "tcp", "remote_ip_prefix": str(ipaddress.IPv6Address(random.randint(0, 2**128-1)))}
+        ]
+
+        # 2. Remote Group rule types
+        random_remote = []
+        if self.test_sgs:
+            if len(self.test_sgs) > 0:
+                random_remote.append({"description": "E2E Test Random Remote Ingress IPv64/TCP rule with remote group", "direction": "ingress",
+                                      "ethertype": "IPv4", "protocol": "tcp", "remote_group_id": random.choice(self.test_sgs)['id']})
+            if len(self.test_sgs) > 1:
+                random_remote.append({"description": "E2E Test Random Remote Ingress IPv64/TCP rule with remote group", "direction": "ingress",
+                                      "ethertype": "IPv4", "protocol": "tcp", "remote_group_id": random.choice(self.test_sgs)['id']})
+
+        remote_group_rules = [
+            {"description": "E2E Test Egress IPv4/UDP rule with remote group", "direction": "egress",
+                "ethertype": "IPv4", "protocol": "udp", "remote_group_id": self.def_os_sg['id']},
+            {"description": "E2E Test Ingress IPv6/TCP rule with remote group", "direction": "ingress",
+                "ethertype": "IPv6", "protocol": "tcp", "remote_group_id": self.def_os_sg['id']}
+        ]
+        remote_group_rules.extend(random_remote)
+
+        # 3. ICMP rule types
+        icmp_rules = [
+            {"description": "E2E Test Ingress IPv4/ICMP rule",
+                "direction": "ingress", "ethertype": "IPv4", "protocol": "icmp"},
+            {"description": "E2E Test Egress IPv4/ICMP rule", "direction": "egress", "ethertype": "IPv4", "protocol": "icmp"},
+            {"description": "E2E Test Ingress IPv6/ICMP rule",
+                "direction": "ingress", "ethertype": "IPv6", "protocol": "icmp"},
+            {"description": "E2E Test Egress IPv6/ICMP rule", "direction": "egress", "ethertype": "IPv6", "protocol": "icmp"}
+        ]
+
+        # 4. Port range rule types
+        port_range_rules = [
+            {"description": "E2E Test Egress IPv4/ANY rule", "direction": "egress",
+                "ethertype": "IPv4", "protocol": None, "port_range_min": None, "port_range_max": None},
+            {"description": "E2E Test Ingress IPv4/UDP port range (1024-2048) rule", "direction": "ingress",
+             "ethertype": "IPv4", "protocol": "udp", "port_range_min": 1024, "port_range_max": 2048},
+            {"description": "E2E Test Ingress IPv4/TCP HTTP rule", "direction": "ingress",
+                "ethertype": "IPv4", "protocol": "tcp", "port_range_min": 80, "port_range_max": 80},
+            {"description": "E2E Test Egress IPv4/TCP HTTPS rule", "direction": "egress",
+                "ethertype": "IPv4", "protocol": "tcp", "port_range_min": 443, "port_range_max": 443},
+            {"description": "E2E Test Ingress IPv6/TCP HTTPS rule", "direction": "ingress",
+                "ethertype": "IPv6", "protocol": "tcp", "port_range_min": 443, "port_range_max": 443},
+            {"description": "E2E Test Egress IPv6/TCP port range (1024-65525) rule", "direction": "egress",
+             "ethertype": "IPv6", "protocol": "tcp", "port_range_min": 1024, "port_range_max": 65535}
+        ]
+
+        return (remote_prefix_rules, remote_group_rules, icmp_rules, port_range_rules)
+
     def __init__(self, *args, **kwds):
         super().__init__(*args, **kwds)
         self.test_network1_name = os.environ.get("E2E_NETWORK_NAME", None)
@@ -85,20 +154,32 @@ class TestSecurityGroups(base.E2ETestCase):
 
     def test_add_port_to_security_group_tag_membership_remote_ip_prefix(self):
         LOG.info("Testing Add Port to Security Group with Tag Membership and Remote IP Prefix Rules")
-        self._test_add_port_to_security_group(rules=['remote_ip_prefix'], sg_count=4)
+        self._test_add_port_to_security_group(rule_types=['remote_ip_prefix'], sg_count=4)
 
-    def test_add_port_to_security_group_static_membership_remote_ip_prefix(self):
-        LOG.info("Testing Add Port to Security Group with Static Membership and Remote IP Prefix Rules")
-        self._test_add_port_to_security_group(rules=['remote_ip_prefix'], sg_count=60)
+    def test_add_port_to_security_group_tag_membership_remote_group(self):
+        LOG.info("Testing Add Port to Security Group with Tag Membership and Remote Group Rules")
+        self._test_add_port_to_security_group(rule_types=['remote_group'], sg_count=4)
 
-    def _test_add_port_to_security_group(self, rules, sg_count):
+    def test_add_port_to_security_group_tag_membership_icmp(self):
+        LOG.info("Testing Add Port to Security Group with Tag Membership and ICMP Rules")
+        self._test_add_port_to_security_group(rule_types=['icmp'], sg_count=4)
+
+    def test_add_port_to_security_group_tag_membership_port_range(self):
+        LOG.info("Testing Add Port to Security Group with Tag Membership and Port Range Rules")
+        self._test_add_port_to_security_group(rule_types=['port_range'], sg_count=4)
+
+    def test_add_port_to_security_group_static_membership_all(self):
+        LOG.info("Testing Add Port to Security Group with Static Membership and All Rules")
+        self._test_add_port_to_security_group(rule_types=['all'], sg_count=30, stateful_count=30)
+
+    def _test_add_port_to_security_group(self, rule_types, sg_count, stateful_count=None):
         # Create some Security Groups and store their IDs
         LOG.info(f"Creating {sg_count} Security Groups")
-        self.create_security_groups(sg_count=sg_count)
+        self.create_security_groups(sg_count=sg_count, statefull_count=stateful_count)
 
-        # Add Remote IP Prefix rules to the security groups
-        LOG.info("Adding Remote IP Prefix rules to the Security Groups")
-        self.add_rules_to_security_groups(rules=rules)
+        # Add Rules to the security groups
+        LOG.info("Adding Rules to the Security Groups")
+        self.add_rules_to_security_groups(rule_types=rule_types)
 
         # Create a port and associate it with the Security Groups
         LOG.info(f"Creating {len(self.test_ports)} Ports")
@@ -138,6 +219,28 @@ class TestSecurityGroups(base.E2ETestCase):
             self.assertIn(p['id'], [p.id for p in attached_ports], f"Port {p['id']} not attached to the server.")
         self.assert_os_ports_nsx_sg_membership(attached_ports)
 
+        # Assert Security Group Rules are created in NSX
+        LOG.info("Verifying Security Group Rules are created in NSX")
+        for sg in self.test_sgs:
+            os_sg = self.neutron_client.show_security_group(sg['id'])['security_group']
+            self.assertIsNotNone(os_sg, f"Security Group {sg['id']} not found in OpenStack.")
+
+            osrules = os_sg['security_group_rules']
+            self.assertIsNotNone(osrules, f"Security Group {sg['id']} has no rules in OpenStack.")
+
+            nsx_sg = self.get_nsx_sg_by_os_id(os_sg['id'])
+            self.assertIsNotNone(nsx_sg, f"Security Group {os_sg['id']} not found in NSX.")
+
+            nsx_sg_rules = self.get_nsx_rules(os_sg_id=os_sg['id'], desired_count=len(osrules))
+
+            self.assertIsNotNone(nsx_sg_rules, f"""Security Group {os_sg['id']} has no rules in NSX or the number of rules in NSX is incorrect.
+                                 Expected: {len(osrules)} Rules, Found: {len(self.get_nsx_rules_no_retry(os_sg['id']))} Rules.""")
+            self.assertEqual(len(nsx_sg_rules), len(osrules),
+                             f"Security Group {os_sg['id']} has incorrect number of rules in NSX.")
+            for rule in osrules:
+                # TODO: Add more assertions here to compare the rules in NSX Policy Rules with the OpenStack Security Groups Rules
+                pass
+
     ##############################################################################################
     ##############################################################################################
 
@@ -146,7 +249,7 @@ class TestSecurityGroups(base.E2ETestCase):
             return [sg for sg in self.test_sgs if sg['stateful']]
         return [sg for sg in self.test_sgs if not sg['stateful']]
 
-    def add_rules_to_security_groups(self, rules=['all']):
+    def add_rules_to_security_groups(self, rule_types=['all']):
         """
         Adds rules to the security groups.
 
@@ -186,28 +289,28 @@ class TestSecurityGroups(base.E2ETestCase):
             rules = []
 
             # 1. Remote IP Prefix rule types
-            if 'all' in rules or 'remote_ip_prefix' in rules:
+            if 'all' in rule_types or 'remote_ip_prefix' in rule_types:
                 rules.extend(remote_ip_prefix_rules)
 
             # 2. Remote Group rule types
-            if 'all' in rules or 'remote_group' in rules:
+            if 'all' in rule_types or 'remote_group' in rule_types:
                 rules.extend(remote_group_rules)
 
             # 3. ICMP rule types
-            if 'all' in rules or 'icmp' in rules:
+            if 'all' in rule_types or 'icmp' in rule_types:
                 rules.extend(icmp_rules)
 
             # 4. Port range rule types
-            if 'all' in rules or 'port_range' in rules:
+            if 'all' in rule_types or 'port_range' in rule_types:
                 rules.extend(port_range_rules)
 
             # Create the rules
-            for rule_type in rules:
-                LOG.info(f"Creating rule: {rule_type['description']}")
+            for rule_fixture in rules:
+                LOG.info(f"Creating rule: {rule_fixture['description']}")
                 rule_params["security_group_rule"] = {
                     "security_group_id": sg['id']
                 }
-                rule_params["security_group_rule"].update(rule_type)
+                rule_params["security_group_rule"].update(rule_fixture)
                 self.neutron_client.create_security_group_rule(rule_params)
 
         # Assert the rules are created in OpenStack by checking the number of rules in each Security Group
@@ -216,19 +319,25 @@ class TestSecurityGroups(base.E2ETestCase):
             self.assertIsNotNone(sg_os, f"Security Group {sg['id']} not found in OpenStack.")
             self.assertGreaterEqual(len(sg_os['security_group_rules']), len(rules))
 
-    def create_security_groups(self, sg_count=10):
+    def create_security_groups(self, sg_count=10, statefull_count=None):
         """
         Create multiple security groups and store their IDs in the self.test_sgs list.
-        The method creates a number of security groups with half of them being stateful and the other half stateless.
+        The security groups are created with random names.
+        If statefull_count==None then half of them are stateful otherwise 'statefull_count' are stateful.
 
         Args:
             sg_count (int): The number of security groups to create. Default is 10.
+            statefull_count (int): The number of stateful security groups to create. Default is None.
 
         Returns:
             None
+
+        Raises:
+            AssertionError: If any of the security groups fail to be created.
+
         """
         self.test_sgs = self.sgs_fixture(n=sg_count)
-        count_stateful = int(sg_count / 2)
+        count_stateful = int(sg_count / 2) if statefull_count is None else statefull_count
 
         LOG.info(f"Creating {sg_count} Security Groups, with {count_stateful} of them being stateful.")
         for i, sg in enumerate(self.test_sgs):
@@ -280,62 +389,3 @@ class TestSecurityGroups(base.E2ETestCase):
             {"name": f"e2e-sg{i+1}-" + str(uuid.uuid4()), "id": None, "stateful": None}
             for i in range(n)
         ]
-
-    def sg_rules_fixture(self):
-        """
-        Returns a tuple containing different types of security group rules.
-
-        The tuple contains the following rule types:
-        1. Remote IP Prefix rule types
-        2. Remote Group rule types
-        3. ICMP rule types
-        4. Port range rule types
-
-        Each rule type is represented as a dictionary with specific attributes.
-
-        Returns:
-            tuple: A tuple containing different types of security group rules.
-        """
-        # 1. Remote IP Prefix rule types
-        remote_prefix_rules = [
-            {"description": "E2E Test Egress IPv4/TCP rule with random remote IP prefix", "direction": "egress",
-             "ethertype": "IPv4", "protocol": "tcp", "remote_ip_prefix": str(ipaddress.IPv4Address(random.randint(0, 2**32-1)))},
-            {"description": "E2E Test Ingress IPv6/TCP rule with random remote IP prefix", "direction": "ingress",
-             "ethertype": "IPv6", "protocol": "tcp", "remote_ip_prefix": str(ipaddress.IPv6Address(random.randint(0, 2**128-1)))}
-        ]
-
-        # 2. Remote Group rule types
-        remote_group_rules = [
-            {"description": "E2E Test Egress IPv4/UDP rule with remote group", "direction": "egress",
-                "ethertype": "IPv4", "protocol": "udp", "remote_group_id": self.def_os_sg['id']},
-            {"description": "E2E Test Ingress IPv6/UDP rule with remote group", "direction": "ingress",
-                "ethertype": "IPv6", "protocol": "tcp", "remote_group_id": self.def_os_sg['id']}
-        ]
-
-        # 3. ICMP rule types
-        icmp_rules = [
-            {"description": "E2E Test Ingress IPv4/ICMP rule",
-                "direction": "ingress", "ethertype": "IPv4", "protocol": "icmp"},
-            {"description": "E2E Test Egress IPv4/ICMP rule", "direction": "egress", "ethertype": "IPv4", "protocol": "icmp"},
-            {"description": "E2E Test Ingress IPv6/ICMP rule",
-                "direction": "ingress", "ethertype": "IPv6", "protocol": "icmp"},
-            {"description": "E2E Test Egress IPv6/ICMP rule", "direction": "egress", "ethertype": "IPv6", "protocol": "icmp"}
-        ]
-
-        # 4. Port range rule types
-        port_range_rules = [
-            {"description": "E2E Test Egress IPv4/ANY rule", "direction": "egress",
-                "ethertype": "IPv4", "protocol": None, "port_range_min": None, "port_range_max": None},
-            {"description": "E2E Test Ingress IPv4/UDP port range (1024-2048) rule", "direction": "ingress",
-             "ethertype": "IPv4", "protocol": "udp", "port_range_min": 1024, "port_range_max": 2048},
-            {"description": "E2E Test Ingress IPv4/TCP HTTP rule", "direction": "ingress",
-                "ethertype": "IPv4", "protocol": "tcp", "port_range_min": 80, "port_range_max": 80},
-            {"description": "E2E Test Egress IPv4/TCP HTTPS rule", "direction": "egress",
-                "ethertype": "IPv4", "protocol": "tcp", "port_range_min": 443, "port_range_max": 443},
-            {"description": "E2E Test Ingress IPv6/TCP HTTPS rule", "direction": "ingress",
-                "ethertype": "IPv6", "protocol": "tcp", "port_range_min": 443, "port_range_max": 443},
-            {"description": "E2E Test Egress IPv6/TCP port range (1024-65525) rule", "direction": "egress",
-             "ethertype": "IPv6", "protocol": "tcp", "port_range_min": 1024, "port_range_max": 65535}
-        ]
-
-        return (remote_prefix_rules, remote_group_rules, icmp_rules, port_range_rules)
