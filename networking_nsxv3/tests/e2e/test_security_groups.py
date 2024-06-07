@@ -45,11 +45,11 @@ class TestSecurityGroups(base.E2ETestCase):
         random_remote = []
         if self.test_sgs:
             if len(self.test_sgs) > 0:
-                random_remote.append({"description": "E2E Test Random Remote Ingress IPv64/TCP rule with remote group", "direction": "ingress",
+                random_remote.append({"description": "E2E Test Random Remote Ingress IPv4/TCP rule with remote group", "direction": "ingress",
                                       "ethertype": "IPv4", "protocol": "tcp", "remote_group_id": random.choice(self.test_sgs)['id']})
-            if len(self.test_sgs) > 1:
-                random_remote.append({"description": "E2E Test Random Remote Ingress IPv64/TCP rule with remote group", "direction": "ingress",
-                                      "ethertype": "IPv4", "protocol": "tcp", "remote_group_id": random.choice(self.test_sgs)['id']})
+            if len(self.test_sgs) > 2:
+                random_remote.append({"description": "E2E Test Random Remote Ingress IPv6/TCP rule with remote group", "direction": "ingress",
+                                      "ethertype": "IPv6", "protocol": "tcp", "remote_group_id": random.choice(self.test_sgs)['id']})
 
         remote_group_rules = [
             {"description": "E2E Test Egress IPv4/UDP rule with remote group", "direction": "egress",
