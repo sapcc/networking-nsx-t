@@ -172,6 +172,78 @@ class TestSecurityGroups(base.E2ETestCase):
         LOG.info("Testing Add Port to Security Group with Static Membership and All Rules")
         self._test_add_port_to_security_group(rule_types=['all'], sg_count=30, stateful_count=30)
 
+    def test_update_port_security_group(self):
+        LOG.info("Testing Update Port Security Group")
+        self._test_add_port_to_security_group(rule_types=['all'], sg_count=3, stateful_count=1)
+
+        # Update the port to remove the Security Groups
+        LOG.info("Updating Ports to remove the Security Groups")
+        for port in self.test_ports:
+            self.neutron_client.update_port(port['id'], {'port': {'security_groups': []}})
+
+        # Sleep for a few seconds to allow the ports to be removed from the Security Groups
+        eventlet.sleep(10)
+
+        # Assert Security Groups are deleted in NSX
+        LOG.info("Verifying Security Groups are deleted in NSX")
+        failed = []
+        for sg in self.test_sgs:
+            sg_members = self.get_sg_members_no_retry(sg['id'])
+            retry = 10
+            sg_fail = True
+            while retry > 0:
+                retry -= 1
+                if len(sg_members) == 0:
+                    sg_fail = False
+                    break
+                LOG.info(f"Security Group {sg['id']} still has {len(sg_members)} members in NSX. Retrying...")
+                eventlet.sleep(30)
+            if sg_fail:
+                failed.append(sg['id'])
+        self.assertEqual(len(failed), 0, f"Security Groups {failed} still have members in NSX.")
+
+    def test_add_remove_rules_to_security_group(self):
+        LOG.info("Testing Add and Remove Rules to Security Group")
+        self._test_add_port_to_security_group(rule_types=['all'], sg_count=3, stateful_count=2)
+
+        # Add more rules to the security groups
+        LOG.info("Adding more rules to the Security Groups")
+        self.add_rules_to_security_groups(rule_types=['icmp'])
+
+        # Sleep for a few seconds to allow the rules to be added to the Security Groups
+        eventlet.sleep(10)
+
+        # Assert Security Group Rules are created in NSX
+        LOG.info("Verifying Security Group Rules are created in NSX")
+        self.assert_nsx_sg_rules()
+
+        # Remove the rules from the security groups
+        LOG.info("Removing Rules from the Security Groups")
+        self.add_rules_to_security_groups(rule_types=[])
+
+        # Sleep for a few seconds to allow the rules to be removed
+        eventlet.sleep(10)
+
+        # Assert the rules are deleted in NSX
+        LOG.info("Verifying Security Group Rules are deleted in NSX")
+        failed = []
+        for sg in self.test_sgs:
+            retry = 10
+            LOG.info(f"Waiting for Security Group {sg['id']} to delete rules in NSX...")
+            rule_fail = True
+            while retry > 0:
+                retry -= 1
+                nsx_rules = self.get_nsx_rules_no_retry(sg['id'])
+                if len(nsx_rules) == 0:
+                    rule_fail = False
+                    break
+                LOG.info(f"Security Group {sg['id']} still has {len(nsx_rules)} rules in NSX. Retrying...")
+                eventlet.sleep(30)
+            if rule_fail:
+                failed.append(sg['id'])
+
+        self.assertEqual(len(failed), 0, f"Security Groups {failed} still have rules in NSX.")
+
     def _test_add_port_to_security_group(self, rule_types, sg_count, stateful_count=None):
         # Create some Security Groups and store their IDs
         LOG.info(f"Creating {sg_count} Security Groups")
@@ -195,15 +267,7 @@ class TestSecurityGroups(base.E2ETestCase):
 
         # Assert the ports are added to the Security Groups in OpenStack
         LOG.info("Verifying Ports are added to the Security Groups in OpenStack")
-        for i, port in enumerate(self.test_ports):
-            sgs_slice = self.get_sgs_slice(stateful=i % 2 == 0)
-            os_port = self.neutron_client.show_port(port['id'])['port']
-            self.assertIsNotNone(os_port, f"Port {port['id']} not found in OpenStack.")
-            self.assertEqual(len(os_port['security_groups']), len(sgs_slice),
-                             f"Port {port['id']} is not in the correct number of Security Groups.")
-            for sg in sgs_slice:
-                self.assertIn(sg['id'], os_port['security_groups'],
-                              f"Port {port['id']} is not in Security Group {sg['id']}.")
+        self.assert_ports_in_os_sgs()
 
         # Attach the ports to the server
         LOG.info(f"Attaching Ports to the Test Server '{self.test_server1_name}'")
@@ -214,32 +278,11 @@ class TestSecurityGroups(base.E2ETestCase):
 
         # Assert Security Groups are created in NSX and the ports are associated with them
         LOG.info("Verifying Security Groups are created in NSX and the ports are associated with them")
-        attached_ports = self.test_server.interface_list()
-        for p in self.test_ports:
-            self.assertIn(p['id'], [p.id for p in attached_ports], f"Port {p['id']} not attached to the server.")
-        self.assert_os_ports_nsx_sg_membership(attached_ports)
+        self.assert_ports_in_nsx_sgs()
 
         # Assert Security Group Rules are created in NSX
         LOG.info("Verifying Security Group Rules are created in NSX")
-        for sg in self.test_sgs:
-            os_sg = self.neutron_client.show_security_group(sg['id'])['security_group']
-            self.assertIsNotNone(os_sg, f"Security Group {sg['id']} not found in OpenStack.")
-
-            osrules = os_sg['security_group_rules']
-            self.assertIsNotNone(osrules, f"Security Group {sg['id']} has no rules in OpenStack.")
-
-            nsx_sg = self.get_nsx_sg_by_os_id(os_sg['id'])
-            self.assertIsNotNone(nsx_sg, f"Security Group {os_sg['id']} not found in NSX.")
-
-            nsx_sg_rules = self.get_nsx_rules(os_sg_id=os_sg['id'], desired_count=len(osrules))
-
-            self.assertIsNotNone(nsx_sg_rules, f"""Security Group {os_sg['id']} has no rules in NSX or the number of rules in NSX is incorrect.
-                                 Expected: {len(osrules)} Rules, Found: {len(self.get_nsx_rules_no_retry(os_sg['id']))} Rules.""")
-            self.assertEqual(len(nsx_sg_rules), len(osrules),
-                             f"Security Group {os_sg['id']} has incorrect number of rules in NSX.")
-            for rule in osrules:
-                # TODO: Add more assertions here to compare the rules in NSX Policy Rules with the OpenStack Security Groups Rules
-                pass
+        self.assert_nsx_sg_rules()
 
     ##############################################################################################
     ##############################################################################################
@@ -306,7 +349,7 @@ class TestSecurityGroups(base.E2ETestCase):
 
             # Create the rules
             for rule_fixture in rules:
-                LOG.info(f"Creating rule: {rule_fixture['description']}")
+                LOG.debug(f"Creating rule: {rule_fixture['description']}")
                 rule_params["security_group_rule"] = {
                     "security_group_id": sg['id']
                 }
@@ -389,3 +432,123 @@ class TestSecurityGroups(base.E2ETestCase):
             {"name": f"e2e-sg{i+1}-" + str(uuid.uuid4()), "id": None, "stateful": None}
             for i in range(n)
         ]
+
+    def assert_nsx_sg_rules(self):
+        for sg in self.test_sgs:
+            os_sg = self.neutron_client.show_security_group(sg['id'])['security_group']
+            self.assertIsNotNone(os_sg, f"Security Group {sg['id']} not found in OpenStack.")
+
+            osrules = os_sg['security_group_rules']
+            self.assertIsNotNone(osrules, f"Security Group {sg['id']} has no rules in OpenStack.")
+
+            nsx_sg = self.get_nsx_sg_by_os_id(os_sg['id'])
+            self.assertIsNotNone(nsx_sg, f"Security Group {os_sg['id']} not found in NSX.")
+
+            nsx_sg_rules = self.get_nsx_rules(os_sg_id=os_sg['id'], desired_count=len(osrules))
+
+            self.assertIsNotNone(nsx_sg_rules, f"""Security Group {os_sg['id']} has no rules in NSX or the number of rules in NSX is incorrect.
+                                 Expected: {len(osrules)} Rules, Found: {len(self.get_nsx_rules_no_retry(os_sg['id']))} Rules.""")
+            self.assertEqual(len(nsx_sg_rules), len(osrules),
+                             f"Security Group {os_sg['id']} has incorrect number of rules in NSX.")
+
+            osrules_by_sg_id, nsx_rules_by_sg_id = self._group_os_nsx_rules(osrules, nsx_sg_rules)
+            rules_direction_map = {
+                'ingress': 'IN',
+                'egress': 'OUT'
+            }
+            for sg_id, os_rules in osrules_by_sg_id.items():
+                nsx_rules = nsx_rules_by_sg_id.get(sg_id, [])
+                self.assertEqual(len(os_rules), len(nsx_rules),
+                                 f"Security Group {sg_id} has incorrect number of rules in NSX.")
+                # Assert the rules are the same ID in both OpenStack and NSX
+                for os_rule in os_rules:
+                    nsx_rule = next((r for r in nsx_rules if r['id'] == os_rule['id']), None)
+                    self._assert_rule_profiles(os_rule, nsx_rule)
+                    self._assert_rule_scope(os_rule, nsx_rule)
+                    self.assertIsNotNone(nsx_rule, f"Rule {os_rule['id']} not found in NSX.")
+                    self.assertEqual('ALLOW', nsx_rule['action'], f"Rule {os_rule['id']} has incorrect action in NSX.")
+                    self.assertEqual(os_rule['ethertype'].upper(), nsx_rule['ip_protocol'].upper(),
+                                     f"Rule {os_rule['id']} has incorrect ethertype in NSX.")
+                    self.assertEqual(rules_direction_map.get(
+                        os_rule['direction']), nsx_rule['direction'], f"Rule {os_rule['id']} has incorrect direction in NSX.")
+                    self._assert_rule_port_range(os_rule, nsx_rule)
+                    self._assert_rule_remote_ip_prefix(os_rule, nsx_rule)
+                    self._assert_rule_remote_group_id(os_rule, nsx_rule)
+                    self._assert_rule_protocol(os_rule, nsx_rule)
+
+    def _assert_rule_profiles(self, os_rule, nsx_rule):
+        self.assertEqual("ANY", nsx_rule['profiles'][0], f"Rule {os_rule['id']} has incorrect profile in NSX.")
+
+    def _assert_rule_scope(self, os_rule, nsx_rule):
+        self.assertEqual("ANY", nsx_rule['scope'][0], f"Rule {os_rule['id']} has incorrect scope in NSX.")
+
+    def _assert_rule_port_range(self, os_rule, nsx_rule):
+        if os_rule['port_range_min'] is not None and os_rule['port_range_max'] is not None:
+            if os_rule['port_range_min'] == os_rule['port_range_max']:
+                self.assertEqual(f"{os_rule['port_range_min']}", f"{nsx_rule['service_entries'][0]['destination_ports'][0]}",
+                                 f"Rule {os_rule['id']} has incorrect port range in NSX.")
+            else:
+                self.assertEqual(f"{os_rule['port_range_min']}-{os_rule['port_range_max']}", nsx_rule['service_entries']
+                                 [0]['destination_ports'][0], f"Rule {os_rule['id']} has incorrect port range in NSX.")
+
+    def _assert_rule_remote_ip_prefix(self, os_rule, nsx_rule):
+        if os_rule['remote_ip_prefix']:
+            if os_rule["direction"] == "ingress":
+                self.assertIn(os_rule['remote_ip_prefix'], nsx_rule['source_groups'],
+                              f"Rule {os_rule['id']} has incorrect remote_ip_prefix in NSX.")
+            elif os_rule["direction"] == "egress":
+                self.assertIn(os_rule['remote_ip_prefix'], nsx_rule['destination_groups'],
+                              f"Rule {os_rule['id']} has incorrect remote_ip_prefix in NSX.")
+
+    def _assert_rule_remote_group_id(self, os_rule, nsx_rule):
+        if os_rule['remote_group_id']:
+            if os_rule["direction"] == "ingress":
+                self.assertIn(f"/infra/domains/default/groups/{os_rule['remote_group_id']}",
+                              nsx_rule['source_groups'], f"Rule {os_rule['id']} has incorrect remote_group_id in NSX.")
+            elif os_rule["direction"] == "egress":
+                self.assertIn(f"/infra/domains/default/groups/{os_rule['remote_group_id']}",
+                              nsx_rule['destination_groups'], f"Rule {os_rule['id']} has incorrect remote_group_id in NSX.")
+
+    def _assert_rule_protocol(self, os_rule, nsx_rule):
+        if os_rule['protocol'] == 'icmp':
+            if os_rule['ethertype'] == "IPv4":
+                self.assertEqual("ICMPv4", nsx_rule.get('service_entries', [{}])[0].get(
+                    'protocol'), f"Rule {os_rule['id']} has incorrect L4 protocol in NSX.")
+            elif os_rule['ethertype'] == "IPv6":
+                self.assertEqual("ICMPv6", nsx_rule.get('service_entries', [{}])[0].get(
+                    'protocol'), f"Rule {os_rule['id']} has incorrect L4 protocol in NSX.")
+        if os_rule['protocol'] == 'tcp' or os_rule['protocol'] == 'udp':
+            self.assertEqual(os_rule['protocol'].upper(), nsx_rule['service_entries'][0]
+                             ['l4_protocol'].upper(), f"Rule {os_rule['id']} has incorrect protocol in NSX.")
+
+    def _group_os_nsx_rules(self, osrules, nsx_sg_rules):
+        # Group all osrules by 'security_group_id' key
+        osrules_by_sg_id: dict[str, list[dict]] = {}
+        for rule in osrules:
+            sg_id = rule['security_group_id']
+            osrules_by_sg_id.setdefault(sg_id, []).append(rule)
+
+            # Group all nsx_sg_rules by 'parent_path' key
+        nsx_rules_by_sg_id: dict[str, list[dict]] = {}
+        for nsx_rule in nsx_sg_rules:
+            nsx_sg_id = nsx_rule['parent_path'].split('/')[-1]
+            nsx_rules_by_sg_id.setdefault(nsx_sg_id, []).append(nsx_rule)
+
+        return osrules_by_sg_id, nsx_rules_by_sg_id
+
+    def assert_ports_in_nsx_sgs(self):
+        attached_ports = self.test_server.interface_list()
+        for p in self.test_ports:
+            self.assertIn(p['id'], [p.id for p in attached_ports], f"Port {p['id']} not attached to the server.")
+        self.assert_os_ports_nsx_sg_membership(attached_ports)
+
+    def assert_ports_in_os_sgs(self):
+        for i, port in enumerate(self.test_ports):
+            sgs_slice = self.get_sgs_slice(stateful=i % 2 == 0)
+            os_port = self.neutron_client.show_port(port['id'])['port']
+            self.assertIsNotNone(os_port, f"Port {port['id']} not found in OpenStack.")
+            self.assertEqual(len(os_port['security_groups']), len(sgs_slice),
+                             f"Port {port['id']} is not in the correct number of Security Groups.")
+            for sg in sgs_slice:
+                self.assertIn(sg['id'], os_port['security_groups'],
+                              f"Port {port['id']} is not in Security Group {sg['id']}.")

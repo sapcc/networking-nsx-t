@@ -59,10 +59,10 @@
    - Add/Remove trunk to/from server [implemented]
    - Provision server with trunk [implemented]
 ## Security Groups & Policies
-   - Create/Delete/Update Security Groups (Remote IP)
-   - Create/Delete/Update Security Groups (Remote Group)
-   - Add/Remove rules to Security Groups
-   - Add/Remove ports to/from Security Group
+   - Create/Delete/Update Security Groups (Remote IP) [implemented]
+   - Create/Delete/Update Security Groups (Remote Group) [implemented]
+   - Add/Remove rules to Security Groups [implemented]
+   - Add/Remove ports to/from Security Group [implemented]
 ## Address Groups
    - Create/Delete/Update IPv4/IPv6 address groups [implemented]
    - Create mixed IPv4/IPv6 members [implemented]
