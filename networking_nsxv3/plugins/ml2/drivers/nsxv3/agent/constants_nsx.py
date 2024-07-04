@@ -1,4 +1,4 @@
-
+import neutron_lib.constants as neutron_constants
 
 # IP_PROTOCOL_NUMBERS source
 # https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
@@ -233,7 +233,7 @@ DEFAULT_INFRASTRUCTURE_POLICIES = [
                 "id": "HTTP",
                 "display_name": "HTTP",
                 "source_groups": ["ANY"],
-                "destination_groups": ["169.254.169.254"],
+                "destination_groups": [neutron_constants.METADATA_V4_IP, neutron_constants.METADATA_V6_IP],
                 "services": ["/infra/services/HTTP"],
                 "service_entries": [],
                 "profiles": ["ANY"],
