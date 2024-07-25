@@ -10,7 +10,13 @@ from neutron_lib.api import extensions as api_extensions
 from neutron_lib.plugins import constants as plugin_constants
 from neutron_lib.plugins import directory
 from neutron import policy
-from neutron import wsgi
+
+try:
+    from neutron.api import wsgi
+except ImportError:
+    from neutron import wsgi
+
+
 from webob import exc as web_exc
 from webob import exc as exceptions
 from oslo_log import log
