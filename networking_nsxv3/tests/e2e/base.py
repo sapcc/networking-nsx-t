@@ -83,6 +83,7 @@ class E2ETestCase(base.BaseTestCase):
         cls.nsx_client = client_nsx.Client()
         cls.nsx_client.version  # This will force the client to login
         cls.OS_PROJECT_ID = cls.auth.get_project_id(cls.sess)
+        cls.availability_zone = g("E2E_BB")
 
     def setUp(self):
         super().setUp()
@@ -112,6 +113,7 @@ class E2ETestCase(base.BaseTestCase):
             min_count=1,
             max_count=1,
             security_groups=security_groups,
+            availability_zone=self.availability_zone,
             nics=[{'net-id': network_id}] if len(nic_ports) < 1 else nic_ports,
             block_device_mapping_v2=[{
                 "uuid": image.id,
@@ -240,7 +242,7 @@ class E2ETestCase(base.BaseTestCase):
     def set_test_server(self, server_name: str):
         """ Set the test server (self.test_server) to the server with the name provided.
         """
-        servers = self.nova_client.servers.list()
+        servers = self.nova_client.servers.list(search_opts={"availability_zone": self.availability_zone})
         self.test_server: Server = next((s for s in servers if s.name == server_name), None)
         self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")
 

@@ -1,11 +1,11 @@
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
+from networking_nsxv3.tests.e2e import base
+import uuid
+from oslo_log import log as logging
 import eventlet
 eventlet.monkey_patch()
 
 from networking_nsxv3.common import config  # noqa
-from oslo_log import log as logging
-import uuid
-from networking_nsxv3.tests.e2e import base
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 
 
 LOG = logging.getLogger(__name__)
@@ -21,7 +21,8 @@ class TestAddressGroups(base.E2ETestCase):
         self.new_grp_ids = []
         self.new_sg_ids = []
         self.existing_updated_ports = []
-        self.assertGreater(len(self.nova_client.servers.list()), 0, "At least one server should exist!")
+        servers = self.nova_client.servers.list(search_opts={"availability_zone": self.availability_zone})
+        self.assertGreater(len(servers), 0, "At least one server should exist in the specified availability zone!")
         self.def_os_sg = self.get_os_default_security_group()
 
     def tearDown(self):
