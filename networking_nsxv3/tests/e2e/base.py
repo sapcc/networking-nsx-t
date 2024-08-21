@@ -1,10 +1,13 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config  # noqa
+from typing import List
 from keystoneauth1 import identity
 from keystoneauth1 import session
 from networking_nsxv3.tests.e2e import neutron
 from novaclient.v2.servers import Server
+from novaclient.v2.servers import NetworkInterface
 from novaclient.v2.client import Client as NovaClient
 from novaclient import client as nova
 from neutron.tests import base
@@ -14,9 +17,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
 from oslo_config import cfg
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 import uuid
-
-from networking_nsxv3.common import config  # noqa
-
 
 LOG = logging.getLogger(__name__)
 
@@ -81,6 +81,7 @@ class E2ETestCase(base.BaseTestCase):
         cls.nsx_client = client_nsx.Client()
         cls.nsx_client.version  # This will force the client to login
         cls.OS_PROJECT_ID = cls.auth.get_project_id(cls.sess)
+        cls.availability_zone = g("E2E_BB")
 
     def setUp(self):
         super().setUp()
@@ -110,6 +111,7 @@ class E2ETestCase(base.BaseTestCase):
             min_count=1,
             max_count=1,
             security_groups=security_groups,
+            availability_zone=self.availability_zone,
             nics=[{'net-id': network_id}] if len(nic_ports) < 1 else nic_ports,
             block_device_mapping_v2=[{
                 "uuid": image.id,
@@ -154,21 +156,78 @@ class E2ETestCase(base.BaseTestCase):
             return resp.json()
         return None
 
-    @RetryDecorator.RetryIfResultIsNone(max_retries=5, sleep_duration=5)
-    def get_nsx_sg_effective_members(self, sg_id) -> list:
-        res = self.nsx_client.get(path=API.SEARCH_DSL, params={
-            "query": "resource_type:SegmentPort",
-            "dsl": sg_id,
-            "page_size": 100,
-            "data_source": "INTENT",
-            "exclude_internal_types": True
-        })
+    @RetryDecorator.RetryIfResultIsNone(max_retries=30, sleep_duration=30)
+    def get_nsx_rules(self, os_sg_id, desired_count=None):
+        res = self.nsx_client.get(API.RULES.format(os_sg_id))
         if res.ok:
             j = res.json()
             if j['result_count'] == 0:
                 return None
+            if desired_count is not None:
+                if j['result_count'] != desired_count:
+                    return None
             return j['results']
         return None
+
+    def get_nsx_rules_no_retry(self, os_sg_id):
+        res = self.nsx_client.get(API.RULES.format(os_sg_id))
+        if res.ok:
+            j = res.json()
+            if j['result_count'] == 0:
+                return []
+            return j['results']
+        return []
+
+    @RetryDecorator.RetryIfResultIsNone(max_retries=30, sleep_duration=60)
+    def get_nsx_sg_effective_members(self, os_sg_id, ensure_port_names: set = None) -> list:
+        """
+        Retrieves the effective members of an NSX security group.
+        Retries the request up to 30 times with a 60-second delay between retries.
+        If the `ensure_port_names` parameter is provided, the method will ensure that all port names are present in the response before returning.
+
+        Args:
+            os_sg_id (str): The ID of the OpenStack security group.
+            ensure_port_names (set, optional): A set of port names to ensure are present in the response.
+
+        Returns:
+            list: A list of effective members of the NSX security group, or None if the request fails or no members are found.
+        """
+        res = self.nsx_client.get(API.GROUP.format(os_sg_id) + "/members/segment-ports", {"page_size": 1000})
+        if res.ok:
+            j = res.json()
+            if j['result_count'] == 0:
+                return None
+            if ensure_port_names is not None:
+                # Ensure all ports are in the response
+                port_names = set([p['display_name'] for p in j['results']])
+                if not set(ensure_port_names).issubset(port_names):
+                    return None
+            return j['results']
+        return None
+
+    def get_sg_members_no_retry(self, os_sg_id) -> list:
+        res = self.nsx_client.get(API.GROUP.format(os_sg_id) + "/members/segment-ports", {"page_size": 1000})
+        if res.ok:
+            j = res.json()
+            if j['result_count'] == 0:
+                return []
+            return j['results']
+        return []
+
+    def get_os_default_security_group(self):
+        # Get the default security group
+        lsg = self.neutron_client.list_security_groups(project_id=self.OS_PROJECT_ID)
+        default_sg = [sg for sg in lsg['security_groups'] if sg['name'] == 'default'][0]
+
+        # Assert that the default security group exists and has active member ports
+        self.assertIsNotNone(default_sg, "Default security group must exist")
+        sg_ports = self.neutron_client.list_ports(security_groups=[default_sg['id']])
+        self.assertGreater(len(sg_ports), 0, "Default security group must have at least one port")
+        self.assertGreater(len(sg_ports['ports']), 0, "Default security group must have at least one port")
+        self.assertTrue(any([p['status'] == 'ACTIVE' and p['admin_state_up'] for p in sg_ports['ports']]),
+                        "Default security group must have at least one active port")
+
+        return default_sg
 
     def set_test_network(self, net_name: str):
         """ Set the test network (self.test_network) to the network with the name provided.
@@ -181,13 +240,23 @@ class E2ETestCase(base.BaseTestCase):
     def set_test_server(self, server_name: str):
         """ Set the test server (self.test_server) to the server with the name provided.
         """
-        servers = self.nova_client.servers.list()
+        servers = self.nova_client.servers.list(search_opts={"availability_zone": self.availability_zone})
         self.test_server: Server = next((s for s in servers if s.name == server_name), None)
-        self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")
+        self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found in AZ '{self.availability_zone}'.")
 
     def create_test_ports(self):
-        """ Create ports on the test network (self.test_network) and store their IDs (self.test_ports).
-            Also add cleanup for deletion.
+        """
+        Creates test ports for the given test network.
+
+        This method iterates over the list of test ports (self.test_ports) and creates a port for each one.
+        The created ports are associated with the test network specified by `self.test_network['id']`.
+        The name of each port is set based on the corresponding `self.port['name']` value.
+
+        Returns:
+            None
+
+        Raises:
+            Any exceptions raised by the `neutron_client.create_port` method.
         """
         for port in self.test_ports:
             result = self.neutron_client.create_port({
@@ -216,13 +285,55 @@ class E2ETestCase(base.BaseTestCase):
         self.addCleanup(self.neutron_client.delete_port, new_port['id'])
         return new_port
 
-    def assert_server_nsx_ports_sgs(self, ports: list):
+    def attach_test_ports_to_test_server(self):
+        """
+        Attach test ports to the test server.
+
+        This method attaches the test ports (self.test_ports) to the test server (elf.test_server),
+        using the `nova_client.servers.interface_attach` method.
+        It also adds a cleanup step to detach the ports using `nova_client.servers.interface_detach` method.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
+        for port in self.test_ports:
+            self.nova_client.servers.interface_attach(
+                server=self.test_server.id,
+                port_id=port['id'],
+                net_id=None,
+                fixed_ip=None
+            )
+            self.addCleanup(self.nova_client.servers.interface_detach, server=self.test_server.id, port_id=port['id'])
+
+    def assert_os_ports_nsx_sg_membership(self, ports: List[NetworkInterface]):
+        LOG.info(f"""Verifying NSX Security Group membership for {len(ports)} ports:
+                ({', '.join([p.id for p in ports])})
+                This may take a while as the test will try to wait for NSX to sync with OpenStack...""")
+        desired_results = []
+        actual_results = []
+
         for port in ports:
             port_sgs = self.neutron_client.show_port(port.id)['port']['security_groups']
+            desired_results.append({"port_id": port.id, "sgs": port_sgs})
+            actual_results.append({"port_id": port.id, "sgs": []})
             # For each SG get the Group from NSX and its members
             for sg_id in port_sgs:
-                nsx_ports_for_sg = self.get_nsx_sg_effective_members(sg_id)
-                self.assertIsNotNone(nsx_ports_for_sg, f"Security Group {sg_id} not found in NSX.")
+                nsx_ports_for_sg = self.get_nsx_sg_effective_members(sg_id, ensure_port_names={port.id})
+                self.assertIsNotNone(nsx_ports_for_sg, f"""Security Group {sg_id} not found in NSX or the port {port.id} is not a member.
+                                     Desired results: {desired_results[-1]}
+                                     NSX Ports in SG {sg_id}: {[p['display_name'] for p in self.get_sg_members_no_retry(sg_id)]}""")
                 # Assert the port is a member of the SG
                 nsx_port = next((p for p in nsx_ports_for_sg if p['display_name'] == port.id), None)
-                self.assertIsNotNone(nsx_port, f"Port {port.id} not found in Security Group {sg_id} in NSX.")
+                if nsx_port:
+                    actual_results[-1]['sgs'].append(sg_id)
+
+        # order 'sgs' sublists for comparison
+        for r in actual_results:
+            r['sgs'].sort()
+        for r in desired_results:
+            r['sgs'].sort()
+
+        self.assertListEqual(desired_results, actual_results, "Security Group membership does not match.")

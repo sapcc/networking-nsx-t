@@ -1,11 +1,11 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config # noqa
 import os
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_cache import core as cache
-from networking_nsxv3.common import config
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
 from neutron.tests import base
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import Provider
