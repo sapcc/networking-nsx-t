@@ -1,6 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config  # noqa
 from neutronclient.common.exceptions import NotFound
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 import random
@@ -10,8 +11,6 @@ import uuid
 import os
 from networking_nsxv3.tests.e2e import base
 from novaclient.v2.servers import Server
-
-from networking_nsxv3.common import config  # noqa
 
 LOG = logging.getLogger(__name__)
 

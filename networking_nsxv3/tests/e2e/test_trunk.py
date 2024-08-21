@@ -1,14 +1,13 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config  # noqa
 from novaclient.v2.servers import NetworkInterface
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 from networking_nsxv3.tests.e2e import base
 import uuid
 import os
 from oslo_log import log as logging
-
-from networking_nsxv3.common import config  # noqa
 
 LOG = logging.getLogger(__name__)
 

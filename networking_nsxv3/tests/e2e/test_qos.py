@@ -1,13 +1,12 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config  # noqa
 from oslo_log import log as logging
 import uuid
 import os
 from networking_nsxv3.tests.e2e import base
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
-
-from networking_nsxv3.common import config  # noqa
 
 LOG = logging.getLogger(__name__)
 

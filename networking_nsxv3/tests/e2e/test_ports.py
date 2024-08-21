@@ -1,6 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config  # noqa
 from novaclient.v2.servers import Server
 from networking_nsxv3.tests.e2e import base
 import os
@@ -9,8 +10,6 @@ from oslo_log import log as logging
 import ipaddress
 import random
 import copy
-
-from networking_nsxv3.common import config  # noqa
 
 LOG = logging.getLogger(__name__)
 

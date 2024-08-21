@@ -1,6 +1,7 @@
 import eventlet
 eventlet.monkey_patch()
 
+from networking_nsxv3.common import config  # noqa
 from typing import List
 from keystoneauth1 import identity
 from keystoneauth1 import session
@@ -16,9 +17,6 @@ from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import client_nsx
 from oslo_config import cfg
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 import uuid
-
-from networking_nsxv3.common import config  # noqa
-
 
 LOG = logging.getLogger(__name__)
 
@@ -244,7 +242,7 @@ class E2ETestCase(base.BaseTestCase):
         """
         servers = self.nova_client.servers.list(search_opts={"availability_zone": self.availability_zone})
         self.test_server: Server = next((s for s in servers if s.name == server_name), None)
-        self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found.")
+        self.assertIsNotNone(self.test_server, f"Server '{server_name}' not found in AZ '{self.availability_zone}'.")
 
     def create_test_ports(self):
         """
