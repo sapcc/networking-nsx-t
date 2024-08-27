@@ -177,7 +177,8 @@ def get_port(context, host, port_id):
         PortBinding.vif_details,
         PortBinding.status
     ).join(
-        StandardAttribute,
+        StandardAttribute
+    ).join(
         PortBinding
     ).filter(
         Port.id == port_id,
