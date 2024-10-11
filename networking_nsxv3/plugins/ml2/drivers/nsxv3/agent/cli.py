@@ -305,6 +305,7 @@ class CLI(object):
         for file in args.config_file:
             neutron_config.extend(["--config-file", file])
 
+        common_config.register_common_config_options()
         common_config.init(neutron_config)
         common_config.setup_logging()
         profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
