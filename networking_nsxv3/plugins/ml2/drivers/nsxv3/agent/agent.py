@@ -306,6 +306,7 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
 
 
 def main():
+    common_config.register_common_config_options()
     common_config.init(sys.argv[1:])
     common_config.setup_logging()
     agent_config.register_agent_state_opts_helper(cfg.CONF)

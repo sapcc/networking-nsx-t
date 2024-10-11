@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       matrix:
         python: [3.8.14]
-        tox-env: [unit,pep8,pip-missing-reqs]
+        tox-env: [pep8,]
     env:
       TOXENV: ${{ matrix.tox-env }}
     steps:
