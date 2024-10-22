@@ -10,6 +10,7 @@ from typing import Callable
 import oslo_messaging
 from neutron.common import config as common_config
 from neutron.common import profiler
+from neutron.conf import service as service_conf
 from neutron.plugins.ml2.drivers.agent import _agent_manager_base as amb
 from neutron.plugins.ml2.drivers.agent import _common_agent as ca
 from oslo_config import cfg
@@ -307,13 +308,14 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
 
 
 def main():
-    logging.register_options(cfg.CONF)
     common_config.register_common_config_options()
+    common_config.init(sys.argv[1:])
+
+    common_config.setup_logging()
     agent_config.register_agent_state_opts_helper(cfg.CONF)
 
-    common_config.init(sys.argv[1:])
-    common_config.setup_logging()
     profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
+    service_conf.register_service_opts(service_conf.RPC_EXTRA_OPTS, cfg.CONF)
     LOG.info("VMware NSXv3 Agent initializing ...")
 
     try:
