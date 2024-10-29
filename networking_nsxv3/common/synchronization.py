@@ -194,12 +194,16 @@ class Runner(object):
 
     def start(self):
         """ Initialize the runner instance """
+        if self._state != "not started":
+            return
         self._state = "started"
         eventlet.greenthread.spawn(self._start)
         eventlet.sleep(0)
 
     def stop(self):
         """ Gracefully terminates the runner instance """
+        if self._state != "started":
+            return
         self._state = "stopping"
         while True:
             a = self.active()
