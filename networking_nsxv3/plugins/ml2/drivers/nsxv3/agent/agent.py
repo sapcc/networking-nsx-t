@@ -140,23 +140,40 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
 
 class NSXv3Manager(amb.CommonAgentManagerBase):
-    def __init__(self, rpc: nsxv3_rpc.NSXv3ServerRpcApi, synchronization=True, monitoring=True):
+    def __init__(self, server_rpc: nsxv3_rpc.NSXv3ServerRpcApi, synchronization=True, monitoring=True):
         super(NSXv3Manager, self).__init__()
 
-        self.plcy_provider = provider_nsx_policy.Provider()
-
-        self.runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
-        self.runner.start()
-
-        self.realizer = realization.AgentRealizer(
-            rpc=rpc, callback=self._sync_delayed, kpi=self.kpi, nsx_provider=self.plcy_provider)
+        self._server_rpc = server_rpc
+        self._rpc = None
+        self._plcy_provider = None
+        self._runner = None
+        self._realizer = None
 
         self.synchronization = synchronization
         self.synchronizer = loopingcall.FixedIntervalLoopingCall(self._sync_all)
-        self.reload()
 
         if monitoring:
             exporter.nsxv3_agent_exporter()
+
+    @property
+    def realizer(self):
+        if self._realizer is None:
+            self._realizer = realization.AgentRealizer(
+                rpc=self._server_rpc, callback=self._sync_delayed, kpi=self.kpi,
+                nsx_provider=self.plcy_provider)
+        return self._realizer
+
+    @property
+    def plcy_provider(self):
+        if self._plcy_provider is None:
+           self._plcy_provider = provider_nsx_policy.Provider()
+        return self._plcy_provider
+
+    @property
+    def runner(self):
+        if self._runner is None:
+            self._runner = sync.Runner(workers_size=cfg.CONF.NSXV3.nsxv3_concurrent_requests)
+        return self._runner
 
     def _sync_all(self):
         try:
@@ -178,8 +195,8 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         return {"active": self.runner.active(), "passive": self.runner.passive()}
 
     def reload(self):
-        initial_delay = int(random.random() * cfg.CONF.AGENT.sync_skew)
         if self.synchronization:
+            initial_delay = int(random.random() * cfg.CONF.AGENT.sync_skew)
             self.synchronizer.start(interval=cfg.CONF.AGENT.polling_interval, initial_delay=initial_delay)
 
     def shutdown(self):
@@ -256,16 +273,20 @@ class NSXv3Manager(amb.CommonAgentManagerBase):
         :return: class - the class containing the agent rpc callback methods.
             It must reflect the CommonAgentManagerRpcCallBackBase Interface.
         """
-        if not hasattr(self, "rpc"):
-            self.rpc = NSXv3AgentManagerRpcCallBackBase(
+        if self._rpc is None:
+            self._rpc = NSXv3AgentManagerRpcCallBackBase(
                 context, agent, sg_agent, callback=self._sync_immediate, realizer=self.realizer
             )
-        return self.rpc
+        return self._rpc
 
     def get_agent_api(self, **kwargs):
         """Get L2 extensions drivers API interface class.
         :return: instance of the class containing Agent Extension API
         """
+        # Called after RPC has been set up
+        self.runner.start()
+        self.reload()
+        return None
 
     def get_rpc_consumers(self):
         """Get a list of topics for which an RPC consumer should be created
@@ -312,10 +333,10 @@ def main():
     common_config.init(sys.argv[1:])
 
     common_config.setup_logging()
+    service_conf.register_service_opts(service_conf.RPC_EXTRA_OPTS, cfg.CONF)
     agent_config.register_agent_state_opts_helper(cfg.CONF)
 
     profiler.setup(nsxv3_constants.NSXV3_BIN, cfg.CONF.host)
-    service_conf.register_service_opts(service_conf.RPC_EXTRA_OPTS, cfg.CONF)
     LOG.info("VMware NSXv3 Agent initializing ...")
 
     try:
@@ -327,10 +348,14 @@ def main():
     except (ValueError, TypeError):
         LOG.error("Initializing Eventlet blocking behavior detection has failed.")
 
+    manager = NSXv3Manager(server_rpc=nsxv3_rpc.NSXv3ServerRpcApi())
+
+    polling_interval = cfg.CONF.AGENT.polling_interval
+    quitting_rpc_timeout = cfg.CONF.AGENT.quitting_rpc_timeout
     agent = ca.CommonAgentLoop(
-        NSXv3Manager(rpc=nsxv3_rpc.NSXv3ServerRpcApi()),
-        cfg.CONF.AGENT.polling_interval,
-        cfg.CONF.AGENT.quitting_rpc_timeout,
+        manager,
+        polling_interval,
+        quitting_rpc_timeout,
         nsxv3_constants.NSXV3_AGENT_TYPE,
         nsxv3_constants.NSXV3_BIN
     )
