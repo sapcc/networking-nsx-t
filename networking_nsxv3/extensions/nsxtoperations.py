@@ -3,6 +3,10 @@ import json
 import importlib
 import functools
 
+#Load common config here, as registering the api extension fails without
+from neutron.common import config
+config.register_common_config_options()
+
 from neutron import policy
 from neutron.api import extensions
 from neutron.api.v2.resource import Resource

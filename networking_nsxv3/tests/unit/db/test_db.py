@@ -7,11 +7,11 @@ from neutron.db import models_v2
 
 from neutron.plugins.ml2 import models as ml2_models
 from neutron.tests.unit import testlib_api
-from sqlalchemy.orm.session import Session
 from networking_nsxv3.common import constants as nsxv3_constants
 from neutron.db.qos.models import (QosPolicy, QosPortPolicyBinding)
 from neutron.services.trunk import models as trunk_model
 from neutron.db.models import securitygroup as sg_model
+from neutron_lib.db import api as db_api
 
 from networking_nsxv3.db import db
 
@@ -24,7 +24,6 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
     def setUp(self):
         super(TestAgentsDbBase, self).setUp()
         self.ctx = context.get_admin_context()
-        self.session: Session = self.ctx.session
         self.plugin = FakePlugin()
 
         self.tenant_id = 1
@@ -47,23 +46,6 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
             "shared": False,
             "name": "test_net_1",
             "admin_state_up": True,
-            "description": ""
-        }})
-        self.plugin.create_subnetpool(self.ctx, {"subnetpool": {
-            "tenant_id": self.tenant_id,
-            "id": self.ip_pool_id,
-            "name": "default_test_pool",
-            "prefixes": ["192.168.0.0", "192.168.1.0", "192.168.2.0"],
-            # "min_prefix": 16,
-            "min_prefixlen": 16,
-            # "max_prefix": "",
-            "max_prefixlen": 32,
-            # "default_prefix": "",
-            "default_prefixlen": 32,
-            # "default_quota": "",
-            # "address_scope_id": "",
-            "is_default": True,
-            "shared": True,
             "description": ""
         }})
         self.plugin.create_port(self.ctx, {"port": {
@@ -103,10 +85,10 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         subnet = self.plugin.create_subnet(self.ctx, {"subnet": {
             "tenant_id": self.tenant_id,
             "name": "subnet_192_168",
-            "cidr": "192.168.0.0/32",
+            "cidr": "192.168.0.0/28",
             "ip_version": 4,
             "network_id": self.net_id,
-            "subnetpool_id": self.ip_pool_id,
+            #"subnetpool_id": self.ip_pool_id,
             "allocation_pools": [],
             "enable_dhcp": True,
             "dns_nameservers": [],
@@ -155,9 +137,10 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
             )
         ]
 
-        with self.session.begin(subtransactions=True):
+        self.ctx = context.get_admin_context()
+        with db_api.CONTEXT_WRITER.using(self.ctx):
             for entry in neutron_db:
-                self.session.add(entry)
+                self.ctx.session.add(entry)
 
     def test_get_ports(self):
         port_1 = db.get_port(self.ctx, self.host, self.port_id_1)
@@ -188,8 +171,8 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         self.assertEqual(None, port_2)
 
     def test_port_qos(self):
-        with self.session.begin(subtransactions=True):
-            self.session.add(QosPortPolicyBinding(
+        with db_api.CONTEXT_WRITER.using(self.ctx):
+            self.ctx.session.add(QosPortPolicyBinding(
                 policy_id=self.qos_id_1,
                 port_id=self.port_id_1
             ))
@@ -205,19 +188,19 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         self.assertEqual(self.port_id_1, qos_port[0])
 
     def test_trunk_port(self):
-        with self.session.begin(subtransactions=True):
-            self.session.add(trunk_model.SubPort(
+        with db_api.CONTEXT_WRITER.using(self.ctx):
+            self.ctx.session.add(trunk_model.SubPort(
                 port_id=self.port_id_2,
                 trunk_id=self.trunk_id_1,
                 segmentation_type="vlan",
                 segmentation_id=11
             ))
-            self.session.add(ml2_models.PortBinding(
+            self.ctx.session.add(ml2_models.PortBinding(
                 port_id=self.port_id_2,
                 host=self.host,
                 vif_type="ovs"
             ))
-            self.session.add(ml2_models.PortBindingLevel(
+            self.ctx.session.add(ml2_models.PortBindingLevel(
                 port_id=self.port_id_2,
                 host=self.host,
                 driver=nsxv3_constants.NSXV3,
@@ -244,8 +227,8 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
             }, port_2)
 
     def test_port_sgs(self):
-        with self.session.begin(subtransactions=True):
-            self.session.add(sg_model.SecurityGroupPortBinding(
+        with db_api.CONTEXT_WRITER.using(self.ctx):
+            self.ctx.session.add(sg_model.SecurityGroupPortBinding(
                 security_group_id=self.sg_id_1,
                 port_id=self.port_id_1
             ))
@@ -255,6 +238,7 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         sg = db.get_security_group_revision(self.ctx, self.sg_id_1)
         port_sgs = db.get_port_security_groups(self.ctx, self.port_id_1)
         port_ids = db.get_port_id_by_sec_group_id(self.ctx, self.host, self.sg_id_1)
+        # Result returns a cartesian product mapping all entries of the StandardAttributes
         sgs_for_host = db.get_security_groups_for_host(self.ctx, self.host, 100, 0)
         sg_ips = db.get_security_group_members_ips(self.ctx, self.sg_id_1)
         sg_port_ids = db.get_security_group_port_ids(self.ctx, self.host, self.sg_id_1)
@@ -270,7 +254,7 @@ class TestAgentsDbBase(testlib_api.SqlTestCase):
         self.assertEqual(self.sg_id_1, port_sgs[0][0])
         self.assertEqual(1, len(port_ids))
         self.assertEqual(self.port_id_1, port_ids[0])
-        self.assertEqual(9, len(sgs_for_host))
+        self.assertEqual(8, len(sgs_for_host))
         for sgs_for_h in sgs_for_host:
             self.assertEqual(self.sg_id_1, sgs_for_h[0])
         self.assertEqual(1, len(sg_ips))
