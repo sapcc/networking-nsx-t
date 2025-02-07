@@ -1136,7 +1136,14 @@ class Provider(base.Provider):
         return outdated, current
 
     def age(self, resource_type: str, os_ids: List[str]):
-        return [(resource_type, id, self.metadata(resource_type, id).age) for id in os_ids]
+        aged_resources = []
+        for id in os_ids:
+            meta_data = self.metadata(resource_type, id)
+            if meta_data:
+                aged_resources.append((resource_type, id, meta_data.age))
+            else:
+                LOG.info("Resource: %s with ID: %s has no metadata", resource_type, id)
+        return aged_resources
 
     # overrides
     def sanitize(self, slice):
