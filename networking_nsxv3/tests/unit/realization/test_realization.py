@@ -92,30 +92,32 @@ class TestAgentRealizer(base.BaseTestCase):
         _, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1000" in plcy_meta[plcy.NETWORK]["meta"], True)
-        self.assertEquals("3200" in plcy_meta[plcy.NETWORK]["meta"], True)
+        self.assertIn("1000", plcy_meta[plcy.NETWORK]["meta"])
+        self.assertIn("3200", plcy_meta[plcy.NETWORK]["meta"])
 
         # Validate QoS State
-        self.assertEquals(c.QOS_INTERNAL["id"] in plcy_meta[plcy.QOS]["meta"], True)
-        self.assertEquals(c.QOS_EXTERNAL["id"] in plcy_meta[plcy.QOS]["meta"], True)
-        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in plcy_meta[plcy.QOS]["meta"], False)
+        q_meta =  plcy_meta[plcy.QOS]["meta"]
+        self.assertIn(c.QOS_INTERNAL["id"], q_meta)
+        self.assertIn(c.QOS_EXTERNAL["id"], q_meta)
+        self.assertNotIn(c.QOS_NOT_REFERENCED["id"], q_meta)
 
         # Validate Security Groups Members
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-        self.assertEquals(
-            c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], False)
+        sg_meta = plcy_meta[plcy.SG_MEMBERS]["meta"]
+        self.assertIn(c.SECURITY_GROUP_FRONTEND["id"] , sg_meta)
+        self.assertIn(c.SECURITY_GROUP_BACKEND["id"] , sg_meta)
+        self.assertIn(c.SECURITY_GROUP_DB["id"] , sg_meta)
+        self.assertIn(c.SECURITY_GROUP_OPERATIONS["id"] , sg_meta)
+        self.assertIn(c.SECURITY_GROUP_AUTH["id"] , sg_meta)
+        self.assertNotIn(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"], sg_meta)
 
         # Validate Security Group Rules Sections
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[plcy.SG_RULES]["meta"], False)
+        sr_meta =  plcy_meta[plcy.SG_RULES]["meta"]
+        self.assertIn(c.SECURITY_GROUP_FRONTEND["id"] , sr_meta)
+        self.assertIn(c.SECURITY_GROUP_BACKEND["id"] , sr_meta)
+        self.assertIn(c.SECURITY_GROUP_DB["id"] , sr_meta)
+        self.assertIn(c.SECURITY_GROUP_OPERATIONS["id"] , sr_meta)
+        self.assertNotIn(c.SECURITY_GROUP_AUTH["id"] , sr_meta)
+        self.assertNotIn(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] , sr_meta)
 
         # Validate Security Group Remote Prefix IPSets
         for id in plcy_meta[plcy.SG_RULES_REMOTE_PREFIX]["meta"].keys():
@@ -136,16 +138,16 @@ class TestAgentRealizer(base.BaseTestCase):
         _, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1001" in plcy_meta[pp.NETWORK]["meta"], True)
+        self.assertIn("1001", plcy_meta[pp.NETWORK]["meta"])
 
         # Validate QoS State
-        self.assertEquals(c.QOS_EXTERNAL["id"] in plcy_meta[pp.QOS]["meta"], True)
+        self.assertIn(c.QOS_EXTERNAL["id"], plcy_meta[pp.QOS]["meta"])
 
         # Validate Security Groups Members
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
+        self.assertIn(c.SECURITY_GROUP_FRONTEND["id"], plcy_meta[pp.SG_MEMBERS]["meta"])
 
         # Validate Security Group Rules Sections
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
+        self.assertIn(c.SECURITY_GROUP_FRONTEND["id"], plcy_meta[pp.SG_RULES]["meta"])
 
         # Validate Security Group Remote Prefix IPSets
         for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
@@ -182,35 +184,39 @@ class TestAgentRealizer(base.BaseTestCase):
         _, plcy_meta = env.dump_provider_inventory(printable=False)
 
         # Validate network creation
-        self.assertEquals("1000" in plcy_meta[pp.NETWORK]["meta"], True)
-        self.assertEquals("3200" in plcy_meta[pp.NETWORK]["meta"], True)
+        self.assertIn("1000", plcy_meta[pp.NETWORK]["meta"])
+        self.assertIn("3200", plcy_meta[pp.NETWORK]["meta"])
 
         # Validate Ports
-        self.assertEquals(c.PORT_FRONTEND_EXTERNAL["id"] in plcy_meta[pp.PORT]["meta"], False)
-        self.assertEquals(c.PORT_FRONTEND_INTERNAL["id"] in plcy_meta[pp.PORT]["meta"], False)
-        self.assertEquals(c.PORT_BACKEND["id"] in plcy_meta[pp.PORT]["meta"], True)
-        self.assertEquals(c.PORT_DB["id"] in plcy_meta[pp.PORT]["meta"], True)
+        port_meta = plcy_meta[pp.PORT]["meta"]
+        self.assertNotIn(c.PORT_FRONTEND_EXTERNAL["id"], port_meta)
+        self.assertNotIn(c.PORT_FRONTEND_INTERNAL["id"], port_meta)
+        self.assertIn(c.PORT_BACKEND["id"], port_meta)
+        self.assertIn(c.PORT_DB["id"], port_meta)
 
         # Validate QoS State
-        self.assertEquals(c.QOS_INTERNAL["id"] in plcy_meta[pp.QOS]["meta"], False)
-        self.assertEquals(c.QOS_EXTERNAL["id"] in plcy_meta[pp.QOS]["meta"], False)
-        self.assertEquals(c.QOS_NOT_REFERENCED["id"] in plcy_meta[pp.QOS]["meta"], False)
+        qos_meta = plcy_meta[pp.QOS]["meta"]
+        self.assertNotIn(c.QOS_INTERNAL["id"], qos_meta)
+        self.assertNotIn(c.QOS_EXTERNAL["id"], qos_meta)
+        self.assertNotIn(c.QOS_NOT_REFERENCED["id"], qos_meta)
 
         # Validate Security Groups Members
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[pp.SG_MEMBERS]["meta"], False)
+        sg_meta = plcy_meta[pp.SG_MEMBERS]["meta"]
+        self.assertIn(c.SECURITY_GROUP_FRONTEND["id"], sg_meta)
+        self.assertIn(c.SECURITY_GROUP_BACKEND["id"], sg_meta)
+        self.assertIn(c.SECURITY_GROUP_DB["id"], sg_meta)
+        self.assertIn(c.SECURITY_GROUP_OPERATIONS["id"], sg_meta)
+        self.assertIn(c.SECURITY_GROUP_AUTH["id"], sg_meta)
+        self.assertNotIn(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"], sg_meta)
 
         # Validate Security Group Rules Sections
-        self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_BACKEND["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[pp.SG_RULES]["meta"], True)
-        self.assertEquals(c.SECURITY_GROUP_AUTH["id"] in plcy_meta[pp.SG_RULES]["meta"], False)
-        self.assertEquals(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"] in plcy_meta[pp.SG_RULES]["meta"], False)
+        sr_meta =  plcy_meta[pp.SG_RULES]["meta"]
+        self.assertIn(c.SECURITY_GROUP_FRONTEND["id"], sr_meta)
+        self.assertIn(c.SECURITY_GROUP_BACKEND["id"], sr_meta)
+        self.assertIn(c.SECURITY_GROUP_DB["id"], sr_meta)
+        self.assertIn(c.SECURITY_GROUP_OPERATIONS["id"], sr_meta)
+        self.assertNotIn(c.SECURITY_GROUP_AUTH["id"], sr_meta)
+        self.assertNotIn(c.SECURITY_GROUP_OPERATIONS_NOT_REFERENCED["id"], sr_meta)
 
         # Validate Security Group Remote Prefix IPSets
         for id in plcy_meta[pp.SG_RULES_REMOTE_PREFIX]["meta"].keys():
@@ -299,32 +305,29 @@ class TestGroupsRealization(base.BaseTestCase):
                 eventlet.sleep(120)
 
                 plcy = env.manager.realizer.nsx_provider
-                plcy_meta, plcy_meta = env.dump_provider_inventory(printable=False)
+                _, plcy_meta = env.dump_provider_inventory(printable=False)
 
                 # Validate Networks
-                self.assertEquals("1000" in plcy_meta[plcy.NETWORK]["meta"], True)
+                self.assertIn("1000", plcy_meta[plcy.NETWORK]["meta"])
 
                 # Validate Ports
-                self.assertEquals(c.PORT_WITH_3_SG["id"] in plcy_meta[plcy.PORT]["meta"], True)
+                self.assertIn(c.PORT_WITH_3_SG["id"], plcy_meta[plcy.PORT]["meta"])
 
                 # Validate Security Groups Members
-                self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-                self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-                self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+                meta = plcy_meta[plcy.SG_MEMBERS]["meta"]
+                self.assertIn(c.SECURITY_GROUP_FRONTEND["id"], meta)
+                self.assertIn(c.SECURITY_GROUP_OPERATIONS["id"], meta)
+                self.assertIn(c.SECURITY_GROUP_DB["id"], meta)
 
                 # Assert the new static membership is used
-                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
-                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"], True)
-                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
-                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"], True)
-                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
-                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_members"], True)
+                path = plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                self.assertIn(path, meta[c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"])
+                self.assertIn(path, meta[c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"])
+                self.assertIn(path, meta[c.SECURITY_GROUP_DB["id"]]["sg_members"])
 
-                self.assertEquals(3, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
-                                  [c.SECURITY_GROUP_FRONTEND["id"]]["sg_cidrs"]))
-                self.assertEquals(4, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
-                                [c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
-                self.assertEquals(2, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))
+                self.assertEquals(3, len(meta[c.SECURITY_GROUP_FRONTEND["id"]]["sg_cidrs"]))
+                self.assertEquals(4, len(meta[c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
+                self.assertEquals(2, len(meta[c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))
 
             with env:
                 # Test static SG membership cleanup
@@ -337,20 +340,17 @@ class TestGroupsRealization(base.BaseTestCase):
                 _, plcy_meta = env.dump_provider_inventory(printable=False)
 
                 # Validate Security Groups Members
-                self.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-                self.assertEquals(c.SECURITY_GROUP_OPERATIONS["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
-                self.assertEquals(c.SECURITY_GROUP_DB["id"] in plcy_meta[plcy.SG_MEMBERS]["meta"], True)
+                meta = plcy_meta[plcy.SG_MEMBERS]["meta"]
+                self.assertIn(c.SECURITY_GROUP_FRONTEND["id"], meta)
+                self.assertIn(c.SECURITY_GROUP_OPERATIONS["id"], meta)
+                self.assertIn(c.SECURITY_GROUP_DB["id"], meta)
 
                 # Assert the new static membership is NOT used
-                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
-                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"], False)
-                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
-                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"], False)
-                self.assertEquals(plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
-                                in plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_members"], False)
+                path = plcy_meta[plcy.PORT]["meta"][c.PORT_WITH_3_SG["id"]]["path"]
+                self.assertNotIn(path, meta[c.SECURITY_GROUP_FRONTEND["id"]]["sg_members"])
+                self.assertNotIn(path, meta[c.SECURITY_GROUP_OPERATIONS["id"]]["sg_members"])
+                self.assertNotIn(path, meta[c.SECURITY_GROUP_DB["id"]]["sg_members"])
 
-                self.assertEquals(3, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
-                                  [c.SECURITY_GROUP_FRONTEND["id"]]["sg_cidrs"]))
-                self.assertEquals(4, len(plcy_meta[plcy.SG_MEMBERS]["meta"]
-                                [c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
-                self.assertEquals(1, len(plcy_meta[plcy.SG_MEMBERS]["meta"][c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))
+                self.assertEquals(3, len(meta[c.SECURITY_GROUP_FRONTEND["id"]]["sg_cidrs"]))
+                self.assertEquals(4, len(meta[c.SECURITY_GROUP_OPERATIONS["id"]]["sg_cidrs"]))
+                self.assertEquals(1, len(meta[c.SECURITY_GROUP_DB["id"]]["sg_cidrs"]))
