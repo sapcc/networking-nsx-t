@@ -296,7 +296,7 @@ class CLI(object):
         if hasattr(self, args.command):
             getattr(self, args.command)()
         else:
-            LOG.error("Unrecognized command")
+            LOG.error("Unrecognized command: %s", args)
             parser.print_help()
             exit(1)
 
