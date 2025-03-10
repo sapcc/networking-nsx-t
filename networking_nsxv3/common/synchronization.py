@@ -1,7 +1,6 @@
 """
 Synchronization - classes related concurrent execution scheduling and limits
 """
-from typing import Callable, Union, Optional, List
 
 import eventlet
 eventlet.monkey_patch()
@@ -10,6 +9,7 @@ import networking_nsxv3.prometheus.exporter as EXPORTER
 from networking_nsxv3.common.locking import LockManager
 from oslo_log import log as logging
 from oslo_config import cfg
+from typing import Callable, Union, Optional, List
 import enum
 import time
 import json
@@ -109,10 +109,8 @@ class Runnable(object):
 
     @property
     def identifier(self) -> tuple:
+        """ used to identify jobs running the same callback on the same object """
         return self.idn, self._fn.__name__
-
-    def debugid(self)->str:
-        return str((self.idn, self._fn.__name__, str(self._fnparams)))
 
     def set_scheduled(self):
         """ called when we submit the job to the worker pool """
@@ -160,7 +158,7 @@ class Runnable(object):
         if self._rescheduled and self._jobdone:
             rescheduled = f"{self._rescheduled - self._jobdone:0.4f}"
 
-        return (f"timings for job {self} - runcount: {self._runcount} age: {age} "
+        return (f"timings for job {self} - runcount: {self._runcount} created: {self._created:0.4f} age: {age} "
                 f"scheduled: {scheduled} started: {started} runtime: {runtime} rescheduled: {rescheduled}")
 
     def execute(self):
@@ -172,7 +170,7 @@ class Runnable(object):
 
     def __repr__(self):
         # lets not just use the object id, maybe
-        return str(self.identifier)
+        return f"Runnable({self.idn}, {self._fn.__name__}, ...) with id={id(self)}"
 
     def __eq__(self, other):
         """
@@ -327,15 +325,14 @@ class JobList():
     def __len__(self):
         return len(self._runnables)
 
-    @property
-    def size(self):
+    def jobcount(self):
         return sum(count for count, _ in self._runnables)
 
     def empty(self):
-        return self.size == 0
+        return self.jobcount() == 0
 
     def __repr__(self):
-        return f"Joblist: {self._job_identifier}, len={len(self)}, {self._runnables}"
+        return f"Joblist: {self._job_identifier}, len={len(self)}, jobcount={self.jobcount()} {self._runnables}"
 
     def add(self, job:Runnable)->bool:
         """ add a job to the list, must share identifier
@@ -356,6 +353,13 @@ class JobList():
         else:
             self._job_identifier = job.identifier
 
+        # TODO(mutax): convert to debug later
+        LOG.info("Joblist %s jobcount is %d before adding job %s", self._job_identifier, self.jobcount(), job)
+
+        # if we have no jobs in the list, the job we are about to add
+        # will be allowed to run.
+        was_empty = self.empty()
+
         # search through our list and update the counter or append the job:
         for index, (count, existing_job) in enumerate(self._runnables):
             if job == existing_job:
@@ -363,14 +367,8 @@ class JobList():
                     # fix the list, otherwise we would never run that job.
                     LOG.error("Joblist counter for job %s is %d, indicating job should have been removed.", job, count)
                     count = 0
-                count += 1
-                self._runnables[index] = (count, existing_job)
-                if count == 1:
-                    # failsafe:
-                    # return True if this is the first time the job has been added,
-                    # only happens at this point if our bookkeeping was off.
-                    return True
-                return False
+                self._runnables[index] = (count+1, existing_job)
+                return was_empty
 
         # No match found, this is the first of its kind, we can run it.
         # note that a job that gets re-executed will be removed from
@@ -378,7 +376,7 @@ class JobList():
         # so when it returns it will be the only one of its kind and
         # can run. after it is finished a different one will be returned by 'done'.
         self._runnables.append((1, job))
-        return True
+        return was_empty
 
     def _runnable_is_done(self, job:Runnable):
         """ search through our list and update the counter or remove the job """
@@ -387,11 +385,10 @@ class JobList():
                 # we do not need this job with this parameters again, it is done,
                 # so we remove it from the list.
                 # Note: the list might not be empty!
-                LOG.debug("Job %s is done, updating JobList, request count was: %d", job.debugid(), count)
                 count -= 1
                 if count <= 0:
                     if count < 0:
-                        LOG.warning("Job count in JobList was %d for %s", count, job.debugid())
+                        LOG.warning("Job count in JobList was %d for %s", count, job)
                     del self._runnables[index]
                     return
                 # leave job in the list, so it will get retrieved again later.
@@ -552,7 +549,8 @@ class JobRerunner():
 
             if joblist.add(job):
                 # no job running, we can run the job
-                LOG.debug("JobRerunner no identical job is currently running, can start %s", job)
+                # TODO(mutax): make debug after nsx-t issues solved
+                LOG.info("JobRerunner add_job called, will be allowed to run: %s", job)
                 return True
             else:
                 count = joblist.get_count(job)
@@ -560,10 +558,11 @@ class JobRerunner():
 
             sum = 0
             for identifier, joblist in self._running.items():
-                sum += joblist.size
-                LOG.debug("JobRerunner stat: job %s is running, submission count: %d", identifier, joblist.size)
+                sum += joblist.jobcount()
+                LOG.debug("JobRerunner stat: A job for %s is running, submission count: %d", identifier, joblist.jobcount())
 
         # TODO(mutax): make debug after nsx-t issues solved
+        LOG.info("JobRerunner add_job called, but such a job is already running, queueing for later: %s", job)
         LOG.info("JobRerunner stat: %d jobs tracked, total submission count: %d, ready for re-exection: %d",
                  len(self._running), sum, len(self._to_rerun))
 

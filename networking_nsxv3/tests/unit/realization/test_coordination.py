@@ -170,3 +170,75 @@ class TestAgentRealizerScheduling(base.BaseTestCase):
         self.assertNotIn('runtime: -', job.get_statline())
 
         callback.assert_called()
+
+    def test_joblist_add_jobs(self):
+        from unittest.mock import Mock
+        from networking_nsxv3.common.synchronization import Runnable, JobList
+
+        callback = Mock()
+        callback.__name__ = 'callback'
+        # we also have jobs that get a dict as parameter.
+        opts1 = {'id': 'some-id', 'a': 123, 'b': 456}
+        opts2 = {'id': 'some-id', 'a': 123, 'b': 456}
+        opts3 = {'id': 'some-id', 'a': 789, 'b': 123} 
+        job1 = Runnable(opts1, callback)
+        job2 = Runnable(opts2, callback)
+        job3 = Runnable(opts3, callback)
+
+        joblist=JobList()
+        self.assertTrue(joblist.add(job1))
+        self.assertEqual(1, joblist.jobcount())
+        self.assertEqual(1, len(joblist))
+
+        self.assertFalse(joblist.add(job2))
+        self.assertEqual(2, joblist.jobcount())
+        self.assertEqual(1, len(joblist))
+
+        self.assertFalse(joblist.add(job3))
+        self.assertEqual(3, joblist.jobcount())
+        self.assertEqual(2, len(joblist))
+
+
+    def test_joblist_get_jobs(self):
+        from unittest.mock import Mock
+        from networking_nsxv3.common.synchronization import Runnable, JobList
+
+        callback = Mock()
+        callback.__name__ = 'callback'
+        # we also have jobs that get a dict as parameter.
+        # for that we added the JobList, that needs testing as well
+
+        opts1 = {'id': 'some-id', 'a': 123, 'b': 456}
+        opts2 = {'id': 'some-id', 'a': 123, 'b': 456}
+        opts3 = {'id': 'some-id', 'a': 789, 'b': 123} 
+        job1 = Runnable(opts1, callback)
+        job2 = Runnable(opts2, callback)
+        job3 = Runnable(opts3, callback)
+
+        joblist = JobList()
+        self.assertTrue(joblist.add(job1))
+        self.assertFalse(joblist.add(job2))
+        self.assertFalse(joblist.add(job3))
+
+        # check that all jobs are returned, note that
+        # __eq__ is a custom method, so we will
+        # later double check that the duplicate job 2
+        # is not returned, using the id
+
+        jobs_returned = []
+        jobids_returned = []
+        ret = job1
+        while ret:
+            jobs_returned.append(ret)
+            jobids_returned.append(id(ret))
+            ret = joblist.done(job1)
+
+        self.assertEqual(None, ret)
+
+        self.assertIn(job1, jobs_returned)
+        self.assertIn(job2, jobs_returned)
+        self.assertIn(job3, jobs_returned)
+
+        self.assertIn(id(job1), jobids_returned)
+        self.assertNotIn(id(job2), jobids_returned)
+        self.assertIn(id(job3), jobids_returned)
