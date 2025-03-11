@@ -648,8 +648,10 @@ class Runner(object):
                     # greenthread, but this is hidden in the pool, so
                     # let's wrap the function once more.
                     def wrap(rerun: JobRerunner, ajob: Runnable):
-                        ajob.execute()
-                        rerun.job_done(ajob)
+                        try:
+                            ajob.execute()
+                        finally:
+                            rerun.job_done(ajob)
 
                     job.set_scheduled()
                     self._workers.spawn(wrap, self._rerunner, job)
