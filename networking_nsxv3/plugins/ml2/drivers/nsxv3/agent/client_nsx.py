@@ -57,7 +57,7 @@ class RetryPolicy(object):
     def __call__(self, func):
 
         def decorator(self, *args, **kwargs):
-            request_info = "Function {} Argumetns {}".format(func.__name__.upper(), str(kwargs))
+            request_info = "Function {} Arguments {}".format(func.__name__.upper(), str(kwargs))
 
             until = cfg.CONF.NSXV3.nsxv3_connection_retry_count
             pause = cfg.CONF.NSXV3.nsxv3_connection_retry_sleep
@@ -85,12 +85,11 @@ class RetryPolicy(object):
                         return response
 
                     last_err = "Error Code={} Message={}".format(response.status_code, response.content)
-                    log_msg = "Request={} Response={}".format(request_info, last_err)
 
                     # Handle resource not found gently
                     if is_not_found(response):
                         LOG.info("Unable to find Resource={}".format(kwargs["path"]))
-                        LOG.debug(log_msg)
+                        LOG.debug("Request=%s Response=%s", request_info, last_err)
                         return response
 
                     if is_revision_error(response):
@@ -109,13 +108,13 @@ class RetryPolicy(object):
                         # skip retry on the ramaining NSX errors
                         sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs.get("path", '')),
                                                        response.request.method]
-                        LOG.error("Request={} Response={}".format(request_info, last_err), extra=sentry_extra)
+                        LOG.error("Request=%s Response=%s", request_info, last_err, extra=sentry_extra)
                         break
                 except (HTTPError, ConnectionError, ConnectTimeout) as err:
                     last_err = err
                     m = response.request.method if response else "UNKNOWN"
                     sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs.get("path", '')), m]
-                    LOG.error("Request={} Response={}".format(request_info, last_err), extra=sentry_extra)
+                    LOG.error("Request=%s Response=%s", request_info, last_err, extra=sentry_extra)
 
                 msg = pattern.format(attempt, until, pause, method)
 
