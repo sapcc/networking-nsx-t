@@ -106,12 +106,12 @@ class NSXv3AgentRpcClient(object):
         self._get_call_context()\
             .cast(self.context, 'resource_update', log_objs=log_objs)
 
-    def trigger_manual_update(self, id, type):
+    def trigger_manual_update(self, id, type, **kwargs):
         if type == "port_id":
-            id = {"id": id}
+            port = {"id": id, "security_groups": kwargs.get("security_groups", [])}
             LOG.debug("NSXv3AgentRpcClient: (port_update): " + str(id))
             self._get_call_context() \
-                .cast(self.context, 'port_update', port=id)
+                .cast(self.context, 'port_update', port=port)
         elif type == "security_group_id":
             LOG.debug("NSXv3AgentRpcClient: (security_groups_rule_updated): " + str(id))
             self._get_call_context() \

@@ -242,5 +242,5 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
         LOG.debug("Address group after update: %s", payload.__dict__)
         self.rpc.update_address_group(plugin, payload)
 
-    def trigger_sync(self, id, type):
-        self.rpc.trigger_manual_update(id=id, type=type)
+    def trigger_sync(self, id, type, **kwargs):
+        self.rpc.trigger_manual_update(id=id, type=type, **kwargs)
