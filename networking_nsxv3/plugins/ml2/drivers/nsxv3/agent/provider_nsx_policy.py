@@ -1116,13 +1116,22 @@ class Provider(base.Provider):
                 if self.orphan_ports_tmout_passed(meta.get(orphan).last_modified_time / 1000)
             ])
 
+        for id in outdated:
+            LOG.info("Resource type %s with ID %s is missing.", resource_type, id)
+
+        for id in orphaned:
+            LOG.info("Resource type %s with ID %s is orphaned.", resource_type, id)
+
         outdated.update(orphaned)
 
         # Add revision outdated
         for id in os_meta_ids.intersection(nsx_meta_ids):
             if not meta.get(id).age or str(os_meta[id]) != str(meta.get(id).rev):
-                meta.get(id)
+                curr_meta = meta.get(id)  # has to be called to update
                 outdated.add(id)  # for update
+
+                LOG.info("Resource type %s with ID %s: Revision number not matching: %s %s or age missing %s",
+                         resource_type, id, os_meta[id], curr_meta.rev,  curr_meta.age)
 
         LOG.info(
             "[%s] The number of outdated resources for Type:%s Is:%s.", self.provider, resource_type, len(outdated)
