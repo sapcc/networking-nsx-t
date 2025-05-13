@@ -86,6 +86,11 @@ agent_opts = [
         'sync_skew',
         default=60,
         help="Interval for random sync skew during agent sync start."
+    ),
+    cfg.BoolOpt(
+        name='resync_objects_based_on_age',
+        default=True,
+        help="Enable/Disable the resync of aged objects in a sync loop"
     )
 ]
 
