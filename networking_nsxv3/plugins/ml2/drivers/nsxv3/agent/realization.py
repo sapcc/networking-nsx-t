@@ -126,29 +126,41 @@ class AgentRealizer(object):
             return self._age_cycle(_slice, port_current, sgr_current, qos_current, sgm_maybe_orphans)
 
     def _age_cycle(self, _slice, port_current, sgr_current, qos_current, sgm_maybe_orphans):
+        run_sanitize = True
+        if cfg.CONF.AGENT.resync_objects_based_on_age:
+            current = self.nsx_provider.age(self.nsx_provider.PORT, port_current)
+            current += self.nsx_provider.age(self.nsx_provider.SG_RULES, sgr_current)
+            current += self.nsx_provider.age(self.nsx_provider.SG_MEMBERS, sgm_maybe_orphans)
+            current += self.nsx_provider.age(self.nsx_provider.QOS, qos_current)
 
-        current = self.nsx_provider.age(self.nsx_provider.PORT, port_current)
-        current += self.nsx_provider.age(self.nsx_provider.SG_RULES, sgr_current)
-        current += self.nsx_provider.age(self.nsx_provider.SG_MEMBERS, sgm_maybe_orphans)
-        current += self.nsx_provider.age(self.nsx_provider.QOS, qos_current)
+            # Sanitize when there are no elements or the eldest age > current age
+            aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.AGE]
+            LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
 
-        # Sanitize when there are no elements or the eldest age > current age
-        aged = [entry for entry in current if entry[2] and int(entry[2]) <= self.AGE]
-        LOG.info("Items outdated since last Agent sanitize:%d", len(aged))
-        if aged:
-            aged = set(itertools.islice(aged, _slice))
-            LOG.info("Refreshing %s of least updated resources", len(aged))
-            self.refresh(aged)
+            for i in aged:
+                LOG.debug("Last sync of %s with ID: %s on %s is older than %s", i[0], i[1], i[2], self.AGE)
+
+            if aged:
+                run_sanitize = False
+                aged = set(itertools.islice(aged, _slice))
+                LOG.info("Refreshing %s of least updated resources", len(aged))
+                self.refresh(aged)
         else:
-            LOG.info("Sanitizing provider based on age cycles")
+            if time.time() - self.AGE < 3600:
+                run_sanitize = False
+
+        if run_sanitize:
+            LOG.info("Sanitizing provider by removing orphan remote_prefixes, services and address_groups based on age cycles")
             sanitize = self.nsx_provider.sanitize(_slice)
 
-            for id, callback in sanitize:
-                self.callback(id, callback)
+            if sanitize:
+                for id, callback in sanitize:
+                    LOG.debug("Sanitizing ID: %s with callback: %s", id, callback)
+                    self.callback(id, callback)
 
-            _slice -= len(sanitize)
-            if _slice <= 0:
-                return
+                _slice -= len(sanitize)
+                if _slice <= 0:
+                    return
 
             self.AGE = int(time.time())
 
