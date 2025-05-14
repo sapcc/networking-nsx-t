@@ -14,9 +14,7 @@ env:
 jobs:
   build:
 
-    #runs-on: ubuntu-latest
-    #issue https://github.com/actions/setup-python/issues/544i
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     permissions:
       pull-requests: write
     strategy:
