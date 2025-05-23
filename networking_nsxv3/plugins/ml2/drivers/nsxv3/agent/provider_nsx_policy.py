@@ -10,6 +10,7 @@ import time
 import netaddr
 import functools
 from oslo_cache import core as cache
+from dictdiffer import diff
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import excutils
@@ -113,6 +114,9 @@ class API(object):
 
     INFRA = "/policy/api/v1/infra"
 
+class Ignore(set):
+    def __contains__(self, key):
+        return set.__contains__(self, key[1])
 
 class PolicyResourceMeta(base.ResourceMeta):
     def __init__(self, id, unique_id, rev, age, revision, last_modified_time,
@@ -635,12 +639,44 @@ class Provider(base.Provider):
             path = API.POLICY.format(policy["id"])
             res = self.client.get(path=path)
             if res.ok:
-                continue
+                policy_changes = self._check_infrastructure_rules_for_updates(policy, res.json())
+                if policy_changes:
+                    LOG.info("Infrastructure Policy %s updated. Realize the following changes %s",
+                             policy["display_name"], policy_changes)
+                    policy_with_rev = self._add_revision_number(policy, res.json())
+                    self.client.put(path=path, data=policy_with_rev).raise_for_status()
             elif res.status_code == 404:
                 LOG.info("Infrastructure Policy %s not found, creating...", policy["display_name"])
                 self.client.put(path=path, data=policy).raise_for_status()
             else:
                 res.raise_for_status()
+    def _add_revision_number(self, policy_from_config, realized_policy):
+        """
+        Add revision number for the sg policy and sg rule to the new policy
+        Updating NSX-T objects requires the revision number to be matched with the existing object
+        """
+        revision = realized_policy.get("_revision", None)
+
+        if revision is not None:
+            policy_from_config["_revision"] = revision
+
+        realized_rules = sorted(realized_policy["rules"], key=lambda x: x['display_name'])
+
+        for x, rule in enumerate(sorted(policy_from_config["rules"], key=lambda x: x['display_name'])):
+            _revision = realized_rules[x].get("_revision", None)
+            if revision is not None:
+                rule["_revision"] = _revision
+        return policy_from_config
+
+
+    def _check_infrastructure_rules_for_updates(self, policy_from_cfg, realized_policy):
+        rules_realized = sorted(realized_policy["rules"], key=lambda x: x['display_name'])
+        rules_from_config = sorted(policy_from_cfg['rules'], key=lambda x: x['display_name'])
+
+        # Ignore all keys that are not in both lists
+        ignore_all = set(rules_realized[0]).symmetric_difference(set(rules_from_config[0]))
+        changes = list(diff(rules_realized, rules_from_config, ignore=Ignore(ignore_all)))
+        return changes
 
     def _setup_default_app_drop_logged_section(self):
         LOG.info("Looking for the Default Layer3 Logged Drop Section.")
