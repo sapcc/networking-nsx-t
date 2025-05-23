@@ -2,16 +2,22 @@ import eventlet
 eventlet.monkey_patch()
 
 from networking_nsxv3.common import config  # noqa
-from oslo_log import log as logging
-import uuid
-from networking_nsxv3.tests.e2e import base
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
-
+from networking_nsxv3.tests.e2e import base
+from typing import List
+from novaclient.v2.servers import NetworkInterface
+import uuid
+import os
+from oslo_log import log as logging
 
 LOG = logging.getLogger(__name__)
 
 
 class TestAddressGroups(base.E2ETestCase):
+
+    def __init__(self, *args, **kwds):
+        super().__init__(*args, **kwds)
+        self.test_network1_name = os.environ.get("E2E_NETWORK_NAME", None)
 
     def setUp(self):
         super().setUp()
@@ -20,19 +26,22 @@ class TestAddressGroups(base.E2ETestCase):
         self.new_addr_grp_rules = []
         self.new_grp_ids = []
         self.new_sg_ids = []
-        self.existing_updated_ports = []
-        self.assertGreater(len(self.nova_client.servers.list()), 0, "At least one server should exist!")
-        self.def_os_sg = self._get_os_default_sg()
+        self.new_server = None
+        self.def_os_sg = self.get_os_default_security_group()
+
+        if not self.test_network1_name:
+            self.fail("E2E_NETWORK_NAME is not set. Please set it to the name of the network to use for testing.")
+        self.set_test_network(self.test_network1_name)
 
     def tearDown(self):
         super().tearDown()
         # Clean up & Assert cleanup
         LOG.info("Tearing down test case...")
-        addr_grp_ids = [ag.get("security_group_rule", {}).get("id") for ag in self.new_addr_grp_rules]
-        self._revert_updated_ports()
+        self.doCleanups()
         self._clean_neutron_sg_rules()
         self._clean_addr_groups()
         self._clean_sec_groups()
+        addr_grp_ids = [ag.get("security_group_rule", {}).get("id") for ag in self.new_addr_grp_rules]
         self._assert_nsx_cleanup(rule_ids=addr_grp_ids)
 
     def test_create_ipv4_address_groups(self):
@@ -158,9 +167,10 @@ class TestAddressGroups(base.E2ETestCase):
 
     def test_address_group_in_multiple_security_groups(self):
         LOG.info("Testing address group in multiple security groups...")
-
-        # Check that there are active ports
-        ports = self._get_assert_active_ports()
+        
+        self._create_server()
+        ports: List[NetworkInterface] = self.new_server.interface_list()
+        self.assertTrue(ports, "Server should have at least one port.")
 
         unique_addr_grp_name = str(uuid.uuid4())
         new_addr_grp = self.neutron_client.create_address_group(body={
@@ -187,12 +197,12 @@ class TestAddressGroups(base.E2ETestCase):
         })
 
         # Attach the new SGs to an active port
-        self.existing_updated_ports.append(ports[0])
-        self.neutron_client.update_port(ports[0]['id'], body={
+        self.neutron_client.update_port(ports[0].id, body={
             "port": {
                 "security_groups": [new_sg_1['security_group']['id'], new_sg_2['security_group']['id']]
             }
         })
+        self.addCleanup(self.neutron_client.delete_port, ports[0].id)
 
         # Verify that the security groups were created
         self.assertTrue(new_sg_1 and new_sg_1.get('security_group', {}).get('id'))
@@ -338,13 +348,6 @@ class TestAddressGroups(base.E2ETestCase):
                                               for ag in self.neutron_client.list_address_groups()['address_groups']])
             self.new_grp_ids = []
 
-    def _revert_updated_ports(self):
-        # Revert back the updated ports
-        if self.existing_updated_ports and len(self.existing_updated_ports) > 0:
-            for port in self.existing_updated_ports:
-                self.neutron_client.update_port(
-                    port.get("id"), {"port": {"security_groups": port.get("security_groups")}})
-
     def _clean_neutron_sg_rules(self):
         if len(self.new_addr_grp_rules) > 0:
             for new_addr_grp_rule in self.new_addr_grp_rules:
@@ -361,21 +364,6 @@ class TestAddressGroups(base.E2ETestCase):
                                          for sg in self.neutron_client.list_security_groups()['security_groups']])
             self.new_sg_ids = []
 
-    def _get_os_default_sg(self):
-        # Get the default security group
-        lsg = self.neutron_client.list_security_groups(project_id=self.OS_PROJECT_ID)
-        default_sg = [sg for sg in lsg['security_groups'] if sg['name'] == 'default'][0]
-
-        # Assert that the default security group exists and has active member ports
-        self.assertIsNotNone(default_sg, "Default security group must exist")
-        sg_ports = self.neutron_client.list_ports(security_groups=[default_sg['id']])
-        self.assertGreater(len(sg_ports), 0, "Default security group must have at least one port")
-        self.assertGreater(len(sg_ports['ports']), 0, "Default security group must have at least one port")
-        self.assertTrue(any([p['status'] == 'ACTIVE' and p['admin_state_up'] for p in sg_ports['ports']]),
-                        "Default security group must have at least one active port")
-
-        return default_sg
-
     def _get_assert_new_grp_id(self, unique_addr_grp_name, new_addr_grp):
         new_grp_id = None
         if new_addr_grp:
@@ -390,11 +378,18 @@ class TestAddressGroups(base.E2ETestCase):
 
         return new_grp_id
 
-    def _get_assert_active_ports(self):
-        ports = self.neutron_client.list_ports(
-            device_owner="compute:nova", admin_state_up="True", status="ACTIVE").get('ports', [])
-        self.assertTrue(ports and len(ports) > 0, "No active ports found")
-        return ports
+    def _create_server(self):
+        img_name = os.environ.get("E2E_CREATE_SERVER_IMAGE_NAME", "cirros-0.3.2-i386-disk")
+        flvr_name = os.environ.get("E2E_CREATE_SERVER_FLAVOR_NAME", "m1.nano")
+        srv_name = os.environ.get("E2E_CREATE_SERVER_NAME_PREFIX", "os-e2e-test-") + str(uuid.uuid4())
+        sg_id = self.def_os_sg['id']
+        net = self.test_network
+
+        LOG.info(
+            f"Creating a server '{srv_name}' on network '{net['name']}' with image '{img_name}', flavor '{flvr_name}' and security group ID '{sg_id}'.")
+        self.new_server = self.create_test_server(srv_name, img_name, flvr_name, net['id'], security_groups=[sg_id])
+        self.assertIsNotNone(self.new_server, "Server should be created successfully.")
+        self.addCleanup(self.nova_client.servers.delete, self.new_server.id)
 
     def _assert_and_append_new_grp_rules(self, new_addr_grp_rules):
         for rule in new_addr_grp_rules:

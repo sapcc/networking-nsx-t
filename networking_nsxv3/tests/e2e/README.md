@@ -30,6 +30,7 @@
    export OS_STDERR_CAPTURE=0
 
    # E2E Test specific vars
+   export E2E_BB="nova" # Building block to use for E2E tests
    export E2E_NETWORK_NAME="test-net-1" # Pre-existing Network used for the E2E Test Scenarios
    export E2E_SERVER_NAME="os-test-vm-1" # Pre-existing VM (server) used for the E2E Test Scenarios
    export E2E_CREATE_SERVER_NAME_PREFIX="os-e2e-test-" # Prefix for server names, UUID will be appended
@@ -59,10 +60,10 @@
    - Add/Remove trunk to/from server [implemented]
    - Provision server with trunk [implemented]
 ## Security Groups & Policies
-   - Create/Delete/Update Security Groups (Remote IP)
-   - Create/Delete/Update Security Groups (Remote Group)
-   - Add/Remove rules to Security Groups
-   - Add/Remove ports to/from Security Group
+   - Create/Delete/Update Security Groups (Remote IP) [implemented]
+   - Create/Delete/Update Security Groups (Remote Group) [implemented]
+   - Add/Remove rules to Security Groups [implemented]
+   - Add/Remove ports to/from Security Group [implemented]
 ## Address Groups
    - Create/Delete/Update IPv4/IPv6 address groups [implemented]
    - Create mixed IPv4/IPv6 members [implemented]
