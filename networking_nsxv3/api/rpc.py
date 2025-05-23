@@ -50,18 +50,18 @@ class NSXv3AgentRpcClient(object):
         )
 
     def create_policy(self, context, policy):
-        LOG.debug("All gents. Creating policy={}.".format(policy.name))
+        LOG.debug("All gents. Creating policy={}.".format(policy["id"]))
         return self._get_call_context().cast(
             self.context, 'create_policy', policy=policy)
 
     def update_policy(self, context, policy):
-        LOG.debug("All gents. Updating policy={}.".format(policy.name))
+        LOG.debug("All gents. Updating policy={}.".format(policy["id"]))
         if (hasattr(policy, "rules")):
             return self._get_call_context().cast(
                 self.context, 'update_policy', policy=policy)
 
     def delete_policy(self, context, policy):
-        LOG.debug("All gents. Deleting policy={}.".format(policy.name))
+        LOG.debug("All gents. Deleting policy={}.".format(policy["id"]))
         return self._get_call_context().cast(
             self.context, 'delete_policy', policy=policy)
 

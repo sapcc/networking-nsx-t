@@ -6,7 +6,7 @@ from oslo_config import cfg
 from neutron.tests import base
 from networking_nsxv3.tests.environment import Environment
 from networking_nsxv3.tests.datasets import coverage
-from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider_nsx_policy as pp
 import copy
 import os
 import re
@@ -225,7 +225,7 @@ class TestAgentRealizer(base.BaseTestCase):
         yield 11
 
     @staticmethod
-    def _assert_create(os_inventory, environment):
+    def _assert_create(os_inventory: coverage, environment: Environment):
         c = os_inventory
         mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         m = {**mgmt_meta, **plcy_meta}
@@ -240,6 +240,45 @@ class TestAgentRealizer(base.BaseTestCase):
         TestAgentRealizer.instance.assertEquals(c.QOS_INTERNAL["id"] in m[p.QOS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.QOS_EXTERNAL["id"] in m[p.QOS]["meta"], True)
         TestAgentRealizer.instance.assertEquals(c.QOS_NOT_REFERENCED["id"] in m[p.QOS]["meta"], False)
+        
+        # Validate QoS Bindings
+        internal_qos_id = m[p.QOS]["meta"][c.QOS_INTERNAL["id"]]["id"]
+        internal_qos_meta = m[p.QOS]["meta"][c.QOS_INTERNAL["id"]]
+        internal_port_meta = m[p.PORT]["meta"][c.PORT_FRONTEND_INTERNAL["id"]]
+
+        external_qos_id = m[p.QOS]["meta"][c.QOS_EXTERNAL["id"]]["id"]
+        external_qos_meta = m[p.QOS]["meta"][c.QOS_EXTERNAL["id"]]
+        external_port_meta = m[p.PORT]["meta"][c.PORT_FRONTEND_EXTERNAL["id"]]
+
+        internal_qos_query = pp.API.SEARCH_Q_QOS_BIND.format(internal_qos_id)
+        internal_qos_mappings = p.client.get_all(path=pp.API.SEARCH_QUERY, params={"query": internal_qos_query})
+
+        external_qos_query = pp.API.SEARCH_Q_QOS_BIND.format(external_qos_id)
+        external_qos_mappings = p.client.get_all(path=pp.API.SEARCH_QUERY, params={"query": external_qos_query})
+
+        internal_qos_data = {
+            "display_name": internal_qos_meta["real_id"],
+            "id": internal_qos_meta["real_id"],
+            "marked_for_delete": False,
+            "parent_path": internal_port_meta["path"],
+            "path": internal_port_meta["path"] + f"/port-qos-profile-binding-maps/{internal_qos_id}",
+            "qos_profile_path": internal_qos_meta["path"],
+            "resource_type": "PortQoSProfileBindingMap"
+        }
+        external_qos_data = {
+            "display_name": external_qos_meta["real_id"],
+            "id": external_qos_meta["real_id"],
+            "marked_for_delete": False,
+            "parent_path": external_port_meta["path"],
+            "path": external_port_meta["path"] + f"/port-qos-profile-binding-maps/{external_qos_id}",
+            "qos_profile_path": external_qos_meta["path"],
+            "resource_type": "PortQoSProfileBindingMap"
+        }
+
+        TestAgentRealizer.instance.assertEqual(1, len(external_qos_mappings))
+        TestAgentRealizer.instance.assertEqual(1, len(internal_qos_mappings))
+        TestAgentRealizer.instance.assertDictSupersetOf(external_qos_data, external_qos_mappings[0])
+        TestAgentRealizer.instance.assertDictSupersetOf(internal_qos_data, internal_qos_mappings[0])
 
         # Validate Security Groups Members
         TestAgentRealizer.instance.assertEquals(c.SECURITY_GROUP_FRONTEND["id"] in m[p.SG_MEMBERS]["meta"], True)
@@ -275,7 +314,7 @@ class TestAgentRealizer(base.BaseTestCase):
             TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
     @staticmethod
-    def _assert_update(os_inventory, environment):
+    def _assert_update(os_inventory: coverage, environment: Environment):
         c = os_inventory
         mgmt_meta, plcy_meta = environment.dump_provider_inventory(printable=False)
         m = {**mgmt_meta, **plcy_meta}
@@ -329,7 +368,7 @@ class TestAgentRealizer(base.BaseTestCase):
             TestAgentRealizer.instance.assertEquals("0.0.0.0/" in id or "::/" in id, True)
 
         params = {"default_service": False}  # User services only
-        services = p.client.get_all(path=provider_nsx_policy.API.SERVICES, params=params)
+        services = p.client.get_all(path=pp.API.SERVICES, params=params)
         services = [s for s in services if not s.get("is_default")]
         TestAgentRealizer.instance.assertEquals(len(services), 0)
 
@@ -344,14 +383,14 @@ class TestAgentRealizer(base.BaseTestCase):
         ipv4_id = re.sub(r"\.|:|\/", "-", ipv4)
         ipv6_id = re.sub(r"\.|:|\/", "-", ipv6)
 
-        pp = provider_nsx_policy.Payload()
-        api = provider_nsx_policy.API
+        ppp = pp.Payload()
+        api = pp.API
 
-        p.client.put(path=api.GROUP.format(ipv4_id), data=pp.sg_rule_remote(ipv4))
-        p.client.put(path=api.GROUP.format(ipv6_id), data=pp.sg_rule_remote(ipv6))
+        p.client.put(path=api.GROUP.format(ipv4_id), data=ppp.sg_rule_remote(ipv4))
+        p.client.put(path=api.GROUP.format(ipv6_id), data=ppp.sg_rule_remote(ipv6))
 
-        p.client.put(path=api.GROUP.format(_id), data=pp.sg_members_container({"id": _id}, dict()))
-        data = pp.sg_rules_container({"id": _id}, {"rules": [], "scope": _id})
+        p.client.put(path=api.GROUP.format(_id), data=ppp.sg_members_container({"id": _id}, dict()))
+        data = ppp.sg_rules_container({"id": _id}, {"rules": [], "scope": _id})
         p.client.put(path=api.POLICY.format(_id), data=data)
 
 
