@@ -210,7 +210,7 @@ class AgentRealizer(object):
                 for os_rule in os_sg["rules"]:
                     remote_id = os_rule.get("remote_group_id")
                     if remote_id:
-                        self.security_group_members(remote_id, reference=True)
+                        self.security_group_members(remote_id, reference=False)
 
                     addr_grp_id = os_rule.get("remote_address_group_id")
                     if addr_grp_id:
