@@ -100,18 +100,50 @@ class TriggerManualSync(wsgi.Controller):
             return False
         if not all([i in NsxtOpsApiDefinition.RESOURCE_ATTRIBUTE_MAP[NsxtOpsApiDefinition.COLLECTION] for i in payload.keys()]):
             raise web_exc.HTTPBadRequest("Please use {keys}".format(keys=str(NsxtOpsApiDefinition.RESOURCE_ATTRIBUTE_MAP[NsxtOpsApiDefinition.COLLECTION])))
+
+        for type, objs in payload.items():
+            if not isinstance(objs, list):
+                objs = [objs]
+
+            for obj in objs:
+                LOG.info("Validating payload for %s  -- %s" % (type, obj))
+                if type == "port_id":
+                    if isinstance(obj, dict):
+                        LOG.info("Check port payload for port_id %s" % obj)
+                        if "id" not in obj:
+                            raise web_exc.HTTPBadRequest(
+                                'Payload must be: "port_id": {id: "uuid-port", "security_groups": ["sg1", "sg2"]}')
+                        if any(key not in ["id", "security_groups"] for key in obj.keys()):
+                            raise web_exc.HTTPBadRequest(
+                                'Payload for port syncs must only contain keys: "id" and "security_groups"')
+                        if "security_groups" in obj:
+                            if not isinstance(obj["security_groups"], list):
+                                raise web_exc.HTTPBadRequest(
+                                'Payload for port syncs must contain "security_groups" as list')
+
+                            if not all(isinstance(sg, str) for sg in obj["security_groups"]):
+                                raise web_exc.HTTPBadRequest('All elements in "security_groups" must be strings')
+                else:
+                    if isinstance(obj, dict):
+                        raise web_exc.HTTPBadRequest(
+                            'Payload must be: security_group_id": ["uuid-sq1", "uuid-sg2"] or "security_group_id": "uuid-sg"')
         return True
 
     def _process_payload(self, payload, method):
-        for type, ids in payload.items():
-            if isinstance(ids, list):
-                #iterate over list of ids
-                for id in ids:
-                    LOG.info("Trigger update process for %s" % id)
-                    method(id=id, type=type)
-            elif isinstance(ids, str):
-                LOG.info("Trigger update process for %s" % ids)
-                method(id=ids, type=type)
+        for type, ids_to_sync in payload.items():
+            if not isinstance(ids_to_sync, list):
+                ids_to_sync = [ids_to_sync]
+
+            for obj in ids_to_sync:
+              if isinstance(obj, dict):
+                id = obj.get("id")
+                obj.pop("id", None)
+                LOG.info("Trigger update process for %s with additional parameter %s" % (id, obj))
+                method(id=id, type=type, **obj)
+              else:
+                id = obj
+                LOG.info("Trigger update process for %s" % id)
+                method(id=id, type=type)
 
     @check_cloud_admin
     def index(self, request, **kwargs):
@@ -122,14 +154,19 @@ class TriggerManualSync(wsgi.Controller):
         raise web_exc.HTTPNotImplemented("Method not implemented")
 
     """
-    Trigger synchronization between neuton database and nsxt based on security_group_id or port_id. 
+    Trigger synchronization between Neutron database and NSX-T based on security_group_id or port_id.
+
     Call inputs requires at least one security_group or port_id (either specified as string or as list). 
-    Optionally both arguements can be specified in the same call.  
+    Optionally both arguments can be specified in the same call.
+    Port_ID can be specified as dict with id and security_groups keys forcing the sync of the
+    security groups, rules and members.
+
     Sample call: 
             curl --location --request POST 'http://127.0.0.1:9696/v2.0/nsxt-ops' \
                  --header 'Content-Type: application/json' \
                  --data-raw '{
                          "port_id": ["uuid-port1", "uuid-port2"] or "port_id": "uuid-port",
+                         "port_id": [{id: "uuid-port1", "security_groups": ["sg1", "sg2"]}] or {id: "uuid-port1", "security_groups": ["sg1", "sg2"]}
                          "security_group_id": ["uuid-sq1", "uuid-sg2"] or "security_group_id": "uuid-sg"
             }'
     """
