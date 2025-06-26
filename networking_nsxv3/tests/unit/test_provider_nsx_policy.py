@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import copy
 import json
 import re
@@ -1247,3 +1249,131 @@ class TestProviderPolicy(base.BaseTestCase):
 
         vmk_port = requests.get(get_url(api.SEGMENT_PORT.format(vmk_n["id"], vmk_p["id"]))).json()
         self.assertIsNotNone(vmk_port)
+
+    @responses.activate
+    def test_duplicate_segment_port(self):
+
+        vlan = "1000"
+        zone_name = cfg.CONF.NSXV3.nsxv3_transport_zone_name
+        segment_id = str(uuid.uuid5(uuid.NAMESPACE_OID, "1234"))
+        port_id = "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19"
+
+        provider_network = {
+            "type": "DISCONNECTED",
+            "vlan_ids": [
+                vlan
+            ],
+            # "transport_zone_path": API.TRANSPORT_ZONES_PATH.format(tr_zone_id),
+            "advanced_config": {
+                "hybrid": False
+            },
+            "admin_state": "UP",
+            "resource_type": "Segment",
+            "id": segment_id,
+            "display_name": f"{zone_name}-{vlan}",
+            "path": provider_nsx_policy.API.SEGMENT_PATH.format(segment_id),
+            # "_revision": provider_net.get("_revision")
+        }
+
+        os_sg = {
+            "id": "53C33142-3607-4CB2-B6E4-FA5F5C9E3C19",
+            "revision_number": 2,
+            "tags": ["capability_tcp_strict"],
+            "rules": [{
+                "id": "1",
+                "ethertype": "IPv4",
+                "direction": "ingress",
+                "remote_group_id": "",
+                "remote_ip_prefix": "192.168.10.0/24",
+                "security_group_id": "",
+                "port_range_min": "5",
+                "port_range_max": "1",
+                "protocol": "icmp"
+            }]
+        }
+
+        nsxt_agent_port = {
+            "id": port_id,
+            "revision_number": "2",
+            "parent_id": "",
+            "mac_address": "fa:16:3e:e4:11:f1",
+            "admin_state_up": "UP",
+            "address_bindings": ["172.24.4.3", "172.24.4.4"],
+            "security_groups": [os_sg.get("id")],
+            "vif_details": {
+                "nsx-logical-switch-id": segment_id,
+                "segmentation_id": vlan
+            },
+            "_last_modified_time": time.time()
+        }
+
+        #nsxt_agent_port = {
+        #    "id": port_id,
+        #    "display_name": port_id,
+        #    "resource_type": "SegmentPort",
+        #    "admin_state": "UP",
+        #    "attachment": {
+        #        "id": port_id,
+        #        "type": "PARENT",
+        #        "traffic_tag": vlan
+        #    },
+        #    "address_bindings": ["172.24.4.3", "172.24.4.4"],
+        #    "tags": [],
+        #    "parent_path": provider_nsx_policy.API.SEGMENT_PATH.format(segment_id),
+        #    "path": provider_nsx_policy.API.SEGMENT_PORT_PATH.format(segment_id, port_id),
+        #    "_revision": None
+        #}
+
+        vspbere_port = [
+            {
+            "display_name": f"af36b7ba-4cd5-40c4-93cf-c23580329e12.vmx@{port_id}",
+            "resource_type": "SegmentPort",
+            "_create_user": "system",
+            "_create_time": 1751019980231,
+            "parent_path": provider_nsx_policy.API.SEGMENT_PATH.format(segment_id),
+            "path": provider_nsx_policy.API.SEGMENT_PORT_PATH.format(segment_id, "default:17494310-22bc-4e26-ae84-69ba37b9d849"),
+            "attachment": {
+                "hyperbus_mode": "DISABLE",
+                "id": port_id,
+                "traffic_tag": 0
+            },
+            "marked_for_delete": False,
+            "id": "default:17494310-22bc-4e26-ae84-69ba37b9d849"}
+        ]
+
+        # Precreate network and security group
+        requests.put(get_url(provider_nsx_policy.API.SEGMENT.format(
+            provider_network.get("id"))), data=json.dumps(provider_network)).json()
+        provider = provider_nsx_policy.Provider()
+        provider.metadata_refresh(provider_nsx_policy.Provider.NETWORK)
+        provider.sg_rules_realize(os_sg)
+
+        # Mock vpshere created segment port
+        mock = MagicMock(return_value=vspbere_port)
+        provider.find_duplicate_ports = mock
+
+        # Realize NSX-T agent port
+        provider.port_realize(nsxt_agent_port)
+
+        meta_port = provider.metadata(provider.PORT,port_id)
+        expected_id = vspbere_port[0].get("id").split("default:")[1]
+        LOG.info(f" compare meta port {meta_port}")
+        LOG.info(f"compare: {meta_port.id} {meta_port.real_id} {meta_port.unique_id}")
+        LOG.info(f" {nsxt_agent_port.get('id')} {expected_id} {nsxt_agent_port.get('vif_details').get('segmentation_id')}")
+
+        self.assertEquals(meta_port.id, expected_id)
+        self.assertEquals(meta_port.real_id, vspbere_port[0].get("id"))
+        self.assertEquals(meta_port.unique_id, expected_id)
+
+        provider_port_results = requests.get(get_url(
+            f"{provider_nsx_policy.API.SEARCH_QUERY}?query={provider_nsx_policy.API.SEARCH_Q_SEG_PORT.format(nsxt_agent_port.get('id'))}")).json()
+        self.assertEquals(1, len(provider_port_results.get("results", [])))
+        provider_port = provider_port_results.get("results")[0]
+
+        self.assertListEqual(provider_port.get("address_bindings"), nsxt_agent_port.get("address_bindings"))
+        self.assertEqual(provider_port.get("attachment").get("type"), "PARENT")
+        self.assertEqual(provider_port.get("attachment").get("traffic_tag"),
+                         nsxt_agent_port.get("vif_details").get("segmentation_id"))
+
+        self.assertListEqual(nsxt_agent_port.get("security_groups"),
+                             self.get_all_tags_from_scope(provider_port, "security_group"))

@@ -236,6 +236,13 @@ class Client(metaclass=Singleton):
         elif results:
             return results
 
+    def search(self, path: str, params: dict) -> dict:
+        res = self.get(path=path, params=params)
+        if not res.ok:
+            #ToDo handle errors properly
+            pass
+        return res.json().get("results")
+
     def get_all(self, path: str, params: dict = None, cursor: str = ""):
         # FYI - NSX does not allow to filter by custom property
         # Search API has hard limit of 50k objects (with cursor)
