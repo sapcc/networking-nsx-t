@@ -914,6 +914,7 @@ class Provider(base.Provider):
         port_id = os_port.get("id")
         port_meta = self.metadata(Provider.PORT, port_id)
 
+
         if delete:
             if not port_meta:
                 LOG.info("Segment Port:%s already deleted.", port_id)
@@ -938,7 +939,13 @@ class Provider(base.Provider):
             provider_port["path"] = port_meta.path
             provider_port["_revision"] = port_meta.revision
         else:
-            LOG.info("Segment Port %s not found, creating...", port_id)
+            LOG.info("Segment Port %s not found, creating ...", port_id)
+            ## Get Port updates the Metadata with the Port Information and takes the attatchment.id as openstack id
+            # INstead of newly creating the port we override the information from 
+            duplicate_ports = self.get_port(port_id)
+            if len(duplicate_ports) > 0:
+                    LOG.error("Found existing Segment Port %s for OpenStack Port %s.", duplicate_ports["display_name"], port_id)
+
 
         segment_meta = self.metadata(Provider.NETWORK, os_port.get("vif_details", {}).get("segmentation_id"))
         if not segment_meta:
@@ -967,6 +974,7 @@ class Provider(base.Provider):
                 The port will be added to the security groups as a static member.", port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
         return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
+
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
         if port:
