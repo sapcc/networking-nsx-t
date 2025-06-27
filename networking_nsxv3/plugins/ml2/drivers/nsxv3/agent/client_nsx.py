@@ -6,6 +6,7 @@ from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
 from oslo_utils import versionutils
 from oslo_log import log as logging
 from oslo_config import cfg
+from networking_nsxv3.exceptions.agent import NoneUniqueObjectFound
 from networking_nsxv3.common.synchronization import Scheduler
 from networking_nsxv3.common.locking import LockManager
 import requests
@@ -228,13 +229,10 @@ class Client(metaclass=Singleton):
     def get_unique(self, path: str, params: dict = dict()) -> dict:
         results = self.get(path=path, params=params).json().get("results")
         if isinstance(results, list):
-            if results:
-                if len(results) > 1:
-                    LOG.error("Ambiguous. %s", results)
-                result = results.pop()
-                return result
-        elif results:
-            return results
+            if len(results) > 1:
+                raise NoneUniqueObjectFound(query=params, objects=results)
+            results = results.pop()
+        return results
 
     def search(self, path: str, params: dict) -> dict:
         res = self.get(path=path, params=params)
