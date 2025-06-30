@@ -1082,7 +1082,7 @@ class Provider(base.Provider):
                             continue
                     if resource_type == Provider.PORT and not self._is_valid_vlan(res):
                         continue
-
+                    exporter.DUPLICATE_NSXT_RESOURCES.labels(res.os_id, resource_type).set(0)
                     provider.meta.add(res)
 
     def metadata_delete(self, resource_type: str, os_id: str) -> None:

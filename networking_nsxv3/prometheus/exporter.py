@@ -39,6 +39,13 @@ REALIZED = Counter(
     registry=REGISTRY
 )
 
+DUPLICATE_NSXT_RESOURCES = Gauge(
+    name='nsxv3_agent_duplicate_resources',
+    documentation='Number of duplicate resources in NSX-T',
+    labelnames=['id', 'resource_type'],
+    registry=REGISTRY
+)
+
 
 def nsxv3_agent_exporter():
     os.environ['PATH_INFO'] = "/metrics"

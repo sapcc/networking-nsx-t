@@ -1,5 +1,7 @@
 import abc
 import time
+import networking_nsxv3.prometheus.exporter as exporter
+
 from oslo_cache import core as cache
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -144,6 +146,7 @@ class Meta(object):
         if old_meta:
             old_meta.add_ambiguous(resource.meta)
             LOG.warning("Duplicate resource with OS_ID: %s ID: %s", resource.os_id, resource.id)
+            exporter.DUPLICATE_NSXT_RESOURCES.labels(resource.os_id, resource.type).inc()
         elif not resource.os_id:
             LOG.warning("Invalid object %s without OS_ID, ID: %s", resource.type, resource.id)
         else:
