@@ -1,4 +1,6 @@
 import oslo_messaging
+import neutron.notifiers.nova as nova_notifier
+
 from networking_nsxv3.common import constants as nsxv3_constants
 from networking_nsxv3.db import db
 from neutron_lib import context as neutron_context
@@ -238,6 +240,11 @@ class NSXv3ServerRpcApi(object):
         return cctxt.call(self.context, 'get_address_group_revision_number',
                           address_group_id=address_group_id)
 
+    @log_helpers.log_method_call
+    def send_nova_event(self, event):
+        cctxt = self.client.prepare()
+        return cctxt.call(self.context, 'send_nova_event', event=event)
+
 
 class NSXv3ServerRpcCallback(object):
     """Plugin-side RPC (implementation) for agent-to-plugin interaction.
@@ -362,3 +369,14 @@ class NSXv3ServerRpcCallback(object):
     @log_helpers.log_method_call
     def has_security_group_logging(self, context, security_group_id):
         return db.has_security_group_logging(context, security_group_id)
+
+    @log_helpers.log_method_call
+    def send_nova_event(self, context, event):
+        """Send a custom event to nova."""
+        notifier = nova_notifier.Notifier.get_instance()
+        if not notifier:
+            LOG.error("Nova notifier is not available.")
+            return
+        LOG.info("Sent custom Nova event: %s", event)
+        notifier.send_custom_port_status(event)
+        return

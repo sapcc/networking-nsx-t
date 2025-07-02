@@ -5,6 +5,7 @@ from oslo_log import log as logging
 from oslo_config import cfg
 from networking_nsxv3.api.rpc import NSXv3ServerRpcApi
 from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent import provider
+from networking_nsxv3.plugins.ml2.drivers.nsxv3.agent.provider_nsx_policy import API
 from networking_nsxv3.common.locking import LockManager
 from typing import Callable, List, Set, Tuple
 import itertools
@@ -283,6 +284,11 @@ class AgentRealizer(object):
             else:
                 LOG.info("deletion realization of port %s", os_id)
                 self._port_realize({"id": os_id}, delete=True)
+
+    def notify_nova_about_port_realization_status(self, port_id, segment_id, server_id):
+        LOG.info("Segment Port %s created on segment %s. Wait for realization and notify Nova", port_id, segment_id)
+        eventlet.spawn(self.nsx_provider.notify_nova_after_port_realization, self.rpc, port_id, segment_id, server_id)
+
 
     def qos(self, os_id: str, reference=False):
         """
