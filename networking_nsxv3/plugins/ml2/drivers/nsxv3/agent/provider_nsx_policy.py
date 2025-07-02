@@ -713,13 +713,15 @@ class Provider(base.Provider):
         return False
 
     @exporter.IN_REALIZATION.track_inprogress()
-    def _wait_to_realize(self, resource_type, os_id):
+    def _wait_to_realize(self, resource_type, os_id, wait_for_segment_port=False, **kwargs):
         if resource_type == Provider.SG_RULES:
             path = API.POLICY.format(os_id)
         elif resource_type == Provider.SG_MEMBERS:
             path = API.GROUP.format(os_id)
         elif resource_type == Provider.ADDR_GROUPS:
             path = API.GROUP.format(os_id)
+        elif resource_type == Provider.PORT and wait_for_segment_port:
+            path = API.SEGMENT_PORT.format(kwargs.get("segmentation_id", "empty"), os_id)
         else:
             return
 
@@ -966,7 +968,21 @@ class Provider(base.Provider):
             LOG.info("Port: %s has %s security groups which is more than the maximum allowed %s. \
                 The port will be added to the security groups as a static member.", port_id, len(port_sgs), max_sg_tags)
             os_port["security_groups"] = None
+
         return self._realize(Provider.PORT, False, self.payload.segment_port, os_port, provider_port)
+
+    def notify_nova_after_port_realization(self, rpc, port_id, segmentation_id, server_id):
+        segmentation_id = "{}-{}".format(self.zone_name, segmentation_id)
+        self._wait_to_realize(resource_type=Provider.PORT, os_id=port_id, wait_for_segment_port=True, segmentation_id=segmentation_id)
+        event = (
+            {'name': "network-port-realization-done",
+             'status': 'completed',
+             'tag': port_id,
+            'server_uuid': server_id}
+        )
+        LOG.info("Notify nova about port status change for port %s - send %s", port_id, event)
+        rpc.send_nova_event(event)
+
     def get_port(self, os_id):
         port = self.client.get_unique(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(os_id)})
         if port:

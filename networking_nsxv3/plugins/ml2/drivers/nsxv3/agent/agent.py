@@ -78,6 +78,8 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
             if bool(network_meta.get("nsx-logical-switch-id")):
                 self.realizer.precreate_port(current["id"], network_meta)
 
+        #During a live migration nova is called twice - precreate_unbound_port and precreate_port
+        self.realizer.notify_nova_about_port_realization_status(port_id=current["id"], segment_id=seg_id, server_id=current.get('device_id', ''))
         return network_meta
 
     def security_groups_member_updated(self, context, **kwargs):

@@ -448,3 +448,12 @@ class Provider(abc.ABC):
         :port_ids: set - Port IDs
         :return: set - Port metadata
         """
+
+    @abc.abstractmethod
+    def notify_nova_after_port_realization(self, rpc, port_id, segmentation_id, server_id):
+        """
+        Notify Nova about port realization
+
+        :port_id: str - Port ID
+        :segmentation_id: int - Segmentation
+        """
