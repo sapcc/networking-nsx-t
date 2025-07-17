@@ -44,12 +44,13 @@ class Singleton(type):
 
 class RetryPolicy(object):
 
-    def _create_sentry_fingerprint(path: str):
-        # check if uuid is part of path -> replace with {}
+    @staticmethod
+    def _create_sentry_fingerprint(path: str, placeholder: str = "{}") -> str:
+        # check if uuid is part of path -> replace with placeholder
         for sub in path.split("/"):
             try:
                 uuid.UUID(sub)
-                path.replace(sub, "{}")
+                path = path.replace(sub, placeholder)
             except ValueError:
                 pass
         return path
@@ -121,6 +122,9 @@ class RetryPolicy(object):
                 LOG.debug(msg)
                 eventlet.sleep(pause)
 
+            m = response.request.method if response else "UNKNOWN"
+            sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs.get("path", '')), m]
+            LOG.exception(last_err, extra=sentry_extra)
             raise RuntimeError(msg, last_err)
 
         return decorator
