@@ -1,4 +1,5 @@
 import eventlet
+
 eventlet.monkey_patch()
 
 from requests import Response
@@ -8,6 +9,7 @@ from oslo_log import log as logging
 from oslo_config import cfg
 from networking_nsxv3.common.synchronization import Scheduler
 from networking_nsxv3.common.locking import LockManager
+from networking_nsxv3.prometheus import exporter
 import requests
 import uuid
 import time
@@ -43,9 +45,26 @@ class Singleton(type):
 
 
 class RetryPolicy(object):
+    BASE = "/policy/api/v1"
+    BASE_INFRA = f"{BASE}/infra"
+    RULES = [
+        # Regex Order matters
+        # Match security_rule before security_policy
+        # Match ports before segments
+        ('security_rule', re.compile(f"^{BASE_INFRA}/domains/default/security-policies/.*/rules.*")),
+        ('security_policy', re.compile(f"^{BASE_INFRA}/domains/default/security-policies.*")),
+        ('group', re.compile(f"^{BASE_INFRA}/domains/default/groups.*")),
+        ('port', re.compile(f"^{BASE_INFRA}/segments/.*/ports.*")),
+        ('segments', re.compile(f"^{BASE_INFRA}/segments.*")),
+        ('realized_state', re.compile(f'^{BASE_INFRA}/realized-state/status.*')),
+        ('services', re.compile(f"^{BASE_INFRA}/services.*")),
+        ('search', re.compile(f"^{BASE}/search.*")),
+        ('transport_zone', re.compile(f"^{BASE_INFRA}/sites/default/enforcement-points/default/transport-zones.*")),
+        ('qos_profile', re.compile(f"^{BASE_INFRA}/default/qos-profiles.*")),
+    ]
 
-    @staticmethod
-    def _create_sentry_fingerprint(path: str, placeholder: str = "{}") -> str:
+    @classmethod
+    def _create_sentry_fingerprint(cls, path: str, placeholder: str = "{}") -> str:
         # check if uuid is part of path -> replace with placeholder
         for sub in path.split("/"):
             try:
@@ -54,6 +73,25 @@ class RetryPolicy(object):
             except ValueError:
                 pass
         return path
+
+    @classmethod
+    def _get_resource_type(cls, path: str) -> str:
+        for name, rule in cls.RULES:
+            match = rule.match(path)
+            if match:
+                return name
+        return "unknown"
+
+    @classmethod
+    def _update_metric(cls, metric, path='', status='UNKNOWN', method='UNKNOWN', response_time=0, exception_type='UNKNOWN'):
+        fp_path = cls._create_sentry_fingerprint(path=path, placeholder="<uuid>")
+        resource = cls._get_resource_type(path)
+
+        if exporter.API_CALLS == metric:
+            metric.labels(method=method, bb=cfg.CONF.host, resource_type=resource, path=fp_path, status=status).observe(response_time)
+
+        if exporter.API_CALL_EXCEPTIONS == metric:
+            metric.labels(bb=cfg.CONF.host, resource=resource, path=path, exception_type=exception_type).inc()
 
     def __call__(self, func):
 
@@ -77,7 +115,9 @@ class RetryPolicy(object):
                 try:
                     response = func(self, *args, **kwargs)
                     # LOG.debug("REQUEST: %s STATUS: %s, RESPONSE.CONTENT %s", requestInfo, response.status_code, response.content)
-
+                    RetryPolicy._update_metric(exporter.API_CALLS, path=kwargs.get("path", ''), method=response.request.method,
+                                               status=response.status_code,
+                                               response_time=response.elapsed.total_seconds())
                     if response.status_code in [404]:
                         LOG.warning("Warning Code=%s Message=%s", response.status_code, response.content)
                         return response
@@ -115,6 +155,8 @@ class RetryPolicy(object):
                     last_err = err
                     m = response.request.method if response else "UNKNOWN"
                     sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs.get("path", '')), m]
+                    RetryPolicy._update_metric(exporter.API_CALL_EXCEPTIONS, path=kwargs.get("path", ''),
+                                               exception_type=type(err).__name__)
                     LOG.error("Request=%s Response=%s", request_info, last_err, extra=sentry_extra)
 
                 msg = pattern.format(attempt, until, pause, method)

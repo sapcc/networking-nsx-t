@@ -6,7 +6,7 @@ from eventlet.green.http.server import HTTPServer
 import threading
 
 from oslo_config import cfg
-from prometheus_client import CollectorRegistry, Gauge, MetricsHandler, Counter, Enum
+from prometheus_client import CollectorRegistry, Gauge, MetricsHandler, Counter, Histogram
 
 # Prometheus Metrics
 
@@ -39,6 +39,18 @@ REALIZED = Counter(
     registry=REGISTRY
 )
 
+API_CALLS = Histogram(
+    'nsxv3_agent_api_calls',
+    'API call duration made by the agent',
+    ['bb', 'resource_type','method', 'path', 'status'],
+    registry=REGISTRY)
+
+API_CALL_EXCEPTIONS = Counter(
+    'nsxv3_agent_api_call_exceptions',
+    'API call exceptions made by the agent',
+    ['bb', 'resource_type', "exception_type"],
+    registry=REGISTRY
+)
 
 def nsxv3_agent_exporter():
     os.environ['PATH_INFO'] = "/metrics"
