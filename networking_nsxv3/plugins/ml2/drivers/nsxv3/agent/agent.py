@@ -135,9 +135,18 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
 
     def resource_update(self, context, log_obj):
         pass
-    
+
     def address_group_updated(self, context, address_group):
         self.callback(address_group, self.realizer.address_group_update)
+
+    def is_port_realized(self, context, port_id):
+        try:
+            realization_status = self.realizer.port_realization_status(port_id)
+        except Exception as e:
+            LOG.error("Failed to get port realization status: %s", e)
+            realization_status = False
+
+        return realization_status
 
 
 class NSXv3Manager(amb.CommonAgentManagerBase):

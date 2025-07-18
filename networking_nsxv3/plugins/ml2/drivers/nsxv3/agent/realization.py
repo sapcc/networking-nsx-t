@@ -285,6 +285,36 @@ class AgentRealizer(object):
                 LOG.info("deletion realization of port %s", os_id)
                 self._port_realize({"id": os_id}, delete=True)
 
+    def port_realization_status(self, port_id):
+        LOG.info("Fetching the port realization status for port_id: %s", port_id)
+
+        res = self.nsx_provider.client.get(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(port_id)})
+        results = res.json()
+
+        segment_ports = None
+
+        if res.status_code >= 400:
+            LOG.error("Error fetching port realization status for port_id: %s", port_id)
+            return False
+
+        if results:
+            segment_ports = results.get("results")
+
+        if not segment_ports:
+            LOG.error("No segment port found for port_id: %s", port_id)
+            return False
+
+        if len(segment_ports) > 1:
+            LOG.error("Multiple segment port found for port_id: %s.", port_id)
+            return False
+
+        segment_port = segment_ports[0]
+        status = segment_port.get("status")
+        if status["publish_status"] == "REALIZED" and status["consolidated_status"]["consolidated_status"] == "SUCCESS":
+            return True
+        else:
+            return False
+
     def notify_nova_about_port_realization_status(self, port_id, segment_id, server_id):
         LOG.info("Segment Port %s created on segment %s. Wait for realization and notify Nova", port_id, segment_id)
         eventlet.spawn(self.nsx_provider.notify_nova_after_port_realization, self.rpc, port_id, segment_id, server_id)

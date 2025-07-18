@@ -121,6 +121,12 @@ class NSXv3AgentRpcClient(object):
         else:
             LOG.debug("NSXv3AgentRpcClient: (no rpc call triggered): pass security_group_id or port_id as tupe ")
 
+    def is_port_realized(self, host, id):
+        """Get the realization status of a resource."""
+        LOG.debug("NSXv3AgentRpcClient: (is_port_realized): %s", id)
+        return self._get_call_context(host).call(
+            self.context, 'is_port_realized', port_id=id)
+
     def update_address_group(self, plugin: Ml2Plugin, payload: events.DBEventPayload):
         address_group = payload.states[1]
         self._get_call_context().cast(self.context, 'address_group_updated', address_group=address_group)

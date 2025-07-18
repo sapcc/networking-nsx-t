@@ -384,3 +384,6 @@ class TestNSXv3ServerRpcApi(object):
     def has_security_group_logging(self, security_group_id):
         g = self.inventory.get_by_id(NeutronMock.SECURITY_GROUP, security_group_id)
         return g is not None and g.get("logged")
+
+    def send_nova_event(self, event):
+        pass

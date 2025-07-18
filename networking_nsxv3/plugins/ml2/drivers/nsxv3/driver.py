@@ -8,6 +8,7 @@ from neutron_lib.services.trunk import constants as trunk_consts
 from neutron_lib import context as ctx, rpc
 from neutron_lib.api.definitions import portbindings
 from neutron_lib.callbacks import resources, registry, events
+from neutron_lib.plugins import directory
 from neutron_lib.plugins.ml2 import api
 from oslo_log import log
 
@@ -18,6 +19,7 @@ from networking_nsxv3.services.trunk.drivers.nsxv3 import trunk as nsxv3_trunk
 from networking_nsxv3.services.logapi.drivers.nsxv3 import driver as nsxv3_logging
 from neutron.objects import trunk as trunk_objects
 
+from networking_nsxv3.extensions.nsxtpolicy import Nsxtpolicy # auto-loads api on neutron server start
 from networking_nsxv3.extensions.nsxtoperations import Nsxtoperations  # auto-loads api on neutron server start
 
 from oslo_utils import importutils
@@ -81,12 +83,18 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
                 self.vif_type,
                 self.vif_details
         )
-
+        self._plugin = None
         LOG.info("Initialized Mechanism Driver Type = " + str(self.agent_type))
 
     @property
     def connectivity(self):
         return portbindings.CONNECTIVITY_L2
+
+    @property
+    def plugin(self):
+        if self._plugin is None:
+            self._plugin = directory.get_plugin()
+        return self._plugin
 
     def get_workers(self):
         return [service.RpcWorker([self], worker_process_count=0)]
@@ -245,3 +253,12 @@ class VMwareNSXv3MechanismDriver(mech_agent.SimpleAgentMechanismDriverBase):
 
     def trigger_sync(self, id, type):
         self.rpc.trigger_manual_update(id=id, type=type)
+
+    def is_port_realized(self, port_id, binding_host):
+        context = ctx.get_admin_context()
+
+        if not binding_host:
+            port = self.plugin.get_port(context, port_id)
+            binding_host = port.get(portbindings.HOST_ID)
+
+        return self.rpc.is_port_realized(binding_host, port_id)
