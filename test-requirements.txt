@@ -34,3 +34,5 @@ pyopenssl
 python-memcached
 python-neutronclient
 python-novaclient
+WebTest>=2.0.27 # MIT
+responses
