@@ -3,7 +3,7 @@ import eventlet
 eventlet.monkey_patch()
 
 from requests import Response
-from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError
+from requests.exceptions import ConnectionError, ConnectTimeout, HTTPError, ReadTimeout
 from oslo_utils import versionutils
 from oslo_log import log as logging
 from oslo_config import cfg
@@ -151,7 +151,7 @@ class RetryPolicy(object):
                                                        response.request.method]
                         LOG.error("Request=%s Response=%s", request_info, last_err, extra=sentry_extra)
                         break
-                except (HTTPError, ConnectionError, ConnectTimeout) as err:
+                except (HTTPError, ConnectionError, ConnectTimeout, ReadTimeout) as err:
                     last_err = err
                     m = response.request.method if response else "UNKNOWN"
                     sentry_extra["fingerprint"] = [RetryPolicy._create_sentry_fingerprint(kwargs.get("path", '')), m]
