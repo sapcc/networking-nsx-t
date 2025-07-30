@@ -288,31 +288,29 @@ class AgentRealizer(object):
     def port_realization_status(self, port_id):
         LOG.info("Fetching the port realization status for port_id: %s", port_id)
 
-        res = self.nsx_provider.client.get(path=API.SEARCH_QUERY, params={"query": API.SEARCH_Q_SEG_PORT.format(port_id)})
-        results = res.json()
+        port_meta = self.nsx_provider.metadata(self.nsx_provider.PORT, port_id)
+        if not port_meta:
+            LOG.error("No metadata found for port %s. Can not fetch realization information.", port_id)
+            return False
 
-        segment_ports = None
+        params = {"intent_path": port_meta.path}
+        res = self.nsx_provider.client.get(path=API.STATUS, params=params)
 
         if res.status_code >= 400:
-            LOG.error("Error fetching port realization status for port_id: %s", port_id)
+            LOG.error("Error fetching port realization status for port_id: %s with status_code %s and content: %s", port_id, res.status_code, res.content)
             return False
 
-        if results:
-            segment_ports = results.get("results")
-
-        if not segment_ports:
-            LOG.error("No segment port found for port_id: %s", port_id)
+        try:
+            status = res.json()
+        except Exception as e:
+            LOG.error("Error decoding JSON response for port_id: %s - %s", port_id, e)
             return False
 
-        if len(segment_ports) > 1:
-            LOG.error("Multiple segment port found for port_id: %s.", port_id)
-            return False
-
-        segment_port = segment_ports[0]
-        status = segment_port.get("status")
-        if status["publish_status"] == "REALIZED" and status["consolidated_status"]["consolidated_status"] == "SUCCESS":
+        if status.get("consolidated_status", {}).get("consolidated_status") == "SUCCESS":
+            LOG.info("Port realization status for port_id: %s - %s. Return realized", port_id, status)
             return True
         else:
+            LOG.info("Port realization status for port_id: %s - %s. Return not realized", port_id, status)
             return False
 
     def notify_nova_about_port_realization_status(self, port_id, segment_id, server_id):
