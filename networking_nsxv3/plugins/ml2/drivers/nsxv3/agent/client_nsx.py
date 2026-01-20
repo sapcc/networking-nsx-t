@@ -91,7 +91,7 @@ class RetryPolicy(object):
             metric.labels(method=method, bb=cfg.CONF.host, resource_type=resource, path=fp_path, status=status).observe(response_time)
 
         if exporter.API_CALL_EXCEPTIONS == metric:
-            metric.labels(bb=cfg.CONF.host, resource=resource, path=path, exception_type=exception_type).inc()
+            metric.labels(bb=cfg.CONF.host, resource_type=resource, path=path, exception_type=exception_type).inc()
 
     def __call__(self, func):
 
