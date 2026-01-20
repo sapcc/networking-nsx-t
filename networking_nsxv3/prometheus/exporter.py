@@ -48,7 +48,7 @@ API_CALLS = Histogram(
 API_CALL_EXCEPTIONS = Counter(
     'nsxv3_agent_api_call_exceptions',
     'API call exceptions made by the agent',
-    ['bb', 'resource_type', "exception_type"],
+    ['bb', 'resource_type', "path", "exception_type"],
     registry=REGISTRY
 )
 
