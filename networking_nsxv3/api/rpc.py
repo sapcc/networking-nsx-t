@@ -384,5 +384,5 @@ class NSXv3ServerRpcCallback(object):
             LOG.error("Nova notifier is not available.")
             return
         LOG.info("Sent custom Nova event: %s", event)
-        notifier.send_custom_port_status(event)
+        notifier.send_events([event])
         return
