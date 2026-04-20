@@ -83,9 +83,15 @@ class NSXv3AgentManagerRpcCallBackBase(amb.CommonAgentManagerRpcCallBackBase):
         return network_meta
 
     def security_groups_member_updated(self, context, **kwargs):
+        if cfg.CONF.AGENT.security_group_sync_mode == 'passive':
+            LOG.debug("Security group member updates are disabled (passive mode)")
+            return
         self.callback(kwargs["security_groups"], self.realizer.security_group_members)
 
     def security_groups_rule_updated(self, context, **kwargs):
+        if cfg.CONF.AGENT.security_group_sync_mode == 'passive':
+            LOG.debug("Security group rule updates are disabled (passive mode)")
+            return
         self.callback(kwargs["security_groups"], self.realizer.security_group_rules)
 
     def port_create(self, **kwargs):
