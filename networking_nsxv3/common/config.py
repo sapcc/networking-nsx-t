@@ -91,6 +91,22 @@ agent_opts = [
         name='resync_objects_based_on_age',
         default=True,
         help="Enable/Disable the resync of aged objects in a sync loop"
+    ),
+    cfg.StrOpt(
+        name='security_group_sync_mode',
+        default='active',
+        choices=['active', 'passive'],
+        help="Security group synchronization mode. 'active': agent creates and updates security "
+             "groups in NSX-T. 'passive': agent waits for security groups to exist but does not "
+             "create or update them (useful in multi-agent deployments where one agent manages "
+             "security groups centrally)."
+    ),
+    cfg.IntOpt(
+        name='security_group_wait_timeout',
+        default=30,
+        help="Maximum time in seconds to wait for security group objects to exist in NSX-T when "
+             "security_group_sync_mode is 'passive'. The agent will raise an exception if the "
+             "timeout is exceeded."
     )
 ]
 
