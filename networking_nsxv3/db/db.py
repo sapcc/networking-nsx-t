@@ -27,10 +27,12 @@ def get_ports_with_revisions(context, host, limit, cursor):
         Port.standard_attr_id
     ).join(
         PortBindingLevel
+    ).join(
+        StandardAttribute,
+        StandardAttribute.id == Port.standard_attr_id
     ).order_by(
         Port.standard_attr_id.asc()
     ).filter(
-        StandardAttribute.id == Port.standard_attr_id,
         StandardAttribute.resource_type == 'ports',
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
@@ -52,10 +54,12 @@ def get_qos_policies_with_revisions(context, host, limit, cursor):
         Port
     ).join(
         PortBindingLevel
+    ).join(
+        StandardAttribute,
+        StandardAttribute.id == QosPolicy.standard_attr_id,
     ).order_by(
         QosPolicy.standard_attr_id.asc()
     ).filter(
-        StandardAttribute.id == QosPolicy.standard_attr_id,
         StandardAttribute.resource_type == 'qos_policies',
         PortBindingLevel.host == host,
         PortBindingLevel.driver == nsxv3_constants.NSXV3,
@@ -76,10 +80,12 @@ def get_security_groups_with_revisions(context, host, limit, cursor):
     ).join(
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).join(
+        StandardAttribute,
+        StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id,
     ).order_by(
         sg_db.SecurityGroup.standard_attr_id.asc()
     ).filter(
-        StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id,
         StandardAttribute.resource_type == 'securitygroups',
         PortBindingLevel.host == host,
         PortBindingLevel.level == 1,
@@ -295,6 +301,12 @@ def get_security_groups_for_host(context, host, limit, cursor):
     ).join(
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).join(
+        sg_db.SecurityGroup,
+        sg_db.SecurityGroup.id == sg_db.SecurityGroupRule.remote_group_id
+    ).join(
+        StandardAttribute,
+        StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id
     ).order_by(
         StandardAttribute.id.asc()
     ).filter(
@@ -315,6 +327,12 @@ def get_remote_security_groups_for_host(context, host, limit, cursor):
     ).join(
         PortBindingLevel,
         PortBindingLevel.port_id == sg_db.SecurityGroupPortBinding.port_id
+    ).join(
+        sg_db.SecurityGroup,
+        sg_db.SecurityGroup.id == sg_db.SecurityGroupRule.remote_group_id
+    ).join(
+        StandardAttribute,
+        StandardAttribute.id == sg_db.SecurityGroup.standard_attr_id
     ).order_by(
         StandardAttribute.id.asc()
     ).filter(
