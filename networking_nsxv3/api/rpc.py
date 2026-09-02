@@ -115,9 +115,11 @@ class NSXv3AgentRpcClient(object):
             self._get_call_context() \
                 .cast(self.context, 'port_update', port=id)
         elif type == "security_group_id":
-            LOG.debug("NSXv3AgentRpcClient: (security_groups_rule_updated): " + str(id))
+            LOG.debug("NSXv3AgentRpcClient: (security_groups_rule_updated, security_groups_member_updated): " + str(id))
             self._get_call_context() \
                 .cast(self.context, 'security_groups_rule_updated', security_groups=id)
+            self._get_call_context() \
+                .cast(self.context, 'security_groups_member_updated', security_groups=id)
         else:
             LOG.debug("NSXv3AgentRpcClient: (no rpc call triggered): pass security_group_id or port_id as tupe ")
 
