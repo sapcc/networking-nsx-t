@@ -120,14 +120,13 @@ class NSXv3TrunkDriver(base.DriverBase):
                     },
                 }
             else:
+                # NOTE(seba): do not set VNIC type, neutron will refuse the port update for a bound port
                 port_data = {
                     port.RESOURCE_NAME: {
                         portbindings.HOST_ID: None,
-                        portbindings.VNIC_TYPE: None,
                         portbindings.PROFILE: None,
                         'device_owner': '',
                         'device_id': '',
-                        'status': constants.PORT_STATUS_DOWN,
                     },
                 }
             self.core_plugin.update_port(ctx, subport.port_id, port_data)
