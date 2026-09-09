@@ -1,33 +1,32 @@
-  # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
 name: Unit Tests
 
 on:
   push:
-    branches: [ stable/2024.1-m3 ]
+    branches: [stable/2026.1-m3]
   pull_request:
-    branches: [ stable/2024.1-m3 ]
+    branches: [stable/2026.1-m3]
 
 env:
-  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/2024.1-m3/upper-constraints.txt
+  UPPER_CONSTRAINTS_FILE: https://raw.githubusercontent.com/sapcc/requirements/stable/2026.1-m3/upper-constraints.txt
   #VIRTUALENV_PIP: "20.2.3"
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     #runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.10']
-        tox-env: [unit,pep8,pip-missing-reqs]
+        python: ["3.12"]
+        tox-env: [unit, pep8, pip-missing-reqs]
     env:
       TOXENV: ${{ matrix.tox-env }}
     steps:
       - uses: actions/checkout@v2
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python }}
@@ -36,4 +35,3 @@ jobs:
           pip install tox
       - name: Running Tox
         run: tox
-
