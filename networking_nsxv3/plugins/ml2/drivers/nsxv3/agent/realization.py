@@ -102,20 +102,23 @@ class AgentRealizer(object):
             if _slice <= 0:
                 return
 
-            outdated = list(itertools.islice(sgr_outdated, _slice))
-            _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:Security Group Rules", len(outdated), len(sgr_outdated))
-            self.callback(outdated, self.security_group_rules)
-            if _slice <= 0:
-                return
+            if cfg.CONF.AGENT.security_group_sync_mode == 'passive':
+                LOG.debug("Security group synchronization is disabled (passive mode)")
+            else:
+                outdated = list(itertools.islice(sgr_outdated, _slice))
+                _slice -= len(outdated)
+                LOG.info("Realizing %s/%s resources of Type:Security Group Rules", len(outdated), len(sgr_outdated))
+                self.callback(outdated, self.security_group_rules)
+                if _slice <= 0:
+                    return
 
-            # sgm_outdated only includes missing objects, orphans are removed by ageing
-            outdated = list(itertools.islice(sgm_outdated, _slice))
-            _slice -= len(outdated)
-            LOG.info("Realizing %s/%s resources of Type:Security Group Members", len(outdated), len(sgm_outdated))
-            self.callback(outdated, self.security_group_members)
-            if _slice <= 0:
-                return
+                # sgm_outdated only includes missing objects, orphans are removed by ageing
+                outdated = list(itertools.islice(sgm_outdated, _slice))
+                _slice -= len(outdated)
+                LOG.info("Realizing %s/%s resources of Type:Security Group Members", len(outdated), len(sgm_outdated))
+                self.callback(outdated, self.security_group_members)
+                if _slice <= 0:
+                    return
 
             outdated = list(itertools.islice(qos_outdated, _slice))
             _slice -= len(outdated)
@@ -165,6 +168,35 @@ class AgentRealizer(object):
 
             self.AGE = int(time.time())
 
+    def _wait_for_security_group(self, os_id: str, timeout: int = None):
+        """
+        Wait for a security group to exist in NSX-T (created by another agent).
+        :os_id: -- OpenStack ID of the Security Group
+        :timeout: -- Maximum time in seconds to wait (uses config default if None)
+        :raises: TimeoutError if the security group doesn't exist after timeout
+        """
+        if timeout is None:
+            timeout = cfg.CONF.AGENT.security_group_wait_timeout
+        
+        start_time = time.time()
+        poll_interval = 1  # Poll every second
+        
+        while time.time() - start_time < timeout:
+            # Check if the SG rules exist in NSX-T
+            meta = self.nsx_provider.metadata(self.nsx_provider.SG_RULES, os_id)
+            if meta:
+                LOG.debug(f"Security group {os_id} found in NSX-T")
+                return
+            
+            LOG.debug(f"Waiting for security group {os_id} to exist in NSX-T... "
+                     f"({int(time.time() - start_time)}s / {timeout}s)")
+            time.sleep(poll_interval)
+        
+        raise TimeoutError(
+            f"Security group {os_id} does not exist in NSX-T after {timeout}s timeout. "
+            f"Ensure another agent is managing security groups."
+        )
+
     def security_group_members(self, os_id: str, reference=False):
         """
         Realize security group members state.
@@ -173,6 +205,11 @@ class AgentRealizer(object):
         :os_id: -- OpenStack ID of the Security Group
         :reference: -- if True will create the group if unknown by the provider
         """
+        if cfg.CONF.AGENT.security_group_sync_mode == 'passive':
+            LOG.debug(f"Security group members in passive mode, waiting for {os_id} to exist")
+            self._wait_for_security_group(os_id)
+            return
+        
         with LockManager.get_lock("member-{}".format(os_id)):
             meta = self.nsx_provider.metadata(self.nsx_provider.SG_MEMBERS, os_id)
             if not (reference and meta):
@@ -199,6 +236,11 @@ class AgentRealizer(object):
         Realization will happen only if the group has active ports on the host.
         :os_id: -- OpenStack ID of the Security Group
         """
+        if cfg.CONF.AGENT.security_group_sync_mode == 'passive':
+            LOG.debug(f"Security group rules in passive mode, waiting for {os_id} to exist")
+            self._wait_for_security_group(os_id)
+            return
+        
         with LockManager.get_lock("rules-{}".format(os_id)):
             os_sg = self.rpc.get_security_group(os_id)
 
