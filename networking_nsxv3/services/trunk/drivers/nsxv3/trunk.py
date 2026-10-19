@@ -131,8 +131,4 @@ class NSXv3TrunkDriver(base.DriverBase):
                 }
             self.core_plugin.update_port(ctx, subport.port_id, port_data)
 
-        if len(trunk.sub_ports) > 0:
-            trunk.update(status=trunk_consts.TRUNK_ACTIVE_STATUS)
-        else:
-            # trunk is automatically set to DOWN on change. if we don't change that it will stay that way
-            LOG.info("Last subport was removed from trunk %s, setting it to state DOWN", trunk.id)
+        trunk.update(status=trunk_consts.TRUNK_ACTIVE_STATUS)
