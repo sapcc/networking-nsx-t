@@ -520,7 +520,7 @@ class TestNSXv3TrunkDriver(base.BaseTestCase):
                 '_bind_subports',
                 ['mock_trunk_update:status:' + trunk_consts.TRUNK_ACTIVE_STATUS]
             ),
-            False
+            True
         )
 
         # Make test call number 3
